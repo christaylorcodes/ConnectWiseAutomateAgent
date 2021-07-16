@@ -42,6 +42,10 @@ Install-Module 'ConnectWiseAutomateAgent'
 
 >If you are having issues accessing the PowerShell Gallery check out my [repair script](https://github.com/christaylorcodes/Initialize-PSGallery)
 
+You can also invoke the script from github for older machines that cant use the gallery.
+```powershell
+Invoke-RestMethod 'https://raw.githubusercontent.com/christaylorcodes/ConnectWiseAutomateAgent/main/ConnectWiseAutomateAgent.ps1' | Invoke-Expression
+```
 
 ## [Contributing](https://github.com/christaylorcodes/GitHub-Template/blob/main/CONTRIBUTING.md)
 
