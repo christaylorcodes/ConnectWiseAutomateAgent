@@ -1,6 +1,6 @@
 <h1 align="center">
   <br>
-  <img src="https://www.connectwise.com/globalassets/media/logos/company/product/automate/automate-horiz-master.png" alt="logo" width="75%"></a>
+  <img src=".\Media\automate-horiz-master.webp" alt="logo" width="75%"></a>
   <br>
   ConnectWiseAutomateAgent
   <br>
@@ -18,12 +18,12 @@
 </div>
 
 <p align="center">
-    <a href="#download">List of Functions</a> •
-    <a href="#credits">Examples</a> •
-    <a href="#key-features">Install</a> •
-    <a href="#how-to-use">Contribute</a> •
-    <a href="#related">Submit a Bug</a> •
-    <a href="#license">Request a Feature</a>
+    <a href="ConnectWiseAutomateAgent_Functions.md">List of Functions</a> •
+    <a href="https://github.com/christaylorcodes/ConnectWiseAutomateAgent/tree/master/Examples">Examples</a> •
+    <a href="#Install">Install</a> •
+    <a href="https://github.com/christaylorcodes/GitHub-Template/blob/main/CONTRIBUTING.md">Contribute</a> •
+    <a href="https://github.com/christaylorcodes/GitHub-Template/blob/main/CONTRIBUTING.md#reporting-bugs">Submit a Bug</a> •
+    <a href="https://github.com/christaylorcodes/GitHub-Template/blob/main/CONTRIBUTING.md#suggesting-enhancements">Request a Feature</a>
 </p>
 
 <!-- Summary -->
