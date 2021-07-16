@@ -1,7 +1,7 @@
 ---
 Module Name: ConnectWiseAutomateAgent
 Module Guid: 37424fc5-48d4-4d15-8b19-e1c2bf4bab67
-Download Help Link: https://raw.githubusercontent.com/christaylorcodes/ConnectWiseAutoamteAgent/main/ConnectWiseAutomateAgent/en-US/ConnectWiseAutomateAgent-help.xml
+Download Help Link: https://raw.githubusercontent.com/christaylorcodes/ConnectWiseAutomateAgent/main/ConnectWiseAutomateAgent/en-US/ConnectWiseAutomateAgent-help.xml
 Help Version: 0.1.0.0
 Locale: en-US
 ---

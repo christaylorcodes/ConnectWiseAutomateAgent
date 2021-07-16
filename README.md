@@ -32,9 +32,9 @@ This module makes it easy to leverage PowerShell to automate tasks related to th
 
 <!-- Summary -->
 
-## [Install](https://www.powershellgallery.com/packages/ConnectWiseAutoamteAgent)
+## [Install](https://www.powershellgallery.com/packages/ConnectWiseAutomateAgent)
 
-The module can be easily installed from the [PowerShellGallery](https://www.powershellgallery.com/packages/ConnectWiseAutoamteAgent)
+The module can be easily installed from the [PowerShellGallery](https://www.powershellgallery.com/packages/ConnectWiseAutomateAgent)
 
 ```powershell
 Install-Module 'ConnectWiseAutomateAgent'
