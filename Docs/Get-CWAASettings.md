@@ -8,7 +8,7 @@ schema: 2.0.0
 # Get-CWAASettings
 
 ## SYNOPSIS
-{{ Fill in the Synopsis }}
+Pulls information about the agent install.
 
 ## SYNTAX
 

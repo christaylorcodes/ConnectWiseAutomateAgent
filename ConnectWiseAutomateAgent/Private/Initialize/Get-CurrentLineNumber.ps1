@@ -1,4 +1,4 @@
-Function Get-CurrentLineNumber {
+function Get-CurrentLineNumber {
     [Alias('LINENUM')]
     param()
     $MyInvocation.ScriptLineNumber

@@ -1,5 +1,5 @@
 
-Function Test-CWAAPort {
+function Test-CWAAPort {
     [CmdletBinding()]
     [Alias('Test-LTPorts')]
     Param(
@@ -13,7 +13,7 @@ Function Test-CWAAPort {
 
     Begin{
         $Mediator = 'mediator.labtechsoftware.com'
-        Function Private:TestPort{
+        function Private:TestPort{
             Param(
                 [parameter(Position=0)]
                 [string]
@@ -28,8 +28,8 @@ Function Test-CWAAPort {
                 $Port
             )
 
-            $RemoteServer = If ([string]::IsNullOrEmpty($ComputerName)) {$IPAddress} Else {$ComputerName};
-            If ([string]::IsNullOrEmpty($RemoteServer)) {Write-Error "ERROR: Line $(LINENUM): No ComputerName or IPAddress was provided to test."; return}
+            $RemoteServer = if([string]::IsNullOrEmpty($ComputerName)){$IPAddress} else{$ComputerName};
+            if([string]::IsNullOrEmpty($RemoteServer)){Write-Error "ERROR: Line $(LINENUM): No ComputerName or IPAddress was provided to test."; return}
 
             $test = New-Object System.Net.Sockets.TcpClient;
             Try
@@ -56,21 +56,21 @@ Function Test-CWAAPort {
     }
 
     Process{
-        If (-not ($Server) -and (-not ($TrayPort) -or -not ($Quiet))){
+        if(-not ($Server) -and (-not ($TrayPort) -or -not ($Quiet))){
             Write-Verbose 'No Server Input - Checking for names.'
             $Server = Get-CWAAInfo -EA 0 -Verbose:$False -WhatIf:$False -Confirm:$False -Debug:$False|Select-Object -Expand 'Server' -EA 0
-            If (-not ($Server)){
+            if(-not ($Server)){
                 Write-Verbose 'No Server found in installed Service Info. Checking for Service Backup.'
                 $Server = Get-CWAAInfoBackup -EA 0 -Verbose:$False|Select-Object -Expand 'Server' -EA 0
             }
         }
 
-        If (-not ($Quiet) -or (($TrayPort) -ge 1 -and ($TrayPort) -le 65530)){
-            If (-not ($TrayPort) -or -not (($TrayPort) -ge 1 -and ($TrayPort) -le 65530)){
+        if(-not ($Quiet) -or (($TrayPort) -ge 1 -and ($TrayPort) -le 65530)){
+            if(-not ($TrayPort) -or -not (($TrayPort) -ge 1 -and ($TrayPort) -le 65530)){
                 #Learn LTTrayPort if available.
                 $TrayPort = (Get-CWAAInfo -EA 0 -Verbose:$False -WhatIf:$False -Confirm:$False -Debug:$False|Select-Object -Expand TrayPort -EA 0)
             }
-            If (-not ($TrayPort) -or $TrayPort -notmatch '^\d+$') {$TrayPort=42000}
+            if(-not ($TrayPort) -or $TrayPort -notmatch '^\d+$'){$TrayPort=42000}
 
             [array]$processes = @()
             #Get all processes that are using LTTrayPort (Default 42000)
@@ -80,31 +80,31 @@ Function Test-CWAAPort {
                 $processes += ($line -split ' {4,}')[-1]
             }
             $processes = $processes | Where-Object {$_ -gt 0 -and $_ -match '^\d+$'}| Sort-Object | Get-Unique
-            If (($processes)) {
-                If (-not ($Quiet)){
-                    Foreach ($proc In $processes) {
-                        If ((Get-Process -ID $proc -EA 0|Select-Object -Expand ProcessName -EA 0) -eq 'LTSvc') {
+            if(($processes)){
+                if(-not ($Quiet)){
+                    Foreach ($proc In $processes){
+                        if((Get-Process -ID $proc -EA 0|Select-Object -Expand ProcessName -EA 0) -eq 'LTSvc'){
                             Write-Output "TrayPort Port $TrayPort is being used by LTSvc."
-                        } Else {
+                        } else{
                             Write-Output "Error: TrayPort Port $TrayPort is being used by $(Get-Process -ID $proc|Select-Object -Expand ProcessName -EA 0)."
                         }
                     }
-                } Else {return $False}
-            } ElseIf (($Quiet) -eq $True){
+                } else{return $False}
+            } Elseif(($Quiet) -eq $True){
                 return $True
-            } Else {
+            } else{
                 Write-Output "TrayPort Port $TrayPort is available."
             }
         }
 
-        foreach ($svr in $Server) {
+        foreach ($svr in $Server){
             if ($Quiet){
                 $CleanSvr = ($Svr -replace 'https?://',''|ForEach-Object {$_.Trim()})
                 Test-Connection $CleanSvr -Quiet
                 return
             }
 
-            If ($Svr -match '^(https?://)?(([12]?[0-9]{1,2}\.){3}[12]?[0-9]{1,2}|[a-z0-9][a-z0-9_-]*(\.[a-z0-9][a-z0-9_-]*)*)$') {
+            if($Svr -match '^(https?://)?(([12]?[0-9]{1,2}\.){3}[12]?[0-9]{1,2}|[a-z0-9][a-z0-9_-]*(\.[a-z0-9][a-z0-9_-]*)*)$'){
                 Try{
                     $CleanSvr = ($Svr -replace 'https?://',''|ForEach-Object {$_.Trim()})
                     Write-Output "Testing connectivity to required TCP ports:"
@@ -118,14 +118,14 @@ Function Test-CWAAPort {
                 Catch{
                     Write-Error "ERROR: Line $(LINENUM): There was an error testing the ports. $($Error[0])" -ErrorAction Stop
                 }
-            } Else {
+            } else{
                 Write-Warning "WARNING: Line $(LINENUM): Server address $($Svr) is not a valid address or is not formatted correctly. Example: https://lt.domain.com"
             }
         }
     }
 
     End{
-        If ($?){
+        if($?){
             if (-not ($Quiet)){
                 Write-Output "Test-CWAAPorts Finished"
             }

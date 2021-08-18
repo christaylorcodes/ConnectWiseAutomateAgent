@@ -38,7 +38,7 @@ to use the specified proxy configuration for all communication operations as
 long as the module remains loaded.
 
 ### [Get-CWAASettings](Docs/Get-CWAASettings.md)
-{{ Fill in the Synopsis }}
+Pulls information about the agent install.
 
 ### [Hide-CWAAAddRemove](Docs/Hide-CWAAAddRemove.md)
 This function hides the LabTech install from the Add/Remove Programs list.

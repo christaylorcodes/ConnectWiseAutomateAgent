@@ -1,55 +1,58 @@
-Function Get-CWAAInfo {
-    [CmdletBinding(SupportsShouldProcess=$True, ConfirmImpact='Low')]
+function Get-CWAAInfo {
+    [CmdletBinding(SupportsShouldProcess = $True, ConfirmImpact = 'Low')]
     [Alias('Get-LTServiceInfo')]
     Param ()
 
-    Begin{
+    Begin {
         Write-Debug "Starting $($myInvocation.InvocationName) at line $(LINENUM)"
-        Clear-Variable key,BasePath,exclude,Servers -EA 0 -WhatIf:$False -Confirm:$False #Clearing Variables for use
-        $exclude = "PSParentPath","PSChildName","PSDrive","PSProvider","PSPath"
+        Clear-Variable key, BasePath, exclude, Servers -EA 0 -WhatIf:$False -Confirm:$False #Clearing Variables for use
+        $exclude = 'PSParentPath', 'PSChildName', 'PSDrive', 'PSProvider', 'PSPath'
         $key = $Null
     }
 
-    Process{
-        If ((Test-Path 'HKLM:\SOFTWARE\LabTech\Service') -eq $False){
+    Process {
+        if ((Test-Path 'HKLM:\SOFTWARE\LabTech\Service') -eq $False) {
             Write-Error "ERROR: Line $(LINENUM): Unable to find information on LTSvc. Make sure the agent is installed."
             Return $Null
         }
 
-        If ($PSCmdlet.ShouldProcess("LTService", "Retrieving Service Registry Values")) {
-            Write-Verbose "Checking for LT Service registry keys."
-            Try{
+        if ($PSCmdlet.ShouldProcess('LTService', 'Retrieving Service Registry Values')) {
+            Write-Verbose 'Checking for LT Service registry keys.'
+            Try {
                 $key = Get-ItemProperty 'HKLM:\SOFTWARE\LabTech\Service' -ErrorAction Stop | Select-Object * -exclude $exclude
-                If ($Null -ne $key -and -not ($key|Get-Member -EA 0|Where-Object {$_.Name -match 'BasePath'})) {
-                    If ((Test-Path 'HKLM:\SYSTEM\CurrentControlSet\Services\LTService') -eq $True) {
+                if ($Null -ne $key -and -not ($key | Get-Member -EA 0 | Where-Object { $_.Name -match 'BasePath' })) {
+                    if ((Test-Path 'HKLM:\SYSTEM\CurrentControlSet\Services\LTService') -eq $True) {
                         Try {
-                            $BasePath = Get-Item $( Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\LTService' -ErrorAction Stop|Select-Object -Expand ImagePath | Select-String -Pattern '^[^"][^ ]+|(?<=^")[^"]+'|Select-Object -Expand Matches -First 1 | Select-Object -Expand Value -EA 0 -First 1 ) | Select-Object -Expand DirectoryName -EA 0
-                        } Catch {
+                            $BasePath = Get-Item $( Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\LTService' -ErrorAction Stop | Select-Object -Expand ImagePath | Select-String -Pattern '^[^"][^ ]+|(?<=^")[^"]+' | Select-Object -Expand Matches -First 1 | Select-Object -Expand Value -EA 0 -First 1 ) | Select-Object -Expand DirectoryName -EA 0
+                        }
+                        Catch {
                             $BasePath = "${env:windir}\LTSVC"
                         }
-                    } Else {
+                    }
+                    else {
                         $BasePath = "${env:windir}\LTSVC"
                     }
                     Add-Member -InputObject $key -MemberType NoteProperty -Name BasePath -Value $BasePath
                 }
-                $key.BasePath = [System.Environment]::ExpandEnvironmentVariables($($key|Select-Object -Expand BasePath -EA 0)) -replace '\\\\','\'
-                If ($Null -ne $key -and ($key|Get-Member|Where-Object {$_.Name -match 'Server Address'})) {
-                    $Servers = ($Key|Select-Object -Expand 'Server Address' -EA 0).Split('|')|ForEach-Object {$_.Trim() -replace '~',''}|Where-Object {$_ -match '.+'}
+                $key.BasePath = [System.Environment]::ExpandEnvironmentVariables($($key | Select-Object -Expand BasePath -EA 0)) -replace '\\\\', '\'
+                if ($Null -ne $key -and ($key | Get-Member | Where-Object { $_.Name -match 'Server Address' })) {
+                    $Servers = ($Key | Select-Object -Expand 'Server Address' -EA 0).Split('|') | ForEach-Object { $_.Trim() -replace '~', '' } | Where-Object { $_ -match '.+' }
                     Add-Member -InputObject $key -MemberType NoteProperty -Name 'Server' -Value $Servers -Force
                 }
             }
 
-            Catch{
+            Catch {
                 Write-Error "ERROR: Line $(LINENUM): There was a problem reading the registry keys. $($Error[0])"
             }
         }
     }
 
-    End{
-        If ($?){
+    End {
+        if ($?) {
             Write-Debug "Exiting $($myInvocation.InvocationName) at line $(LINENUM)"
             return $key
-        } Else {
+        }
+        else {
             Write-Debug "Exiting $($myInvocation.InvocationName) at line $(LINENUM)"
         }
     }

@@ -1,57 +1,61 @@
 
-Function Get-CWAAProxy{
+function Get-CWAAProxy {
     [CmdletBinding()]
     [Alias('Get-LTProxy')]
     Param(
     )
 
-    Begin{
-        Clear-Variable CustomProxyObject,LTSI,LTSS -EA 0 -WhatIf:$False -Confirm:$False #Clearing Variables for use
+    Begin {
+        Clear-Variable CustomProxyObject, LTSI, LTSS -EA 0 -WhatIf:$False -Confirm:$False #Clearing Variables for use
         Write-Debug "Starting $($myInvocation.InvocationName) at line $(LINENUM)"
-        Write-Verbose "Discovering Proxy Settings used by the LT Agent."
-        $Null=Initialize-CWAAKeys
+        Write-Verbose 'Discovering Proxy Settings used by the LT Agent.'
+        $Null = Initialize-CWAAKeys
     }
 
-    Process{
+    Process {
         Try {
-            $LTSI=Get-CWAAInfo -EA 0 -WA 0 -Verbose:$False -WhatIf:$False -Confirm:$False -Debug:$False
-            If ($Null -ne $LTSI -and ($LTSI|Get-Member|Where-Object {$_.Name -eq 'ServerPassword'})) {
-                $LTSS=Get-CWAASettings -EA 0 -Verbose:$False -WA 0 -Debug:$False
-                If ($Null -ne $LTSS) {
-                    If (($LTSS|Get-Member|Where-Object {$_.Name -eq 'ProxyServerURL'}) -and ($($LTSS|Select-Object -Expand ProxyServerURL -EA 0) -Match 'https?://.+')) {
+            $LTSI = Get-CWAAInfo -EA 0 -WA 0 -Verbose:$False -WhatIf:$False -Confirm:$False -Debug:$False
+            if ($Null -ne $LTSI -and ($LTSI | Get-Member | Where-Object { $_.Name -eq 'ServerPassword' })) {
+                $LTSS = Get-CWAASettings -EA 0 -Verbose:$False -WA 0 -Debug:$False
+                if ($Null -ne $LTSS) {
+                    if (($LTSS | Get-Member | Where-Object { $_.Name -eq 'ProxyServerURL' }) -and ($($LTSS | Select-Object -Expand ProxyServerURL -EA 0) -Match 'https?://.+')) {
                         Write-Debug "Line $(LINENUM): Proxy Detected. Setting ProxyServerURL to $($LTSS|Select-Object -Expand ProxyServerURL -EA 0)"
-                        $Script:LTProxy.Enabled=$True
-                        $Script:LTProxy.ProxyServerURL="$($LTSS|Select-Object -Expand ProxyServerURL -EA 0)"
-                    } Else {
+                        $Script:LTProxy.Enabled = $True
+                        $Script:LTProxy.ProxyServerURL = "$($LTSS|Select-Object -Expand ProxyServerURL -EA 0)"
+                    }
+                    else {
                         Write-Debug "Line $(LINENUM): Setting ProxyServerURL to "
-                        $Script:LTProxy.Enabled=$False
-                        $Script:LTProxy.ProxyServerURL=''
+                        $Script:LTProxy.Enabled = $False
+                        $Script:LTProxy.ProxyServerURL = ''
                     }
-                    if ($Script:LTProxy.Enabled -eq $True -and ($LTSS|Get-Member|Where-Object {$_.Name -eq 'ProxyUsername'}) -and ($LTSS|Select-Object -Expand ProxyUsername -EA 0)) {
-                        $Script:LTProxy.ProxyUsername="$(ConvertFrom-CWAASecurity -InputString "$($LTSS|Select-Object -Expand ProxyUsername -EA 0)" -Key ("$($Script:LTServiceKeys.PasswordString)",''))"
+                    if ($Script:LTProxy.Enabled -eq $True -and ($LTSS | Get-Member | Where-Object { $_.Name -eq 'ProxyUsername' }) -and ($LTSS | Select-Object -Expand ProxyUsername -EA 0)) {
+                        $Script:LTProxy.ProxyUsername = "$(ConvertFrom-CWAASecurity -InputString "$($LTSS|Select-Object -Expand ProxyUsername -EA 0)" -Key ("$($Script:LTServiceKeys.PasswordString)",''))"
                         Write-Debug "Line $(LINENUM): Setting ProxyUsername to $($Script:LTProxy.ProxyUsername)"
-                    } Else {
-                        Write-Debug "Line $(LINENUM): Setting ProxyUsername to "
-                        $Script:LTProxy.ProxyUsername=''
                     }
-                    If ($Script:LTProxy.Enabled -eq $True -and ($LTSS|Get-Member|Where-Object {$_.Name -eq 'ProxyPassword'}) -and ($LTSS|Select-Object -Expand ProxyPassword -EA 0)) {
-                        $Script:LTProxy.ProxyPassword="$(ConvertFrom-CWAASecurity -InputString "$($LTSS|Select-Object -Expand ProxyPassword -EA 0)" -Key ("$($Script:LTServiceKeys.PasswordString)",''))"
+                    else {
+                        Write-Debug "Line $(LINENUM): Setting ProxyUsername to "
+                        $Script:LTProxy.ProxyUsername = ''
+                    }
+                    if ($Script:LTProxy.Enabled -eq $True -and ($LTSS | Get-Member | Where-Object { $_.Name -eq 'ProxyPassword' }) -and ($LTSS | Select-Object -Expand ProxyPassword -EA 0)) {
+                        $Script:LTProxy.ProxyPassword = "$(ConvertFrom-CWAASecurity -InputString "$($LTSS|Select-Object -Expand ProxyPassword -EA 0)" -Key ("$($Script:LTServiceKeys.PasswordString)",''))"
                         Write-Debug "Line $(LINENUM): Setting ProxyPassword to $($Script:LTProxy.ProxyPassword)"
-                    } Else {
+                    }
+                    else {
                         Write-Debug "Line $(LINENUM): Setting ProxyPassword to "
-                        $Script:LTProxy.ProxyPassword=''
+                        $Script:LTProxy.ProxyPassword = ''
                     }
                 }
-            } Else {
-                Write-Verbose "No Server password or settings exist. No Proxy information will be available."
+            }
+            else {
+                Write-Verbose 'No Server password or settings exist. No Proxy information will be available.'
             }
         }
-        Catch{
+        Catch {
             Write-Error "ERROR: Line $(LINENUM): There was a problem retrieving Proxy Information. $($Error[0])"
         }
     }
 
-    End{
+    End {
         Write-Debug "Exiting $($myInvocation.InvocationName) at line $(LINENUM)"
         return $Script:LTProxy
     }

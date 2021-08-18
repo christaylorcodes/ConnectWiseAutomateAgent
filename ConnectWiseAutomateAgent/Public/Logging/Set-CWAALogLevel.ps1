@@ -1,4 +1,4 @@
-Function Set-CWAALogLevel {
+function Set-CWAALogLevel {
     [CmdletBinding()]
     [Alias('Set-LTLogging')]
     Param (
@@ -6,27 +6,27 @@ Function Set-CWAALogLevel {
         $Level = 'Normal'
     )
 
-    Begin{}
+    Begin {}
 
-    Process{
-        Try{
+    Process {
+        Try {
             Stop-CWAA
-            if ($Level -eq 'Normal'){
+            if ($Level -eq 'Normal') {
                 Set-ItemProperty HKLM:\SOFTWARE\LabTech\Service\Settings -Name 'Debuging' -Value 1
             }
-            if ($Level -eq 'Verbose'){
+            if ($Level -eq 'Verbose') {
                 Set-ItemProperty HKLM:\SOFTWARE\LabTech\Service\Settings -Name 'Debuging' -Value 1000
             }
             Start-CWAA
         }
 
-        Catch{
+        Catch {
             Write-Error "ERROR: Line $(LINENUM): There was a problem writing the registry key. $($Error[0])" -ErrorAction Stop
         }
-        }
+    }
 
-        End{
-        if ($?){
+    End {
+        if ($?) {
             Get-CWAALogging
         }
     }

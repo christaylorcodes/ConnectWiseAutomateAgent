@@ -1,5 +1,5 @@
-Function Uninstall-CWAA{
-    [CmdletBinding(SupportsShouldProcess=$True)]
+function Uninstall-CWAA {
+    [CmdletBinding(SupportsShouldProcess = $True)]
     [Alias('Uninstall-LTService')]
     Param(
         [Parameter(ValueFromPipelineByPropertyName = $true)]
@@ -10,33 +10,34 @@ Function Uninstall-CWAA{
         [switch]$Force
     )
 
-    Begin{
-        Clear-Variable Executables,BasePath,reg,regs,installer,installerTest,installerResult,LTSI,uninstaller,uninstallerTest,uninstallerResult,xarg,Svr,SVer,SvrVer,SvrVerCheck,GoodServer,AlternateServer,Item -EA 0 -WhatIf:$False -Confirm:$False #Clearing Variables for use
+    Begin {
+        Clear-Variable Executables, BasePath, reg, regs, installer, installerTest, installerResult, LTSI, uninstaller, uninstallerTest, uninstallerResult, xarg, Svr, SVer, SvrVer, SvrVerCheck, GoodServer, AlternateServer, Item -EA 0 -WhatIf:$False -Confirm:$False #Clearing Variables for use
         Write-Debug "Starting $($myInvocation.InvocationName) at line $(LINENUM)"
 
-        If (-not ([bool](([System.Security.Principal.WindowsIdentity]::GetCurrent()|Select-Object -Expand groups -EA 0) -match 'S-1-5-32-544'))) {
+        if (-not ([bool](([System.Security.Principal.WindowsIdentity]::GetCurrent() | Select-Object -Expand groups -EA 0) -match 'S-1-5-32-544'))) {
             Throw "Line $(LINENUM): Needs to be ran as Administrator"
         }
 
         $LTSI = Get-CWAAInfo -EA 0 -Verbose:$False -WhatIf:$False -Confirm:$False -Debug:$False
-        If (($LTSI) -and ($LTSI|Select-Object -Expand Probe -EA 0) -eq '1') {
-            If ($Force -eq $True) {
-                Write-Output "Probe Agent Detected. UnInstall Forced."
-            } Else {
+        if (($LTSI) -and ($LTSI | Select-Object -Expand Probe -EA 0) -eq '1') {
+            if ($Force -eq $True) {
+                Write-Output 'Probe Agent Detected. UnInstall Forced.'
+            }
+            else {
                 Write-Error -Exception [System.OperationCanceledException]"Line $(LINENUM): Probe Agent Detected. UnInstall Denied." -ErrorAction Stop
             }
         }
 
-        If ($Backup){
-            If ( $PSCmdlet.ShouldProcess("LTService","Backup Current Service Settings") ) {
+        if ($Backup) {
+            if ( $PSCmdlet.ShouldProcess('LTService', 'Backup Current Service Settings') ) {
                 New-CWAABackup
             }
         }
 
-        $BasePath = $(Get-CWAAInfo -EA 0 -Verbose:$False -WhatIf:$False -Confirm:$False -Debug:$False|Select-Object -Expand BasePath -EA 0)
-        If (-not ($BasePath)) {$BasePath = "$env:windir\LTSVC"}
+        $BasePath = $(Get-CWAAInfo -EA 0 -Verbose:$False -WhatIf:$False -Confirm:$False -Debug:$False | Select-Object -Expand BasePath -EA 0)
+        if (-not ($BasePath)) { $BasePath = "$env:windir\LTSVC" }
 
-        New-PSDrive HKU Registry HKEY_USERS -ErrorAction SilentlyContinue -WhatIf:$False -Confirm:$False -Debug:$False| Out-Null
+        New-PSDrive HKU Registry HKEY_USERS -ErrorAction SilentlyContinue -WhatIf:$False -Confirm:$False -Debug:$False | Out-Null
         $regs = @( 'Registry::HKEY_LOCAL_MACHINE\Software\LabTechMSP',
             'Registry::HKEY_LOCAL_MACHINE\SOFTWARE\LabTech\Service',
             'Registry::HKEY_LOCAL_MACHINE\SOFTWARE\LabTech\LabVNC',
@@ -71,62 +72,63 @@ Function Uninstall-CWAA{
             'HKU:\*\Software\Microsoft\Installer\Products\C4D064F3712D4B64086B5BDE05DBC75F'
         )
 
-        If ($WhatIfPreference -ne $True) {
+        if ($WhatIfPreference -ne $True) {
             #Cleanup previous uninstallers
-            Remove-Item 'Uninstall.exe','Uninstall.exe.config' -ErrorAction SilentlyContinue -Force -Confirm:$False
+            Remove-Item 'Uninstall.exe', 'Uninstall.exe.config' -ErrorAction SilentlyContinue -Force -Confirm:$False
             New-Item "$env:windir\temp\LabTech\Installer" -type directory -ErrorAction SilentlyContinue | Out-Null
         }
 
         $xarg = "/x ""$($env:windir)\temp\LabTech\Installer\Agent_Install.msi"" /qn"
     }
 
-    Process{
-        If (-not ($Server)){
-            $Server = Get-CWAAInfo -EA 0 -Verbose:$False -WhatIf:$False -Confirm:$False -Debug:$False|Select-Object -Expand 'Server' -EA 0
+    Process {
+        if (-not ($Server)) {
+            $Server = Get-CWAAInfo -EA 0 -Verbose:$False -WhatIf:$False -Confirm:$False -Debug:$False | Select-Object -Expand 'Server' -EA 0
         }
-        If (-not ($Server)){
+        if (-not ($Server)) {
             $Server = Read-Host -Prompt 'Provide the URL to your LabTech server (https://lt.domain.com):'
         }
-        $Server=ForEach ($Svr in $Server) {If ($Svr -notmatch 'https?://.+') {"https://$($Svr)"}; $Svr}
+        $Server = ForEach ($Svr in $Server) { if ($Svr -notmatch 'https?://.+') { "https://$($Svr)" }; $Svr }
         ForEach ($Svr in $Server) {
-            If (-not ($GoodServer)) {
-                If ($Svr -match '^(https?://)?(([12]?[0-9]{1,2}\.){3}[12]?[0-9]{1,2}|[a-z0-9][a-z0-9_-]*(\.[a-z0-9][a-z0-9_-]*)*)$') {
-                    Try{
-                        If ($Svr -notmatch 'https?://.+') {$Svr = "http://$($Svr)"}
+            if (-not ($GoodServer)) {
+                if ($Svr -match '^(https?://)?(([12]?[0-9]{1,2}\.){3}[12]?[0-9]{1,2}|[a-z0-9][a-z0-9_-]*(\.[a-z0-9][a-z0-9_-]*)*)$') {
+                    Try {
+                        if ($Svr -notmatch 'https?://.+') { $Svr = "http://$($Svr)" }
                         $SvrVerCheck = "$($Svr)/Labtech/Agent.aspx"
                         Write-Debug "Line $(LINENUM): Testing Server Response and Version: $SvrVerCheck"
                         $SvrVer = $Script:LTServiceNetWebClient.DownloadString($SvrVerCheck)
 
                         Write-Debug "Line $(LINENUM): Raw Response: $SvrVer"
-                        $SVer = $SvrVer|select-string -pattern '(?<=[|]{6})[0-9]{1,3}\.[0-9]{1,3}'|ForEach-Object {$_.matches}|Select-Object -Expand value -EA 0
-                        If ($Null -eq ($SVer)) {
+                        $SVer = $SvrVer | Select-String -Pattern '(?<=[|]{6})[0-9]{1,3}\.[0-9]{1,3}' | ForEach-Object { $_.matches } | Select-Object -Expand value -EA 0
+                        if ($Null -eq ($SVer)) {
                             Write-Verbose "Unable to test version response from $($Svr)."
                             Continue
                         }
                         $installer = "$($Svr)/LabTech/Service/LabTechRemoteAgent.msi"
                         $installerTest = [System.Net.WebRequest]::Create($installer)
-                        If (($Script:LTProxy.Enabled) -eq $True) {
+                        if (($Script:LTProxy.Enabled) -eq $True) {
                             Write-Debug "Line $(LINENUM): Proxy Configuration Needed. Applying Proxy Settings to request."
-                            $installerTest.Proxy=$Script:LTWebProxy
+                            $installerTest.Proxy = $Script:LTWebProxy
                         }
-                        $installerTest.KeepAlive=$False
+                        $installerTest.KeepAlive = $False
                         $installerTest.ProtocolVersion = '1.0'
                         $installerResult = $installerTest.GetResponse()
                         $installerTest.Abort()
-                        If ($installerResult.StatusCode -ne 200) {
+                        if ($installerResult.StatusCode -ne 200) {
                             Write-Warning "WARNING: Line $(LINENUM): Unable to download Agent_Install.msi from server $($Svr)."
                             Continue
                         }
-                        Else {
-                            If ($PSCmdlet.ShouldProcess("$installer", "DownloadFile")) {
+                        else {
+                            if ($PSCmdlet.ShouldProcess("$installer", 'DownloadFile')) {
                                 Write-Debug "Line $(LINENUM): Downloading Agent_Install.msi from $installer"
-                                $Script:LTServiceNetWebClient.DownloadFile($installer,"$env:windir\temp\LabTech\Installer\Agent_Install.msi")
-                                If ((Test-Path "$env:windir\temp\LabTech\Installer\Agent_Install.msi")) {
-                                    If (!((Get-Item "$env:windir\temp\LabTech\Installer\Agent_Install.msi" -EA 0).length/1KB -gt 1234)) {
+                                $Script:LTServiceNetWebClient.DownloadFile($installer, "$env:windir\temp\LabTech\Installer\Agent_Install.msi")
+                                if ((Test-Path "$env:windir\temp\LabTech\Installer\Agent_Install.msi")) {
+                                    if (!((Get-Item "$env:windir\temp\LabTech\Installer\Agent_Install.msi" -EA 0).length / 1KB -gt 1234)) {
                                         Write-Warning "WARNING: Line $(LINENUM): Agent_Install.msi size is below normal. Removing suspected corrupt file."
                                         Remove-Item "$env:windir\temp\LabTech\Installer\Agent_Install.msi" -ErrorAction SilentlyContinue -Force -Confirm:$False
                                         Continue
-                                    } Else {
+                                    }
+                                    else {
                                         $AlternateServer = $Svr
                                     }
                                 }
@@ -134,43 +136,47 @@ Function Uninstall-CWAA{
                         }
 
                         #Using $SVer results gathered above.
-                        If ([System.Version]$SVer -ge [System.Version]'110.374') {
+                        if ([System.Version]$SVer -ge [System.Version]'110.374') {
                             #New Style Download Link starting with LT11 Patch 13 - The Agent Uninstaller URI has changed.
                             $uninstaller = "$($Svr)/LabTech/Service/LabUninstall.exe"
-                        } Else {
+                        }
+                        else {
                             #Original Uninstaller URL
                             $uninstaller = "$($Svr)/LabTech/Service/LabUninstall.exe"
                         }
                         $uninstallerTest = [System.Net.WebRequest]::Create($uninstaller)
-                        If (($Script:LTProxy.Enabled) -eq $True) {
+                        if (($Script:LTProxy.Enabled) -eq $True) {
                             Write-Debug "Line $(LINENUM): Proxy Configuration Needed. Applying Proxy Settings to request."
-                            $uninstallerTest.Proxy=$Script:LTWebProxy
+                            $uninstallerTest.Proxy = $Script:LTWebProxy
                         }
-                        $uninstallerTest.KeepAlive=$False
+                        $uninstallerTest.KeepAlive = $False
                         $uninstallerTest.ProtocolVersion = '1.0'
                         $uninstallerResult = $uninstallerTest.GetResponse()
                         $uninstallerTest.Abort()
-                        If ($uninstallerResult.StatusCode -ne 200) {
+                        if ($uninstallerResult.StatusCode -ne 200) {
                             Write-Warning "WARNING: Line $(LINENUM): Unable to download Agent_Uninstall from server."
                             Continue
-                        } Else {
+                        }
+                        else {
                             #Download Agent_Uninstall.exe
-                            If ($PSCmdlet.ShouldProcess("$uninstaller", "DownloadFile")) {
+                            if ($PSCmdlet.ShouldProcess("$uninstaller", 'DownloadFile')) {
                                 Write-Debug "Line $(LINENUM): Downloading Agent_Uninstall.exe from $uninstaller"
-                                $Script:LTServiceNetWebClient.DownloadFile($uninstaller,"$($env:windir)\temp\Agent_Uninstall.exe")
-                                If ((Test-Path "$($env:windir)\temp\Agent_Uninstall.exe") -and !((Get-Item "$($env:windir)\temp\Agent_Uninstall.exe" -EA 0).length/1KB -gt 80)) {
+                                $Script:LTServiceNetWebClient.DownloadFile($uninstaller, "$($env:windir)\temp\Agent_Uninstall.exe")
+                                if ((Test-Path "$($env:windir)\temp\Agent_Uninstall.exe") -and !((Get-Item "$($env:windir)\temp\Agent_Uninstall.exe" -EA 0).length / 1KB -gt 80)) {
                                     Write-Warning "WARNING: Line $(LINENUM): Agent_Uninstall.exe size is below normal. Removing suspected corrupt file."
                                     Remove-Item "$($env:windir)\temp\Agent_Uninstall.exe" -ErrorAction SilentlyContinue -Force -Confirm:$False
                                     Continue
                                 }
                             }
                         }
-                        If ($WhatIfPreference -eq $True) {
+                        if ($WhatIfPreference -eq $True) {
                             $GoodServer = $Svr
-                        } ElseIf ((Test-Path "$env:windir\temp\LabTech\Installer\Agent_Install.msi") -and (Test-Path "$($env:windir)\temp\Agent_Uninstall.exe")) {
+                        }
+                        Elseif ((Test-Path "$env:windir\temp\LabTech\Installer\Agent_Install.msi") -and (Test-Path "$($env:windir)\temp\Agent_Uninstall.exe")) {
                             $GoodServer = $Svr
                             Write-Verbose "Successfully downloaded files from $($Svr)."
-                        } Else {
+                        }
+                        else {
                             Write-Warning "WARNING: Line $(LINENUM): Error encountered downloading from $($Svr). Uninstall file(s) could not be received."
                             Continue
                         }
@@ -179,129 +185,138 @@ Function Uninstall-CWAA{
                         Write-Warning "WARNING: Line $(LINENUM): Error encountered downloading from $($Svr)."
                         Continue
                     }
-                } Else {
+                }
+                else {
                     Write-Verbose "Server address $($Svr) is not formatted correctly. Example: https://lt.domain.com"
                 }
-            } Else {
+            }
+            else {
                 Write-Debug "Line $(LINENUM): Server $($GoodServer) has been selected."
                 Write-Verbose "Server has already been selected - Skipping $($Svr)."
             }
         }
     }
 
-    End{
-        If ($GoodServer -match 'https?://.+' -or $AlternateServer -match 'https?://.+') {
-            Try{
-                Write-Output "Starting Uninstall."
+    End {
+        if ($GoodServer -match 'https?://.+' -or $AlternateServer -match 'https?://.+') {
+            Try {
+                Write-Output 'Starting Uninstall.'
 
                 Try { Stop-CWAA -ErrorAction SilentlyContinue } Catch {}
 
                 #Kill all running processes from %ltsvcdir%
-                If (Test-Path $BasePath){
-                    $Executables = (Get-ChildItem $BasePath -Filter *.exe -Recurse -ErrorAction SilentlyContinue|Select-Object -Expand FullName)
-                    If ($Executables) {
+                if (Test-Path $BasePath) {
+                    $Executables = (Get-ChildItem $BasePath -Filter *.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -Expand FullName)
+                    if ($Executables) {
                         Write-Verbose "Terminating LabTech Processes from $($BasePath) if found running: $(($Executables) -replace [Regex]::Escape($BasePath),'' -replace '^\\','')"
-                        Get-Process | Where-Object {$Executables -contains $_.Path } | ForEach-Object {
+                        Get-Process | Where-Object { $Executables -contains $_.Path } | ForEach-Object {
                             Write-Debug "Line $(LINENUM): Terminating Process $($_.ProcessName)"
                             $($_) | Stop-Process -Force -ErrorAction SilentlyContinue
                         }
                         Get-ChildItem $BasePath -Filter labvnc.exe -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction 0
                     }
 
-                    If ($PSCmdlet.ShouldProcess("$($BasePath)\wodVPN.dll", "Unregister DLL")) {
+                    if ($PSCmdlet.ShouldProcess("$($BasePath)\wodVPN.dll", 'Unregister DLL')) {
                         #Unregister DLL
                         Write-Debug "Line $(LINENUM): Executing Command ""regsvr32.exe /u $($BasePath)\wodVPN.dll /s"""
-                        Try {& "$env:windir\system32\regsvr32.exe" /u "$($BasePath)\wodVPN.dll" /s 2>''}
-                        Catch {Write-Output "Error calling regsvr32.exe."}
+                        Try { & "$env:windir\system32\regsvr32.exe" /u "$($BasePath)\wodVPN.dll" /s 2>'' }
+                        Catch { Write-Output 'Error calling regsvr32.exe.' }
                     }
                 }
 
-                If ($PSCmdlet.ShouldProcess("msiexec.exe $($xarg)", "Execute MSI Uninstall")) {
-                    If ((Test-Path "$($env:windir)\temp\LabTech\Installer\Agent_Install.msi")) {
+                if ($PSCmdlet.ShouldProcess("msiexec.exe $($xarg)", 'Execute MSI Uninstall')) {
+                    if ((Test-Path "$($env:windir)\temp\LabTech\Installer\Agent_Install.msi")) {
                         #Run MSI uninstaller for current installation
-                        Write-Verbose "Launching MSI Uninstall."
+                        Write-Verbose 'Launching MSI Uninstall.'
                         Write-Debug "Line $(LINENUM): Executing Command ""msiexec.exe $($xarg)"""
                         Start-Process -Wait -FilePath "$env:windir\system32\msiexec.exe" -ArgumentList $xarg -WorkingDirectory $env:TEMP
                         Start-Sleep -Seconds 5
-                    } Else {
+                    }
+                    else {
                         Write-Verbose "WARNING: $($env:windir)\temp\LabTech\Installer\Agent_Install.msi was not found."
                     }
                 }
 
-                If ($PSCmdlet.ShouldProcess("$($env:windir)\temp\Agent_Uninstall.exe", "Execute Agent Uninstall")) {
-                    If ((Test-Path "$($env:windir)\temp\Agent_Uninstall.exe")) {
+                if ($PSCmdlet.ShouldProcess("$($env:windir)\temp\Agent_Uninstall.exe", 'Execute Agent Uninstall')) {
+                    if ((Test-Path "$($env:windir)\temp\Agent_Uninstall.exe")) {
                         #Run Agent_Uninstall.exe
-                        Write-Verbose "Launching Agent Uninstaller"
+                        Write-Verbose 'Launching Agent Uninstaller'
                         Write-Debug "Line $(LINENUM): Executing Command ""$($env:windir)\temp\Agent_Uninstall.exe"""
                         Start-Process -Wait -FilePath "$($env:windir)\temp\Agent_Uninstall.exe" -WorkingDirectory $env:TEMP
                         Start-Sleep -Seconds 5
-                    } Else {
+                    }
+                    else {
                         Write-Verbose "WARNING: $($env:windir)\temp\Agent_Uninstall.exe was not found."
                     }
                 }
 
-                Write-Verbose "Removing Services if found."
+                Write-Verbose 'Removing Services if found.'
                 #Remove Services
-                @('LTService','LTSvcMon','LabVNC') | ForEach-Object {
-                    If (Get-Service $_ -EA 0) {
-                        If ( $PSCmdlet.ShouldProcess("$($_)","Remove Service") ) {
+                @('LTService', 'LTSvcMon', 'LabVNC') | ForEach-Object {
+                    if (Get-Service $_ -EA 0) {
+                        if ( $PSCmdlet.ShouldProcess("$($_)", 'Remove Service') ) {
                             Write-Debug "Line $(LINENUM): Removing Service: $($_)"
-                            Try {& "$env:windir\system32\sc.exe" delete "$($_)" 2>''}
-                            Catch {Write-Output "Error calling sc.exe."}
+                            Try { & "$env:windir\system32\sc.exe" delete "$($_)" 2>'' }
+                            Catch { Write-Output 'Error calling sc.exe.' }
                         }
                     }
                 }
 
-                Write-Verbose "Cleaning Files remaining if found."
+                Write-Verbose 'Cleaning Files remaining if found.'
                 #Remove %ltsvcdir% - Depth First Removal, First by purging files, then Removing Folders, to get as much removed as possible if complete removal fails
-                @($BasePath, "$($env:windir)\temp\_ltupdate", "$($env:windir)\temp\_ltupdate") | foreach-object {
-                    If ((Test-Path "$($_)" -EA 0)) {
-                        If ( $PSCmdlet.ShouldProcess("$($_)","Remove Folder") ) {
+                @($BasePath, "$($env:windir)\temp\_ltupdate", "$($env:windir)\temp\_ltupdate") | ForEach-Object {
+                    if ((Test-Path "$($_)" -EA 0)) {
+                        if ( $PSCmdlet.ShouldProcess("$($_)", 'Remove Folder') ) {
                             Write-Debug "Line $(LINENUM): Removing Folder: $($_)"
                             Try {
-                                Get-ChildItem -Path $_ -Recurse -Force -ErrorAction SilentlyContinue | Where-Object { ($_.psiscontainer) } | foreach-object { Get-ChildItem -Path "$($_.FullName)" -EA 0 | Where-Object { -not ($_.psiscontainer) } | Remove-Item -Force -ErrorAction SilentlyContinue -Confirm:$False -WhatIf:$False }
+                                Get-ChildItem -Path $_ -Recurse -Force -ErrorAction SilentlyContinue | Where-Object { ($_.psiscontainer) } | ForEach-Object { Get-ChildItem -Path "$($_.FullName)" -EA 0 | Where-Object { -not ($_.psiscontainer) } | Remove-Item -Force -ErrorAction SilentlyContinue -Confirm:$False -WhatIf:$False }
                                 Get-ChildItem -Path $_ -Recurse -Force -ErrorAction SilentlyContinue | Where-Object { ($_.psiscontainer) } | Sort-Object { $_.fullname.length } -Descending | Remove-Item -Force -ErrorAction SilentlyContinue -Recurse -Confirm:$False -WhatIf:$False
                                 Remove-Item -Recurse -Force -Path $_ -ErrorAction SilentlyContinue -Confirm:$False -WhatIf:$False
-                            } Catch {}
+                            }
+                            Catch {}
                         }
                     }
                 }
 
-                Write-Verbose "Cleaning Registry Keys if found."
+                Write-Verbose 'Cleaning Registry Keys if found.'
                 #Remove all registry keys - Depth First Value Removal, then Key Removal, to get as much removed as possible if complete removal fails
                 Foreach ($reg in $regs) {
-                    If ((Test-Path "$($reg)" -EA 0)) {
+                    if ((Test-Path "$($reg)" -EA 0)) {
                         Write-Debug "Line $(LINENUM): Found Registry Key: $($reg)"
-                        If ( $PSCmdlet.ShouldProcess("$($Reg)","Remove Registry Key") ) {
+                        if ( $PSCmdlet.ShouldProcess("$($Reg)", 'Remove Registry Key') ) {
                             Try {
                                 Get-ChildItem -Path $reg -Recurse -Force -ErrorAction SilentlyContinue | Sort-Object { $_.name.length } -Descending | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue -Confirm:$False -WhatIf:$False
                                 Remove-Item -Recurse -Force -Path $reg -ErrorAction SilentlyContinue -Confirm:$False -WhatIf:$False
-                            } Catch {}
+                            }
+                            Catch {}
                         }
                     }
                 }
             }
 
-            Catch{
+            Catch {
                 Write-Error "ERROR: Line $(LINENUM): There was an error during the uninstall process. $($Error[0])" -ErrorAction Stop
             }
 
-            If ($WhatIfPreference -ne $True) {
-                If ($?){
+            if ($WhatIfPreference -ne $True) {
+                if ($?) {
                     #Post Uninstall Check
-                    If((Test-Path "$env:windir\ltsvc") -or (Test-Path "$env:windir\temp\_ltupdate") -or (Test-Path registry::HKLM\Software\LabTech\Service) -or (Test-Path registry::HKLM\Software\WOW6432Node\Labtech\Service)){
+                    If ((Test-Path "$env:windir\ltsvc") -or (Test-Path "$env:windir\temp\_ltupdate") -or (Test-Path registry::HKLM\Software\LabTech\Service) -or (Test-Path registry::HKLM\Software\WOW6432Node\Labtech\Service)) {
                         Start-Sleep -Seconds 10
                     }
-                    If((Test-Path "$env:windir\ltsvc") -or (Test-Path "$env:windir\temp\_ltupdate") -or (Test-Path registry::HKLM\Software\LabTech\Service) -or (Test-Path registry::HKLM\Software\WOW6432Node\Labtech\Service)){
+                    If ((Test-Path "$env:windir\ltsvc") -or (Test-Path "$env:windir\temp\_ltupdate") -or (Test-Path registry::HKLM\Software\LabTech\Service) -or (Test-Path registry::HKLM\Software\WOW6432Node\Labtech\Service)) {
                         Write-Error "ERROR: Line $(LINENUM): Remnants of previous install still detected after uninstall attempt. Please reboot and try again."
-                    } Else {
-                        Write-Output "LabTech has been successfully uninstalled."
                     }
-                } Else {
+                    else {
+                        Write-Output 'LabTech has been successfully uninstalled.'
+                    }
+                }
+                else {
                     $($Error[0])
                 }
             }
-        } ElseIf ($WhatIfPreference -ne $True) {
+        }
+        Elseif ($WhatIfPreference -ne $True) {
             Write-Error "ERROR: Line $(LINENUM): No valid server was reached to use for the uninstall." -ErrorAction Stop
         }
         Write-Debug "Exiting $($myInvocation.InvocationName) at line $(LINENUM)"

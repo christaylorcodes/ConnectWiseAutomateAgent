@@ -1,4 +1,4 @@
-Function Invoke-CWAACommand {
+function Invoke-CWAACommand {
     [CmdletBinding(SupportsShouldProcess=$True)]
     [Alias('Invoke-LTServiceCommand')]
     Param(
@@ -28,9 +28,9 @@ Function Invoke-CWAACommand {
     }
 
     Process {
-        If (-not ($Service)) {Write-Warning "WARNING: Line $(LINENUM): Service 'LTService' was not found. Cannot send service command"; return}
-        If ($Service.Status -ne 'Running') {Write-Warning "WARNING: Line $(LINENUM): Service 'LTService' is not running. Cannot send service command"; return}
-        Foreach ($Cmd in $Command) {
+        if(-not ($Service)){Write-Warning "WARNING: Line $(LINENUM): Service 'LTService' was not found. Cannot send service command"; return}
+        if($Service.Status -ne 'Running'){Write-Warning "WARNING: Line $(LINENUM): Service 'LTService' is not running. Cannot send service command"; return}
+        Foreach ($Cmd in $Command){
             $CommandID=$Null
             Try{
                 switch($Cmd){
@@ -54,8 +54,8 @@ Function Invoke-CWAACommand {
                     'Start App Care Daytime Patching' {$CommandID = 145}
                     default {"Invalid entry"}
                 }
-                If ($PSCmdlet.ShouldProcess("LTService", "Send Service Command '$($Cmd)' ($($CommandID))")) {
-                    If ($Null -ne $CommandID) {
+                if($PSCmdlet.ShouldProcess("LTService", "Send Service Command '$($Cmd)' ($($CommandID))")){
+                    if($Null -ne $CommandID){
                         Write-Debug "Line $(LINENUM): Sending service command '$($Cmd)' ($($CommandID)) to 'LTService'"
                         Try {
                             $Null=& "$env:windir\system32\sc.exe" control LTService $($CommandID) 2>''

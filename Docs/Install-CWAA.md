@@ -33,10 +33,10 @@ This function will install the LabTech agent on the machine with the specified s
 
 ### EXAMPLE 1
 ```
-Install-CWAA -Server https://lt.domain.com -Password 'plain text pass' -LocationID 42
+Install-CWAA -Server https://lt.domain.com -InstallerToken 'GeneratedToken' -LocationID 42
 ```
 
-This will install the LabTech agent using the provided Server URL, Password, and LocationID.
+This will install the LabTech agent using the provided Server URL, InstallerToken, and LocationID.
 
 ## PARAMETERS
 
@@ -225,7 +225,10 @@ Accept wildcard characters: False
 ```
 
 ### -InstallerToken
-{{ Fill InstallerToken Description }}
+An installer token is preferred over the server password. Please see the following forum post about generating installer tokens.
+
+https://forums.mspgeek.org/topic/5882-contribution-generate-agent-installertoken
+
 
 ```yaml
 Type: String
