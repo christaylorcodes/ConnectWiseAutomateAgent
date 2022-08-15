@@ -78,7 +78,7 @@ function Uninstall-CWAA {
             New-Item "$env:windir\temp\LabTech\Installer" -type directory -ErrorAction SilentlyContinue | Out-Null
         }
 
-        $xarg = "/x ""$($env:windir)\temp\LabTech\Installer\Agent_Install.msi"" /qn"
+        $xarg = "/x ""$($env:windir)\temp\LabTech\Installer\Agent_Uninstall.msi"" /qn"
     }
 
     Process {
@@ -115,17 +115,17 @@ function Uninstall-CWAA {
                         $installerResult = $installerTest.GetResponse()
                         $installerTest.Abort()
                         if ($installerResult.StatusCode -ne 200) {
-                            Write-Warning "WARNING: Line $(LINENUM): Unable to download Agent_Install.msi from server $($Svr)."
+                            Write-Warning "WARNING: Line $(LINENUM): Unable to download Agent_Uninstall.msi from server $($Svr)."
                             Continue
                         }
                         else {
                             if ($PSCmdlet.ShouldProcess("$installer", 'DownloadFile')) {
-                                Write-Debug "Line $(LINENUM): Downloading Agent_Install.msi from $installer"
-                                $Script:LTServiceNetWebClient.DownloadFile($installer, "$env:windir\temp\LabTech\Installer\Agent_Install.msi")
-                                if ((Test-Path "$env:windir\temp\LabTech\Installer\Agent_Install.msi")) {
-                                    if (!((Get-Item "$env:windir\temp\LabTech\Installer\Agent_Install.msi" -EA 0).length / 1KB -gt 1234)) {
-                                        Write-Warning "WARNING: Line $(LINENUM): Agent_Install.msi size is below normal. Removing suspected corrupt file."
-                                        Remove-Item "$env:windir\temp\LabTech\Installer\Agent_Install.msi" -ErrorAction SilentlyContinue -Force -Confirm:$False
+                                Write-Debug "Line $(LINENUM): Downloading Agent_Uninstall.msi from $installer"
+                                $Script:LTServiceNetWebClient.DownloadFile($installer, "$env:windir\temp\LabTech\Installer\Agent_Uninstall.msi")
+                                if ((Test-Path "$env:windir\temp\LabTech\Installer\Agent_Uninstall.msi")) {
+                                    if (!((Get-Item "$env:windir\temp\LabTech\Installer\Agent_Uninstall.msi" -EA 0).length / 1KB -gt 1234)) {
+                                        Write-Warning "WARNING: Line $(LINENUM): Agent_Uninstall.msi size is below normal. Removing suspected corrupt file."
+                                        Remove-Item "$env:windir\temp\LabTech\Installer\Agent_Uninstall.msi" -ErrorAction SilentlyContinue -Force -Confirm:$False
                                         Continue
                                     }
                                     else {
@@ -172,7 +172,7 @@ function Uninstall-CWAA {
                         if ($WhatIfPreference -eq $True) {
                             $GoodServer = $Svr
                         }
-                        Elseif ((Test-Path "$env:windir\temp\LabTech\Installer\Agent_Install.msi") -and (Test-Path "$($env:windir)\temp\Agent_Uninstall.exe")) {
+                        Elseif ((Test-Path "$env:windir\temp\LabTech\Installer\Agent_Uninstall.msi") -and (Test-Path "$($env:windir)\temp\Agent_Uninstall.exe")) {
                             $GoodServer = $Svr
                             Write-Verbose "Successfully downloaded files from $($Svr)."
                         }
@@ -225,7 +225,7 @@ function Uninstall-CWAA {
                 }
 
                 if ($PSCmdlet.ShouldProcess("msiexec.exe $($xarg)", 'Execute MSI Uninstall')) {
-                    if ((Test-Path "$($env:windir)\temp\LabTech\Installer\Agent_Install.msi")) {
+                    if ((Test-Path "$($env:windir)\temp\LabTech\Installer\Agent_Uninstall.msi")) {
                         #Run MSI uninstaller for current installation
                         Write-Verbose 'Launching MSI Uninstall.'
                         Write-Debug "Line $(LINENUM): Executing Command ""msiexec.exe $($xarg)"""
@@ -233,7 +233,7 @@ function Uninstall-CWAA {
                         Start-Sleep -Seconds 5
                     }
                     else {
-                        Write-Verbose "WARNING: $($env:windir)\temp\LabTech\Installer\Agent_Install.msi was not found."
+                        Write-Verbose "WARNING: $($env:windir)\temp\LabTech\Installer\Agent_Uninstall.msi was not found."
                     }
                 }
 
@@ -277,6 +277,23 @@ function Uninstall-CWAA {
                         }
                     }
                 }
+                Write-Verbose 'Removing agent installation msi file'
+                if ($PSCmdlet.ShouldProcess('Agent_Uninstall.msi', 'Remove File')) {
+                    $MsiPath = "$env:windir\temp\LabTech\Installer\Agent_Uninstall.msi"
+                    try {
+                        do {
+                            $MsiExists = Test-Path $MsiPath 
+                            Start-Sleep -Seconds 10
+                            Remove-Item $MsiPath -ErrorAction SilentlyContinue
+                            $tries++
+                        }
+                        while (-not $MsiExists -or $tries -gt 4)
+                    }
+                    catch {
+                        Write-Verbose ('Unable to remove Agent_Uninstall.msi' -f $_.Exception.Message)
+                    }
+                }
+                
 
                 Write-Verbose 'Cleaning Registry Keys if found.'
                 #Remove all registry keys - Depth First Value Removal, then Key Removal, to get as much removed as possible if complete removal fails
@@ -295,7 +312,7 @@ function Uninstall-CWAA {
             }
 
             Catch {
-                Write-Error "ERROR: Line $(LINENUM): There was an error during the uninstall process. $($Error[0])" -ErrorAction Stop
+                Write-Error "ERROR: Line $(LINENUM): There was an error during the uninstall process. $($_.Exception.Message)" -ErrorAction Stop
             }
 
             if ($WhatIfPreference -ne $True) {
