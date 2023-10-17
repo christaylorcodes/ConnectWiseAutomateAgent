@@ -321,7 +321,7 @@
                     Write-Verbose 'No Proxy Configuration has been specified - Continuing.'
                 }
                 if (!($NoWait) -and $PSCmdlet.ShouldProcess('LTService', 'Monitor For Successful Agent Registration') ) {
-                    $timeout = New-TimeSpan -Minutes 3
+                    $timeout = New-TimeSpan -Minutes 15
                     $sw = [diagnostics.stopwatch]::StartNew()
                     Write-Host -NoNewline 'Waiting for agent to register.'
                     Do {
