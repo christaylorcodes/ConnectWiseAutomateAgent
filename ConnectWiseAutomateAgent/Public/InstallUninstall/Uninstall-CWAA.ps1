@@ -86,7 +86,7 @@ function Uninstall-CWAA {
             $Server = Get-CWAAInfo -EA 0 -Verbose:$False -WhatIf:$False -Confirm:$False -Debug:$False | Select-Object -Expand 'Server' -EA 0
         }
         if (-not ($Server)) {
-            $Server = Read-Host -Prompt 'Provide the URL to your LabTech server (https://lt.domain.com):'
+            $Server = Read-Host -Prompt 'Provide the URL to your LabTech server (https://automate.domain.com):'
         }
         $Server = ForEach ($Svr in $Server) { if ($Svr -notmatch 'https?://.+') { "https://$($Svr)" }; $Svr }
         ForEach ($Svr in $Server) {
@@ -187,7 +187,7 @@ function Uninstall-CWAA {
                     }
                 }
                 else {
-                    Write-Verbose "Server address $($Svr) is not formatted correctly. Example: https://lt.domain.com"
+                    Write-Verbose "Server address $($Svr) is not formatted correctly. Example: https://automate.domain.com"
                 }
             }
             else {

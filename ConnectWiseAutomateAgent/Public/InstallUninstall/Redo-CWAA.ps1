@@ -66,7 +66,7 @@
                 $Server = $Settings | Select-Object -Expand 'Server' -EA 0
             }
             if (-not ($Server)) {
-                $Server = Read-Host -Prompt 'Provide the URL to your LabTech server (https://lt.domain.com):'
+                $Server = Read-Host -Prompt 'Provide the URL to your LabTech server (https://automate.domain.com):'
             }
         }
         if (-not ($LocationID)) {

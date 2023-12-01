@@ -33,7 +33,7 @@ This function will install the LabTech agent on the machine with the specified s
 
 ### EXAMPLE 1
 ```
-Install-CWAA -Server https://lt.domain.com -InstallerToken 'GeneratedToken' -LocationID 42
+Install-CWAA -Server https://automate.domain.com -InstallerToken 'GeneratedToken' -LocationID 42
 ```
 
 This will install the LabTech agent using the provided Server URL, InstallerToken, and LocationID.
@@ -42,7 +42,7 @@ This will install the LabTech agent using the provided Server URL, InstallerToke
 
 ### -Server
 This is the URL to your LabTech server.
-example: https://lt.domain.com
+example: https://automate.domain.com
 This is used to download the installation files.
 (Get-CWAAInfo|Select-Object -Expand 'Server Address' -ErrorAction SilentlyContinue)
 

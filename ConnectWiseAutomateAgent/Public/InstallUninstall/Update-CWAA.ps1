@@ -126,7 +126,7 @@ function Update-CWAA {
                     }
                 }
                 else {
-                    Write-Warning "WARNING: Line $(LINENUM): Server address $($Svr) is not formatted correctly. Example: https://lt.domain.com"
+                    Write-Warning "WARNING: Line $(LINENUM): Server address $($Svr) is not formatted correctly. Example: https://automate.domain.com"
                 }
             }
             else {

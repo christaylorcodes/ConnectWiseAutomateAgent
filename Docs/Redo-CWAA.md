@@ -40,7 +40,7 @@ This will ReInstall the LabTech agent using the server address in the registry.
 
 ### EXAMPLE 2
 ```
-Redo-CWAA -Server https://lt.domain.com -Password sQWZzEDYKFFnTT0yP56vgA== -LocationID 42
+Redo-CWAA -Server https://automate.domain.com -Password sQWZzEDYKFFnTT0yP56vgA== -LocationID 42
 ```
 
 This will ReInstall the LabTech agent using the provided server URL to download the installation files.
@@ -49,7 +49,7 @@ This will ReInstall the LabTech agent using the provided server URL to download 
 
 ### -Server
 This is the URL to your LabTech server.
-Example: https://lt.domain.com
+Example: https://automate.domain.com
 This is used to download the installation and removal utilities.
 If no server is provided the uninstaller will use Get-CWAAInfo to get the server address.
 If it is unable to find LT currently installed it will try Get-CWAAInfoBackup

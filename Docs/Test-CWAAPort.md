@@ -33,7 +33,7 @@ PS C:\> {{ Add example code here }}
 
 ### -Server
 This is the URL to your LabTech server.
-Example: https://lt.domain.com
+Example: https://automate.domain.com
 If no server is provided the function will use Get-CWAAInfo to
 get the server address.
 If it is unable to find LT currently installed
