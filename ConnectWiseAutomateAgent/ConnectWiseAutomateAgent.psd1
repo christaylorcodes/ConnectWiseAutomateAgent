@@ -12,7 +12,7 @@
     RootModule        = 'ConnectWiseAutomateAgent.psm1'
 
     # Version number of this module.
-    ModuleVersion     = '0.1.3.0'
+    ModuleVersion     = '0.1.4.0'
 
     # Supported PSEditions
     # CompatiblePSEditions = @()
