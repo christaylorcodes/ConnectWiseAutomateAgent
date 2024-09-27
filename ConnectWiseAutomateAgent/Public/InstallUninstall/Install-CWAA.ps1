@@ -110,11 +110,9 @@ function Install-CWAA {
         }
 
         $InstallBase = "${env:windir}\Temp\LabTech"
-
         $logfile = 'LTAgentInstall'
         $curlog = "$($InstallBase)\$($logfile).log"
         If ($ServerPassword -match '"') {$ServerPassword=$ServerPassword.Replace('"','""')}
-
         if (-not (Test-Path -PathType Container -Path "$InstallBase\Installer" )) {
             New-Item "$InstallBase\Installer" -type directory -ErrorAction SilentlyContinue | Out-Null
         }
@@ -136,10 +134,10 @@ function Install-CWAA {
         }
         $Server = ForEach ($Svr in $Server) { if ($Svr -notmatch 'https?://.+') { "https://$($Svr)" }; $Svr }
         ForEach ($Svr in $Server) {
-            If (-not ($GoodServer)) {
-                If ($Svr -match '^(https?://)?(([12]?[0-9]{1,2}\.){3}[12]?[0-9]{1,2}|[a-z0-9][a-z0-9_-]*(\.[a-z0-9][a-z0-9_-]*)*)$') {
+            if (-not ($GoodServer)) {
+                if ($Svr -match '^(https?://)?(([12]?[0-9]{1,2}\.){3}[12]?[0-9]{1,2}|[a-z0-9][a-z0-9_-]*(\.[a-z0-9][a-z0-9_-]*)*)$') {
                     $InstallMSI='Agent_Install.msi'
-                    If ($Svr -notmatch 'https?://.+') {$Svr = "http://$($Svr)"}
+                    if ($Svr -notmatch 'https?://.+') { $Svr = "http://$($Svr)" }
                     Try {
                         $SvrVerCheck = "$($Svr)/LabTech/Agent.aspx"
                         Write-Debug "Line $(LINENUM): Testing Server Response and Version: $SvrVerCheck"
@@ -185,19 +183,20 @@ function Install-CWAA {
                             }
                         }#End If
 
-                        If ( $PSCmdlet.ShouldProcess($installer, "DownloadFile") ) {
+                        if ( $PSCmdlet.ShouldProcess($installer, 'DownloadFile') ) {
                             Write-Debug "Line $(LINENUM): Downloading $InstallMSI from $installer"
-                            $Script:LTServiceNetWebClient.DownloadFile($installer,"$InstallBase\Installer\$InstallMSI")
-                            If((Test-Path "$InstallBase\Installer\$InstallMSI") -and  !((Get-Item "$InstallBase\Installer\$InstallMSI" -EA 0).length/1KB -gt 1234)) {
+                            $Script:LTServiceNetWebClient.DownloadFile($installer, "$InstallBase\Installer\$InstallMSI")
+                            If ((Test-Path "$InstallBase\Installer\$InstallMSI") -and !((Get-Item "$InstallBase\Installer\$InstallMSI" -EA 0).length / 1KB -gt 1234)) {
                                 Write-Warning "WARNING: Line $(LINENUM): $InstallMSI size is below normal. Removing suspected corrupt file."
                                 Remove-Item "$InstallBase\Installer\$InstallMSI" -ErrorAction SilentlyContinue -Force -Confirm:$False
                                 Continue
-                            }#End If
-                        }#End If
+                            }
+                        }
 
-                        If ($WhatIfPreference -eq $True) {
+                        if ($WhatIfPreference -eq $True) {
                             $GoodServer = $Svr
-                        } ElseIf (Test-Path "$InstallBase\Installer\$InstallMSI") {
+                        }
+                        Elseif (Test-Path "$InstallBase\Installer\$InstallMSI") {
                             $GoodServer = $Svr
                             Write-Verbose "$InstallMSI downloaded successfully from server $($Svr)."
                             If (($PSCmdlet.ParameterSetName -eq 'installertoken') -and [System.Version]$SVer -ge [System.Version]'240.331') {
@@ -210,16 +209,18 @@ function Install-CWAA {
                         } Else {
                             Write-Warning "WARNING: Line $(LINENUM): Error encountered downloading from $($Svr). No installation file was received."
                             Continue
-                        }#End If
-                    }#End Try
+                        }
+                    }
                     Catch {
                         Write-Warning "WARNING: Line $(LINENUM): Error encountered downloading from $($Svr)."
                         Continue
                     }
-                } Else {
+                }
+                else {
                     Write-Warning "WARNING: Line $(LINENUM): Server address $($Svr) is not formatted correctly. Example: https://lt.domain.com"
                 }
-            } Else {
+            }
+            else {
                 Write-Debug "Line $(LINENUM): Server $($GoodServer) has been selected."
                 Write-Verbose "Server has already been selected - Skipping $($Svr)."
             }
