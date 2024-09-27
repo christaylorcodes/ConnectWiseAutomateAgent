@@ -712,11 +712,9 @@ function Install-CWAA {
         [switch]$Force,
         [switch]$NoWait
     )
-
     Begin {
         Clear-Variable DotNET, OSVersion, PasswordArg, Result, logpath, logfile, curlog, installer, installerTest, installerResult, GoodServer, GoodTrayPort, TestTrayPort, Svr, SVer, SvrVer, SvrVerCheck, iarg, timeout, sw, tmpLTSI -EA 0 -WhatIf:$False -Confirm:$False #Clearing Variables for use
         Write-Debug "Starting $($myInvocation.InvocationName) at line $(LINENUM)"
-
         if (!($Force)) {
             if (Get-Service 'LTService', 'LTSvcMon' -ErrorAction SilentlyContinue) {
                 if ($WhatIfPreference -ne $True) {
@@ -727,18 +725,15 @@ function Install-CWAA {
                 }
             }
         }
-
         if (-not ([bool](([System.Security.Principal.WindowsIdentity]::GetCurrent() | Select-Object -Expand groups -EA 0) -match 'S-1-5-32-544'))) {
             Throw 'Needs to be ran as Administrator'
         }
-
         if (!$SkipDotNet) {
             $DotNET = Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP' -Recurse -EA 0 | Get-ItemProperty -Name Version, Release -EA 0 | Where-Object { $_.PSChildName -match '^(?!S)\p{L}' } | Select-Object -ExpandProperty Version -EA 0
             if (-not ($DotNet -like '3.5.*')) {
                 Write-Output '.NET Framework 3.5 installation needed.'
                 #Install-WindowsFeature Net-Framework-Core
                 $OSVersion = [System.Environment]::OSVersion.Version
-
                 if ([version]$OSVersion -gt [version]'6.2') {
                     Try {
                         if ( $PSCmdlet.ShouldProcess('NetFx3', 'Enable-WindowsOptionalFeature') ) {
@@ -774,10 +769,8 @@ function Install-CWAA {
                         }
                     }
                 }
-
                 $DotNET = Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP' -Recurse | Get-ItemProperty -Name Version -EA 0 | Where-Object { $_.PSChildName -match '^(?!S)\p{L}' } | Select-Object -ExpandProperty Version
             }
-
             if (-not ($DotNet -like '3.5.*')) {
                 if (($Force)) {
                     if ($DotNet -match '(?m)^[2-4].\d') {
@@ -792,7 +785,6 @@ function Install-CWAA {
                 }
             }
         }
-
         $InstallBase = "${env:windir}\Temp\LabTech"
         $logfile = 'LTAgentInstall'
         $curlog = "$($InstallBase)\$($logfile).log"
@@ -848,8 +840,7 @@ function Install-CWAA {
                             #Original URL
                             Write-Warning 'Update your damn server!'
                             $installer = "$($Svr)/LabTech/Deployment.aspx?Probe=1&installType=msi&MSILocations=$LocationID"
-                        }#End If
-
+                        }
                         # Vuln test June 10, 2020: ConnectWise Automate API Vulnerability - Only test if version is below known minimum.
                         If ([System.Version]$SVer -lt [System.Version]'200.197') {
                             Try{
@@ -865,8 +856,7 @@ function Install-CWAA {
                                     Continue
                                 }
                             }
-                        }#End If
-
+                        }
                         if ( $PSCmdlet.ShouldProcess($installer, 'DownloadFile') ) {
                             Write-Debug "Line $(LINENUM): Downloading $InstallMSI from $installer"
                             $Script:LTServiceNetWebClient.DownloadFile($installer, "$InstallBase\Installer\$InstallMSI")
@@ -876,7 +866,6 @@ function Install-CWAA {
                                 Continue
                             }
                         }
-
                         if ($WhatIfPreference -eq $True) {
                             $GoodServer = $Svr
                         }
@@ -889,7 +878,7 @@ function Install-CWAA {
                                 Remove-Item "$InstallBase\Installer\$InstallMSI" -ErrorAction SilentlyContinue -Force -Confirm:$False
                                 #Reset InstallMSI Value
                                 $InstallMSI='Agent_Install.msi'
-                            }#End If
+                            }
                         } Else {
                             Write-Warning "WARNING: Line $(LINENUM): Error encountered downloading from $($Svr). No installation file was received."
                             Continue
@@ -923,7 +912,6 @@ function Install-CWAA {
                     Start-Sleep 10
                 }
             }
-
             if ($WhatIfPreference -ne $True) {
                 $GoodTrayPort = $Null;
                 $TestTrayPort = $TrayPort;
@@ -944,7 +932,6 @@ function Install-CWAA {
                 }
                 Write-Output 'Starting Install.'
             }
-
             #Build parameter string
             $iarg =($(
                 "/i `"$InstallBase\Installer\$InstallMSI`""
@@ -956,7 +943,6 @@ function Install-CWAA {
                 "/qn"
                 "/l `"$InstallBase\$logfile.log`""
                 ) | Where-Object {$_}) -join ' '
-
             Try {
                 if ( $PSCmdlet.ShouldProcess("msiexec.exe $($iarg)", 'Execute Install') ) {
                     $InstallAttempt = 0
@@ -1029,12 +1015,10 @@ function Install-CWAA {
                 }
                 if ($Hide) { Hide-LTAddRemove }
             }
-
             Catch {
                 Write-Error "ERROR: Line $(LINENUM): There was an error during the install process. $($Error[0])"
                 Return
             }
-
             if ($WhatIfPreference -ne $True) {
                 #Cleanup Install files
                 Remove-Item "$InstallBase\Installer\$InstallMSI" -ErrorAction SilentlyContinue -Force -Confirm:$False
@@ -1046,7 +1030,6 @@ function Install-CWAA {
                         if ($logcontents) { Set-Content -Path $_ -Value $logcontents -Force -Confirm:$False }
                     }
                 }
-
                 $tmpLTSI = Get-LTServiceInfo -EA 0 -Verbose:$False -WhatIf:$False -Confirm:$False -Debug:$False
                 if (($tmpLTSI)) {
                     if (($tmpLTSI | Select-Object -Expand 'ID' -EA 0) -ge 1) {
