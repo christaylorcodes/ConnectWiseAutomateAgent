@@ -1,4 +1,4 @@
-﻿function Install-CWAA {
+function Install-CWAA {
     [CmdletBinding(SupportsShouldProcess = $True, DefaultParameterSetName = 'deployment')]
     [Alias('Install-LTService')]
     Param(
@@ -110,9 +110,11 @@
         }
 
         $InstallBase = "${env:windir}\Temp\LabTech"
-        $InstallMSI = 'Agent_Install.msi'
+
         $logfile = 'LTAgentInstall'
         $curlog = "$($InstallBase)\$($logfile).log"
+        If ($ServerPassword -match '"') {$ServerPassword=$ServerPassword.Replace('"','""')}
+
         if (-not (Test-Path -PathType Container -Path "$InstallBase\Installer" )) {
             New-Item "$InstallBase\Installer" -type directory -ErrorAction SilentlyContinue | Out-Null
         }
@@ -134,86 +136,90 @@
         }
         $Server = ForEach ($Svr in $Server) { if ($Svr -notmatch 'https?://.+') { "https://$($Svr)" }; $Svr }
         ForEach ($Svr in $Server) {
-            if (-not ($GoodServer)) {
-                if ($Svr -match '^(https?://)?(([12]?[0-9]{1,2}\.){3}[12]?[0-9]{1,2}|[a-z0-9][a-z0-9_-]*(\.[a-z0-9][a-z0-9_-]*)*)$') {
-                    if ($Svr -notmatch 'https?://.+') { $Svr = "http://$($Svr)" }
+            If (-not ($GoodServer)) {
+                If ($Svr -match '^(https?://)?(([12]?[0-9]{1,2}\.){3}[12]?[0-9]{1,2}|[a-z0-9][a-z0-9_-]*(\.[a-z0-9][a-z0-9_-]*)*)$') {
+                    $InstallMSI='Agent_Install.msi'
+                    If ($Svr -notmatch 'https?://.+') {$Svr = "http://$($Svr)"}
                     Try {
-                        if ($PSCmdlet.ParameterSetName -eq 'installertoken') {
-                            Write-Debug "Line $(LINENUM): Skipping Server Version Check. Using Installer Token for download."
-                            $installer = "$($Svr)/LabTech/Deployment.aspx?InstallerToken=$InstallerToken"
+                        $SvrVerCheck = "$($Svr)/LabTech/Agent.aspx"
+                        Write-Debug "Line $(LINENUM): Testing Server Response and Version: $SvrVerCheck"
+                        $SvrVer = $Script:LTServiceNetWebClient.DownloadString($SvrVerCheck)
+                        Write-Debug "Line $(LINENUM): Raw Response: $SvrVer"
+                        $SVer = $SvrVer|select-string -pattern '(?<=[|]{6})[0-9]{1,3}\.[0-9]{1,3}'|ForEach-Object {$_.matches}|Select-Object -Expand value -EA 0
+                        If ($Null -eq $SVer) {
+                            Write-Verbose "Unable to test version response from $($Svr)."
+                            Continue
                         }
-                        else {
-                            $SvrVerCheck = "$($Svr)/LabTech/Agent.aspx"
-                            Write-Debug "Line $(LINENUM): Testing Server Response and Version: $SvrVerCheck"
-                            $SvrVer = $Script:LTServiceNetWebClient.DownloadString($SvrVerCheck)
-                            Write-Debug "Line $(LINENUM): Raw Response: $SvrVer"
-                            $SVer = $SvrVer | Select-String -Pattern '(?<=[|]{6})[0-9]{1,3}\.[0-9]{1,3}' | ForEach-Object { $_.matches } | Select-Object -Expand value -EA 0
-                            if ($Null -eq $SVer) {
-                                Write-Verbose "Unable to test version response from $($Svr)."
-                                Continue
-                            }
-                            if ([System.Version]$SVer -ge [System.Version]'110.374') {
-                                #New Style Download Link starting with LT11 Patch 13 - Direct Location Targeting is no longer available
-                                $installer = "$($Svr)/LabTech/Deployment.aspx?Probe=1&installType=msi&MSILocations=1"
-                            }
-                            else {
-                                #Original URL
-                                Write-Warning 'Update your damn server!'
-                                $installer = "$($Svr)/LabTech/Deployment.aspx?Probe=1&installType=msi&MSILocations=$LocationID"
-                            }
 
-                            # Vuln test June 10, 2020: ConnectWise Automate API Vulnerability - Only test if version is below known minimum.
-                            Try {
-                                if ([System.Version]$SVer -lt [System.Version]'200.197' -or !$ServerPassword) {
-                                    $HTTP_Request = [System.Net.WebRequest]::Create("$($Svr)/LabTech/Deployment.aspx")
-                                    if ($HTTP_Request.GetResponse().StatusCode -eq 'OK') {
-                                        $Message = @('Your server is vulnerable!!')
-                                        $Message += 'https://docs.connectwise.com/ConnectWise_Automate/ConnectWise_Automate_Supportability_Statements/Supportability_Statement%3A_ConnectWise_Automate_Mitigation_Steps'
-                                        Write-Warning $($Message | Out-String)
-                                    }
-                                }
+                        If (($PSCmdlet.ParameterSetName -eq 'installertoken')) {
+                            $installer = "$($Svr)/LabTech/Deployment.aspx?InstallerToken=$InstallerToken"
+                            If ([System.Version]$SVer -ge [System.Version]'240.331') {
+                                Write-Debug "Line $(LINENUM): New MSI Installer Format Needed"
+                                $InstallMSI='Agent_Install.zip'
                             }
-                            Catch {
-                                if (!$ServerPassword) {
+                        } ElseIf ($ServerPassword) {
+                            $installer = "$($Svr)/LabTech/Service/LabTechRemoteAgent.msi"
+                        } ElseIf ([System.Version]$SVer -ge [System.Version]'110.374') {
+                            #New Style Download Link starting with LT11 Patch 13 - Direct Location Targeting is no longer available
+                            $installer = "$($Svr)/LabTech/Deployment.aspx?Probe=1&installType=msi&MSILocations=1"
+                        } Else {
+                            #Original URL
+                            Write-Warning 'Update your damn server!'
+                            $installer = "$($Svr)/LabTech/Deployment.aspx?Probe=1&installType=msi&MSILocations=$LocationID"
+                        }#End If
+
+                        # Vuln test June 10, 2020: ConnectWise Automate API Vulnerability - Only test if version is below known minimum.
+                        If ([System.Version]$SVer -lt [System.Version]'200.197') {
+                            Try{
+                                $HTTP_Request = [System.Net.WebRequest]::Create("$($Svr)/LabTech/Deployment.aspx")
+                                If ($HTTP_Request.GetResponse().StatusCode -eq 'OK') {
+                                    $Message = @('Your server is vulnerable!!')
+                                    $Message += 'https://docs.connectwise.com/ConnectWise_Automate/ConnectWise_Automate_Supportability_Statements/Supportability_Statement%3A_ConnectWise_Automate_Mitigation_Steps'
+                                    Write-Warning $($Message | Out-String)
+                                }
+                            } Catch {
+                                If (!$ServerPassword) {
                                     Write-Error 'Anonymous downloads are not allowed. ServerPassword or InstallerToken may be needed.'
                                     Continue
                                 }
                             }
-                            if ($ServerPassword) { $installer = "$($Svr)/LabTech/Service/LabTechRemoteAgent.msi" }
-                        }
+                        }#End If
 
-                        if ( $PSCmdlet.ShouldProcess($installer, 'DownloadFile') ) {
+                        If ( $PSCmdlet.ShouldProcess($installer, "DownloadFile") ) {
                             Write-Debug "Line $(LINENUM): Downloading $InstallMSI from $installer"
-                            $Script:LTServiceNetWebClient.DownloadFile($installer, "$InstallBase\Installer\$InstallMSI")
-                            If ((Test-Path "$InstallBase\Installer\$InstallMSI") -and !((Get-Item "$InstallBase\Installer\$InstallMSI" -EA 0).length / 1KB -gt 1234)) {
+                            $Script:LTServiceNetWebClient.DownloadFile($installer,"$InstallBase\Installer\$InstallMSI")
+                            If((Test-Path "$InstallBase\Installer\$InstallMSI") -and  !((Get-Item "$InstallBase\Installer\$InstallMSI" -EA 0).length/1KB -gt 1234)) {
                                 Write-Warning "WARNING: Line $(LINENUM): $InstallMSI size is below normal. Removing suspected corrupt file."
                                 Remove-Item "$InstallBase\Installer\$InstallMSI" -ErrorAction SilentlyContinue -Force -Confirm:$False
                                 Continue
-                            }
-                        }
+                            }#End If
+                        }#End If
 
-                        if ($WhatIfPreference -eq $True) {
+                        If ($WhatIfPreference -eq $True) {
                             $GoodServer = $Svr
-                        }
-                        Elseif (Test-Path "$InstallBase\Installer\$InstallMSI") {
+                        } ElseIf (Test-Path "$InstallBase\Installer\$InstallMSI") {
                             $GoodServer = $Svr
                             Write-Verbose "$InstallMSI downloaded successfully from server $($Svr)."
-                        }
-                        else {
+                            If (($PSCmdlet.ParameterSetName -eq 'installertoken') -and [System.Version]$SVer -ge [System.Version]'240.331') {
+                                Expand-Archive "$InstallBase\Installer\$InstallMSI" -DestinationPath "$InstallBase\Installer" -Force
+                                #Cleanup .ZIP
+                                Remove-Item "$InstallBase\Installer\$InstallMSI" -ErrorAction SilentlyContinue -Force -Confirm:$False
+                                #Reset InstallMSI Value
+                                $InstallMSI='Agent_Install.msi'
+                            }#End If
+                        } Else {
                             Write-Warning "WARNING: Line $(LINENUM): Error encountered downloading from $($Svr). No installation file was received."
                             Continue
-                        }
-                    }
+                        }#End If
+                    }#End Try
                     Catch {
                         Write-Warning "WARNING: Line $(LINENUM): Error encountered downloading from $($Svr)."
                         Continue
                     }
-                }
-                else {
+                } Else {
                     Write-Warning "WARNING: Line $(LINENUM): Server address $($Svr) is not formatted correctly. Example: https://lt.domain.com"
                 }
-            }
-            else {
+            } Else {
                 Write-Debug "Line $(LINENUM): Server $($GoodServer) has been selected."
                 Write-Verbose "Server has already been selected - Skipping $($Svr)."
             }
@@ -255,14 +261,16 @@
             }
 
             #Build parameter string
-            $iarg = (@(
-                    "/i `"$InstallBase\Installer\$InstallMSI`"",
-                    "SERVERADDRESS=$GoodServer",
-                    $(if ($ServerPassword -and $ServerPassword -match '.') { "SERVERPASS=`"$($ServerPassword.Replace('"','""'))`"" } else { '' }),
-                    $(if ($LocationID -and $LocationID -match '^\d+$') { "LOCATION=$LocationID" } else { '' }),
-                    $(if ($TrayPort -and $TrayPort -ne 42000) { "SERVICEPORT=$TrayPort" } else { '' }),
-                    '/qn',
-                    "/l ""$InstallBase\$logfile.log""") | Where-Object { $_ }) -join ' '
+            $iarg =($(
+                "/i `"$InstallBase\Installer\$InstallMSI`""
+                "SERVERADDRESS=$GoodServer"
+                If (($PSCmdlet.ParameterSetName -eq 'installertoken') -and [System.Version]$SVer -ge [System.Version]'240.331') {"TRANSFORMS=`"Agent_Install.mst`""}
+                If ($ServerPassword -and $ServerPassword -match '.') {"SERVERPASS=`"$($ServerPassword)`""}
+                If ($LocationID -and $LocationID -match '^\d+$') {"LOCATION=$LocationID"}
+                If ($TrayPort -and $TrayPort -ne 42000) {"SERVICEPORT=$TrayPort"}
+                "/qn"
+                "/l `"$InstallBase\$logfile.log`""
+                ) | Where-Object {$_}) -join ' '
 
             Try {
                 if ( $PSCmdlet.ShouldProcess("msiexec.exe $($iarg)", 'Execute Install') ) {
@@ -345,6 +353,7 @@
             if ($WhatIfPreference -ne $True) {
                 #Cleanup Install files
                 Remove-Item "$InstallBase\Installer\$InstallMSI" -ErrorAction SilentlyContinue -Force -Confirm:$False
+                Remove-Item "$InstallBase\Installer\Agent_Install.mst" -ErrorAction SilentlyContinue -Force -Confirm:$False
                 @($curlog, "${env:windir}\LTSvc\Install.log") | ForEach-Object {
                     if ((Test-Path -PathType Leaf -LiteralPath $($_))) {
                         $logcontents = Get-Content -Path $_
