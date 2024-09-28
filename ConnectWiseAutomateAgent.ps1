@@ -852,7 +852,8 @@ function Install-CWAA {
                                     $Message += 'https://docs.connectwise.com/ConnectWise_Automate/ConnectWise_Automate_Supportability_Statements/Supportability_Statement%3A_ConnectWise_Automate_Mitigation_Steps'
                                     Write-Warning $($Message | Out-String)
                                 }
-                            } Catch {
+                            }
+                            Catch {
                                 if (!$ServerPassword) {
                                     Write-Error 'Anonymous downloads are not allowed. ServerPassword or InstallerToken may be needed.'
                                     Continue
