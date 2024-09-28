@@ -30,12 +30,12 @@ function Install-CWAA {
     )
 
     Begin {
-        Clear-Variable DotNET, OSVersion, PasswordArg, Result, logpath, logfile, curlog, installer, installerTest, installerResult, GoodServer, GoodTrayPort, TestTrayPort, Svr, SVer, SvrVer, SvrVerCheck, iarg, timeout, sw, tmpLTSI -EA 0 -What:$False -Confirm:$False #Clearing Variables for use
+        Clear-Variable DotNET, OSVersion, PasswordArg, Result, logpath, logfile, curlog, installer, installerTest, installerResult, GoodServer, GoodTrayPort, TestTrayPort, Svr, SVer, SvrVer, SvrVerCheck, iarg, timeout, sw, tmpLTSI -EA 0 -WhatIf:$False -Confirm:$False #Clearing Variables for use
         Write-Debug "Starting $($myInvocation.InvocationName) at line $(LINENUM)"
 
         if (!($Force)) {
             if (Get-Service 'LTService', 'LTSvcMon' -ErrorAction SilentlyContinue) {
-                if ($WhatPreference -ne $True) {
+                if ($WhatIfPreference -ne $True) {
                     Write-Error "ERROR: Line $(LINENUM): Services are already installed." -ErrorAction Stop
                 }
                 else {
@@ -119,8 +119,8 @@ function Install-CWAA {
         if ((Test-Path -PathType Leaf -Path $($curlog))) {
             if ($PSCmdlet.ShouldProcess("$($curlog)", 'Rotate existing log file')) {
                 Get-Item -LiteralPath $curlog -EA 0 | Where-Object { $_ } | ForEach-Object {
-                    Rename-Item -Path $($_ | Select-Object -Expand FullName -EA 0) -NewName "$($logfile)-$(Get-Date $($_|Select-Object -Expand LastWriteTime -EA 0) -Format 'yyyyMMddHHmmss').log" -Force -Confirm:$False -What:$False
-                    Remove-Item -Path $($_ | Select-Object -Expand FullName -EA 0) -Force -EA 0 -Confirm:$False -What:$False
+                    Rename-Item -Path $($_ | Select-Object -Expand FullName -EA 0) -NewName "$($logfile)-$(Get-Date $($_|Select-Object -Expand LastWriteTime -EA 0) -Format 'yyyyMMddHHmmss').log" -Force -Confirm:$False -WhatIf:$False
+                    Remove-Item -Path $($_ | Select-Object -Expand FullName -EA 0) -Force -EA 0 -Confirm:$False -WhatIf:$False
                 }
             }
         }
@@ -197,7 +197,7 @@ function Install-CWAA {
                             }
                         }
 
-                        if ($WhatPreference -eq $True) {
+                        if ($WhatIfPreference -eq $True) {
                             $GoodServer = $Svr
                         }
                         Elseif (Test-Path "$InstallBase\Installer\$InstallMSI") {
@@ -234,8 +234,8 @@ function Install-CWAA {
     End {
         if ($GoodServer) {
 
-            if ( $WhatPreference -eq $True -and (Get-PSCallStack)[1].Command -eq 'Redo-LTService' ) {
-                Write-Debug "Line $(LINENUM): Skipping Preinstall Check: Called by Redo-LTService and ""-What=`$True"""
+            if ( $WhatIfPreference -eq $True -and (Get-PSCallStack)[1].Command -eq 'Redo-LTService' ) {
+                Write-Debug "Line $(LINENUM): Skipping Preinstall Check: Called by Redo-LTService and ""-WhatIf=`$True"""
             }
             else {
                 if ((Test-Path "${env:windir}\ltsvc" -EA 0) -or (Test-Path "${env:windir}\temp\_ltupdate" -EA 0) -or (Test-Path registry::HKLM\Software\LabTech\Service -EA 0) -or (Test-Path registry::HKLM\Software\WOW6432Node\Labtech\Service -EA 0)) {
@@ -245,7 +245,7 @@ function Install-CWAA {
                 }
             }
 
-            if ($WhatPreference -ne $True) {
+            if ($WhatIfPreference -ne $True) {
                 $GoodTrayPort = $Null;
                 $TestTrayPort = $TrayPort;
                 For ($i = 0; $i -le 10; $i++) {
@@ -328,7 +328,7 @@ function Install-CWAA {
                                 Write-Debug "Line $(LINENUM): LTService Initial Startup failed to complete within expected period."
                             }
                         }
-                        Set-LTProxy -ProxyServerURL $Script:LTProxy.ProxyServerURL -ProxyUsername $Script:LTProxy.ProxyUsername -ProxyPassword $Script:LTProxy.ProxyPassword -Confirm:$False -What:$False
+                        Set-LTProxy -ProxyServerURL $Script:LTProxy.ProxyServerURL -ProxyUsername $Script:LTProxy.ProxyUsername -ProxyPassword $Script:LTProxy.ProxyPassword -Confirm:$False -WhatIf:$False
                     }
                 }
                 else {
@@ -356,7 +356,7 @@ function Install-CWAA {
                 Return
             }
 
-            if ($WhatPreference -ne $True) {
+            if ($WhatIfPreference -ne $True) {
                 #Cleanup Install files
                 Remove-Item "$InstallBase\Installer\$InstallMSI" -ErrorAction SilentlyContinue -Force -Confirm:$False
                 Remove-Item "$InstallBase\Installer\Agent_Install.mst" -ErrorAction SilentlyContinue -Force -Confirm:$False
@@ -368,7 +368,7 @@ function Install-CWAA {
                     }
                 }
 
-                $tmpLTSI = Get-LTServiceInfo -EA 0 -Verbose:$False -What:$False -Confirm:$False -Debug:$False
+                $tmpLTSI = Get-LTServiceInfo -EA 0 -Verbose:$False -WhatIf:$False -Confirm:$False -Debug:$False
                 if (($tmpLTSI)) {
                     if (($tmpLTSI | Select-Object -Expand 'ID' -EA 0) -ge 1) {
                         Write-Output "LabTech has been installed successfully. Agent ID: $($tmpLTSI|Select-Object -Expand 'ID' -EA 0) LocationID: $($tmpLTSI|Select-Object -Expand 'LocationID' -EA 0)"
@@ -396,7 +396,7 @@ function Install-CWAA {
             }
             if (($Rename) -and $Rename -notmatch 'False') { Rename-LTAddRemove -Name $Rename }
         }
-        Elseif ( $WhatPreference -ne $True ) {
+        Elseif ( $WhatIfPreference -ne $True ) {
             Write-Error "ERROR: Line $(LINENUM): No valid server was reached to use for the install."
         }
         Write-Debug "Exiting $($myInvocation.InvocationName) at line $(LINENUM)"
