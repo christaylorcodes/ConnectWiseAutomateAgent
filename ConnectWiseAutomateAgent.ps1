@@ -901,7 +901,6 @@ function Install-CWAA {
     }
     End {
         if ($GoodServer) {
-
             if ( $WhatIfPreference -eq $True -and (Get-PSCallStack)[1].Command -eq 'Redo-LTService' ) {
                 Write-Debug "Line $(LINENUM): Skipping Preinstall Check: Called by Redo-LTService and ""-WhatIf=`$True"""
             }
