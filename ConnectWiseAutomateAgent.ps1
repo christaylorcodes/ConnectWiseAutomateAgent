@@ -788,7 +788,7 @@ function Install-CWAA {
         $InstallBase = "${env:windir}\Temp\LabTech"
         $logfile = 'LTAgentInstall'
         $curlog = "$($InstallBase)\$($logfile).log"
-        If ($ServerPassword -match '"') {$ServerPassword=$ServerPassword.Replace('"','""')}
+        if ($ServerPassword -match '"') {$ServerPassword=$ServerPassword.Replace('"','""')}
         if (-not (Test-Path -PathType Container -Path "$InstallBase\Installer" )) {
             New-Item "$InstallBase\Installer" -type directory -ErrorAction SilentlyContinue | Out-Null
         }
@@ -820,38 +820,40 @@ function Install-CWAA {
                         $SvrVer = $Script:LTServiceNetWebClient.DownloadString($SvrVerCheck)
                         Write-Debug "Line $(LINENUM): Raw Response: $SvrVer"
                         $SVer = $SvrVer|select-string -pattern '(?<=[|]{6})[0-9]{1,3}\.[0-9]{1,3}'|ForEach-Object {$_.matches}|Select-Object -Expand value -EA 0
-                        If ($Null -eq $SVer) {
+                        if ($Null -eq $SVer) {
                             Write-Verbose "Unable to test version response from $($Svr)."
                             Continue
                         }
-
-                        If (($PSCmdlet.ParameterSetName -eq 'installertoken')) {
+                        if (($PSCmdlet.ParameterSetName -eq 'installertoken')) {
                             $installer = "$($Svr)/LabTech/Deployment.aspx?InstallerToken=$InstallerToken"
-                            If ([System.Version]$SVer -ge [System.Version]'240.331') {
+                            if ([System.Version]$SVer -ge [System.Version]'240.331') {
                                 Write-Debug "Line $(LINENUM): New MSI Installer Format Needed"
                                 $InstallMSI='Agent_Install.zip'
                             }
-                        } ElseIf ($ServerPassword) {
+                        }
+                        Elseif ($ServerPassword) {
                             $installer = "$($Svr)/LabTech/Service/LabTechRemoteAgent.msi"
-                        } ElseIf ([System.Version]$SVer -ge [System.Version]'110.374') {
+                        }
+                        Elseif ([System.Version]$SVer -ge [System.Version]'110.374') {
                             #New Style Download Link starting with LT11 Patch 13 - Direct Location Targeting is no longer available
                             $installer = "$($Svr)/LabTech/Deployment.aspx?Probe=1&installType=msi&MSILocations=1"
-                        } Else {
+                        }
+                        else {
                             #Original URL
                             Write-Warning 'Update your damn server!'
                             $installer = "$($Svr)/LabTech/Deployment.aspx?Probe=1&installType=msi&MSILocations=$LocationID"
                         }
                         # Vuln test June 10, 2020: ConnectWise Automate API Vulnerability - Only test if version is below known minimum.
-                        If ([System.Version]$SVer -lt [System.Version]'200.197') {
+                        if ([System.Version]$SVer -lt [System.Version]'200.197') {
                             Try{
                                 $HTTP_Request = [System.Net.WebRequest]::Create("$($Svr)/LabTech/Deployment.aspx")
-                                If ($HTTP_Request.GetResponse().StatusCode -eq 'OK') {
+                                if ($HTTP_Request.GetResponse().StatusCode -eq 'OK') {
                                     $Message = @('Your server is vulnerable!!')
                                     $Message += 'https://docs.connectwise.com/ConnectWise_Automate/ConnectWise_Automate_Supportability_Statements/Supportability_Statement%3A_ConnectWise_Automate_Mitigation_Steps'
                                     Write-Warning $($Message | Out-String)
                                 }
                             } Catch {
-                                If (!$ServerPassword) {
+                                if (!$ServerPassword) {
                                     Write-Error 'Anonymous downloads are not allowed. ServerPassword or InstallerToken may be needed.'
                                     Continue
                                 }
@@ -860,7 +862,7 @@ function Install-CWAA {
                         if ( $PSCmdlet.ShouldProcess($installer, 'DownloadFile') ) {
                             Write-Debug "Line $(LINENUM): Downloading $InstallMSI from $installer"
                             $Script:LTServiceNetWebClient.DownloadFile($installer, "$InstallBase\Installer\$InstallMSI")
-                            If ((Test-Path "$InstallBase\Installer\$InstallMSI") -and !((Get-Item "$InstallBase\Installer\$InstallMSI" -EA 0).length / 1KB -gt 1234)) {
+                            if ((Test-Path "$InstallBase\Installer\$InstallMSI") -and !((Get-Item "$InstallBase\Installer\$InstallMSI" -EA 0).length / 1KB -gt 1234)) {
                                 Write-Warning "WARNING: Line $(LINENUM): $InstallMSI size is below normal. Removing suspected corrupt file."
                                 Remove-Item "$InstallBase\Installer\$InstallMSI" -ErrorAction SilentlyContinue -Force -Confirm:$False
                                 Continue
@@ -872,14 +874,15 @@ function Install-CWAA {
                         Elseif (Test-Path "$InstallBase\Installer\$InstallMSI") {
                             $GoodServer = $Svr
                             Write-Verbose "$InstallMSI downloaded successfully from server $($Svr)."
-                            If (($PSCmdlet.ParameterSetName -eq 'installertoken') -and [System.Version]$SVer -ge [System.Version]'240.331') {
+                            if (($PSCmdlet.ParameterSetName -eq 'installertoken') -and [System.Version]$SVer -ge [System.Version]'240.331') {
                                 Expand-Archive "$InstallBase\Installer\$InstallMSI" -DestinationPath "$InstallBase\Installer" -Force
                                 #Cleanup .ZIP
                                 Remove-Item "$InstallBase\Installer\$InstallMSI" -ErrorAction SilentlyContinue -Force -Confirm:$False
                                 #Reset InstallMSI Value
                                 $InstallMSI='Agent_Install.msi'
                             }
-                        } Else {
+                        }
+                        else {
                             Write-Warning "WARNING: Line $(LINENUM): Error encountered downloading from $($Svr). No installation file was received."
                             Continue
                         }
@@ -935,10 +938,10 @@ function Install-CWAA {
             $iarg =($(
                 "/i `"$InstallBase\Installer\$InstallMSI`""
                 "SERVERADDRESS=$GoodServer"
-                If (($PSCmdlet.ParameterSetName -eq 'installertoken') -and [System.Version]$SVer -ge [System.Version]'240.331') {"TRANSFORMS=`"Agent_Install.mst`""}
-                If ($ServerPassword -and $ServerPassword -match '.') {"SERVERPASS=`"$($ServerPassword)`""}
-                If ($LocationID -and $LocationID -match '^\d+$') {"LOCATION=$LocationID"}
-                If ($TrayPort -and $TrayPort -ne 42000) {"SERVICEPORT=$TrayPort"}
+                if (($PSCmdlet.ParameterSetName -eq 'installertoken') -and [System.Version]$SVer -ge [System.Version]'240.331') {"TRANSFORMS=`"Agent_Install.mst`""}
+                if ($ServerPassword -and $ServerPassword -match '.') {"SERVERPASS=`"$($ServerPassword)`""}
+                if ($LocationID -and $LocationID -match '^\d+$') {"LOCATION=$LocationID"}
+                if ($TrayPort -and $TrayPort -ne 42000) {"SERVICEPORT=$TrayPort"}
                 "/qn"
                 "/l `"$InstallBase\$logfile.log`""
                 ) | Where-Object {$_}) -join ' '
@@ -1468,7 +1471,6 @@ function Uninstall-CWAA {
                         Write-Verbose ('Unable to remove Agent_Uninstall.msi' -f $_.Exception.Message)
                     }
                 }
-                
                 Write-Verbose 'Cleaning Registry Keys if found.'
                 #Remove all registry keys - Depth First Value Removal, then Key Removal, to get as much removed as possible if complete removal fails
                 Foreach ($reg in $regs) {
