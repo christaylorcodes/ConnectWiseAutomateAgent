@@ -30,12 +30,12 @@ function Install-CWAA {
     )
 
     Begin {
-        Clear-Variable DotNET, OSVersion, PasswordArg, Result, logpath, logfile, curlog, installer, installerTest, installerResult, GoodServer, GoodTrayPort, TestTrayPort, Svr, SVer, SvrVer, SvrVerCheck, iarg, timeout, sw, tmpLTSI -EA 0 -WhatIf:$False -Confirm:$False #Clearing Variables for use
+        Clear-Variable DotNET, OSVersion, PasswordArg, Result, logpath, logfile, curlog, installer, installerTest, installerResult, GoodServer, GoodTrayPort, TestTrayPort, Svr, SVer, SvrVer, SvrVerCheck, iarg, timeout, sw, tmpLTSI -EA 0 -What:$False -Confirm:$False #Clearing Variables for use
         Write-Debug "Starting $($myInvocation.InvocationName) at line $(LINENUM)"
 
         if (!($Force)) {
             if (Get-Service 'LTService', 'LTSvcMon' -ErrorAction SilentlyContinue) {
-                if ($WhatIfPreference -ne $True) {
+                if ($WhatPreference -ne $True) {
                     Write-Error "ERROR: Line $(LINENUM): Services are already installed." -ErrorAction Stop
                 }
                 else {
@@ -112,15 +112,15 @@ function Install-CWAA {
         $InstallBase = "${env:windir}\Temp\LabTech"
         $logfile = 'LTAgentInstall'
         $curlog = "$($InstallBase)\$($logfile).log"
-        If ($ServerPassword -match '"') {$ServerPassword=$ServerPassword.Replace('"','""')}
+        if ($ServerPassword -match '"') {$ServerPassword=$ServerPassword.Replace('"','""')}
         if (-not (Test-Path -PathType Container -Path "$InstallBase\Installer" )) {
             New-Item "$InstallBase\Installer" -type directory -ErrorAction SilentlyContinue | Out-Null
         }
         if ((Test-Path -PathType Leaf -Path $($curlog))) {
             if ($PSCmdlet.ShouldProcess("$($curlog)", 'Rotate existing log file')) {
                 Get-Item -LiteralPath $curlog -EA 0 | Where-Object { $_ } | ForEach-Object {
-                    Rename-Item -Path $($_ | Select-Object -Expand FullName -EA 0) -NewName "$($logfile)-$(Get-Date $($_|Select-Object -Expand LastWriteTime -EA 0) -Format 'yyyyMMddHHmmss').log" -Force -Confirm:$False -WhatIf:$False
-                    Remove-Item -Path $($_ | Select-Object -Expand FullName -EA 0) -Force -EA 0 -Confirm:$False -WhatIf:$False
+                    Rename-Item -Path $($_ | Select-Object -Expand FullName -EA 0) -NewName "$($logfile)-$(Get-Date $($_|Select-Object -Expand LastWriteTime -EA 0) -Format 'yyyyMMddHHmmss').log" -Force -Confirm:$False -What:$False
+                    Remove-Item -Path $($_ | Select-Object -Expand FullName -EA 0) -Force -EA 0 -Confirm:$False -What:$False
                 }
             }
         }
@@ -144,69 +144,74 @@ function Install-CWAA {
                         $SvrVer = $Script:LTServiceNetWebClient.DownloadString($SvrVerCheck)
                         Write-Debug "Line $(LINENUM): Raw Response: $SvrVer"
                         $SVer = $SvrVer|select-string -pattern '(?<=[|]{6})[0-9]{1,3}\.[0-9]{1,3}'|ForEach-Object {$_.matches}|Select-Object -Expand value -EA 0
-                        If ($Null -eq $SVer) {
+                        if ($Null -eq $SVer) {
                             Write-Verbose "Unable to test version response from $($Svr)."
                             Continue
                         }
 
-                        If (($PSCmdlet.ParameterSetName -eq 'installertoken')) {
+                        if (($PSCmdlet.ParameterSetName -eq 'installertoken')) {
                             $installer = "$($Svr)/LabTech/Deployment.aspx?InstallerToken=$InstallerToken"
-                            If ([System.Version]$SVer -ge [System.Version]'240.331') {
+                            if ([System.Version]$SVer -ge [System.Version]'240.331') {
                                 Write-Debug "Line $(LINENUM): New MSI Installer Format Needed"
                                 $InstallMSI='Agent_Install.zip'
                             }
-                        } ElseIf ($ServerPassword) {
+                        }
+                        Elseif ($ServerPassword) {
                             $installer = "$($Svr)/LabTech/Service/LabTechRemoteAgent.msi"
-                        } ElseIf ([System.Version]$SVer -ge [System.Version]'110.374') {
+                        }
+                        Elseif ([System.Version]$SVer -ge [System.Version]'110.374') {
                             #New Style Download Link starting with LT11 Patch 13 - Direct Location Targeting is no longer available
                             $installer = "$($Svr)/LabTech/Deployment.aspx?Probe=1&installType=msi&MSILocations=1"
-                        } Else {
+                        }
+                        else {
                             #Original URL
                             Write-Warning 'Update your damn server!'
                             $installer = "$($Svr)/LabTech/Deployment.aspx?Probe=1&installType=msi&MSILocations=$LocationID"
-                        }#End If
+                        }
 
                         # Vuln test June 10, 2020: ConnectWise Automate API Vulnerability - Only test if version is below known minimum.
-                        If ([System.Version]$SVer -lt [System.Version]'200.197') {
+                        if ([System.Version]$SVer -lt [System.Version]'200.197') {
                             Try{
                                 $HTTP_Request = [System.Net.WebRequest]::Create("$($Svr)/LabTech/Deployment.aspx")
-                                If ($HTTP_Request.GetResponse().StatusCode -eq 'OK') {
+                                if ($HTTP_Request.GetResponse().StatusCode -eq 'OK') {
                                     $Message = @('Your server is vulnerable!!')
                                     $Message += 'https://docs.connectwise.com/ConnectWise_Automate/ConnectWise_Automate_Supportability_Statements/Supportability_Statement%3A_ConnectWise_Automate_Mitigation_Steps'
                                     Write-Warning $($Message | Out-String)
                                 }
-                            } Catch {
-                                If (!$ServerPassword) {
+                            }
+                            Catch {
+                                if (!$ServerPassword) {
                                     Write-Error 'Anonymous downloads are not allowed. ServerPassword or InstallerToken may be needed.'
                                     Continue
                                 }
                             }
-                        }#End If
+                        }
 
                         if ( $PSCmdlet.ShouldProcess($installer, 'DownloadFile') ) {
                             Write-Debug "Line $(LINENUM): Downloading $InstallMSI from $installer"
                             $Script:LTServiceNetWebClient.DownloadFile($installer, "$InstallBase\Installer\$InstallMSI")
-                            If ((Test-Path "$InstallBase\Installer\$InstallMSI") -and !((Get-Item "$InstallBase\Installer\$InstallMSI" -EA 0).length / 1KB -gt 1234)) {
+                            if ((Test-Path "$InstallBase\Installer\$InstallMSI") -and !((Get-Item "$InstallBase\Installer\$InstallMSI" -EA 0).length / 1KB -gt 1234)) {
                                 Write-Warning "WARNING: Line $(LINENUM): $InstallMSI size is below normal. Removing suspected corrupt file."
                                 Remove-Item "$InstallBase\Installer\$InstallMSI" -ErrorAction SilentlyContinue -Force -Confirm:$False
                                 Continue
                             }
                         }
 
-                        if ($WhatIfPreference -eq $True) {
+                        if ($WhatPreference -eq $True) {
                             $GoodServer = $Svr
                         }
                         Elseif (Test-Path "$InstallBase\Installer\$InstallMSI") {
                             $GoodServer = $Svr
                             Write-Verbose "$InstallMSI downloaded successfully from server $($Svr)."
-                            If (($PSCmdlet.ParameterSetName -eq 'installertoken') -and [System.Version]$SVer -ge [System.Version]'240.331') {
+                            if (($PSCmdlet.ParameterSetName -eq 'installertoken') -and [System.Version]$SVer -ge [System.Version]'240.331') {
                                 Expand-Archive "$InstallBase\Installer\$InstallMSI" -DestinationPath "$InstallBase\Installer" -Force
                                 #Cleanup .ZIP
                                 Remove-Item "$InstallBase\Installer\$InstallMSI" -ErrorAction SilentlyContinue -Force -Confirm:$False
                                 #Reset InstallMSI Value
                                 $InstallMSI='Agent_Install.msi'
-                            }#End If
-                        } Else {
+                            }
+                        }
+                        else {
                             Write-Warning "WARNING: Line $(LINENUM): Error encountered downloading from $($Svr). No installation file was received."
                             Continue
                         }
@@ -229,8 +234,8 @@ function Install-CWAA {
     End {
         if ($GoodServer) {
 
-            if ( $WhatIfPreference -eq $True -and (Get-PSCallStack)[1].Command -eq 'Redo-LTService' ) {
-                Write-Debug "Line $(LINENUM): Skipping Preinstall Check: Called by Redo-LTService and ""-WhatIf=`$True"""
+            if ( $WhatPreference -eq $True -and (Get-PSCallStack)[1].Command -eq 'Redo-LTService' ) {
+                Write-Debug "Line $(LINENUM): Skipping Preinstall Check: Called by Redo-LTService and ""-What=`$True"""
             }
             else {
                 if ((Test-Path "${env:windir}\ltsvc" -EA 0) -or (Test-Path "${env:windir}\temp\_ltupdate" -EA 0) -or (Test-Path registry::HKLM\Software\LabTech\Service -EA 0) -or (Test-Path registry::HKLM\Software\WOW6432Node\Labtech\Service -EA 0)) {
@@ -240,7 +245,7 @@ function Install-CWAA {
                 }
             }
 
-            if ($WhatIfPreference -ne $True) {
+            if ($WhatPreference -ne $True) {
                 $GoodTrayPort = $Null;
                 $TestTrayPort = $TrayPort;
                 For ($i = 0; $i -le 10; $i++) {
@@ -265,10 +270,10 @@ function Install-CWAA {
             $iarg =($(
                 "/i `"$InstallBase\Installer\$InstallMSI`""
                 "SERVERADDRESS=$GoodServer"
-                If (($PSCmdlet.ParameterSetName -eq 'installertoken') -and [System.Version]$SVer -ge [System.Version]'240.331') {"TRANSFORMS=`"Agent_Install.mst`""}
-                If ($ServerPassword -and $ServerPassword -match '.') {"SERVERPASS=`"$($ServerPassword)`""}
-                If ($LocationID -and $LocationID -match '^\d+$') {"LOCATION=$LocationID"}
-                If ($TrayPort -and $TrayPort -ne 42000) {"SERVICEPORT=$TrayPort"}
+                if (($PSCmdlet.ParameterSetName -eq 'installertoken') -and [System.Version]$SVer -ge [System.Version]'240.331') {"TRANSFORMS=`"Agent_Install.mst`""}
+                if ($ServerPassword -and $ServerPassword -match '.') {"SERVERPASS=`"$($ServerPassword)`""}
+                if ($LocationID -and $LocationID -match '^\d+$') {"LOCATION=$LocationID"}
+                if ($TrayPort -and $TrayPort -ne 42000) {"SERVICEPORT=$TrayPort"}
                 "/qn"
                 "/l `"$InstallBase\$logfile.log`""
                 ) | Where-Object {$_}) -join ' '
@@ -323,7 +328,7 @@ function Install-CWAA {
                                 Write-Debug "Line $(LINENUM): LTService Initial Startup failed to complete within expected period."
                             }
                         }
-                        Set-LTProxy -ProxyServerURL $Script:LTProxy.ProxyServerURL -ProxyUsername $Script:LTProxy.ProxyUsername -ProxyPassword $Script:LTProxy.ProxyPassword -Confirm:$False -WhatIf:$False
+                        Set-LTProxy -ProxyServerURL $Script:LTProxy.ProxyServerURL -ProxyUsername $Script:LTProxy.ProxyUsername -ProxyPassword $Script:LTProxy.ProxyPassword -Confirm:$False -What:$False
                     }
                 }
                 else {
@@ -351,7 +356,7 @@ function Install-CWAA {
                 Return
             }
 
-            if ($WhatIfPreference -ne $True) {
+            if ($WhatPreference -ne $True) {
                 #Cleanup Install files
                 Remove-Item "$InstallBase\Installer\$InstallMSI" -ErrorAction SilentlyContinue -Force -Confirm:$False
                 Remove-Item "$InstallBase\Installer\Agent_Install.mst" -ErrorAction SilentlyContinue -Force -Confirm:$False
@@ -363,7 +368,7 @@ function Install-CWAA {
                     }
                 }
 
-                $tmpLTSI = Get-LTServiceInfo -EA 0 -Verbose:$False -WhatIf:$False -Confirm:$False -Debug:$False
+                $tmpLTSI = Get-LTServiceInfo -EA 0 -Verbose:$False -What:$False -Confirm:$False -Debug:$False
                 if (($tmpLTSI)) {
                     if (($tmpLTSI | Select-Object -Expand 'ID' -EA 0) -ge 1) {
                         Write-Output "LabTech has been installed successfully. Agent ID: $($tmpLTSI|Select-Object -Expand 'ID' -EA 0) LocationID: $($tmpLTSI|Select-Object -Expand 'LocationID' -EA 0)"
@@ -391,7 +396,7 @@ function Install-CWAA {
             }
             if (($Rename) -and $Rename -notmatch 'False') { Rename-LTAddRemove -Name $Rename }
         }
-        Elseif ( $WhatIfPreference -ne $True ) {
+        Elseif ( $WhatPreference -ne $True ) {
             Write-Error "ERROR: Line $(LINENUM): No valid server was reached to use for the install."
         }
         Write-Debug "Exiting $($myInvocation.InvocationName) at line $(LINENUM)"
