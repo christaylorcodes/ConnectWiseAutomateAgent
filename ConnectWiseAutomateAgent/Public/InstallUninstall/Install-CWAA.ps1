@@ -10,7 +10,7 @@ function Install-CWAA {
         [Parameter(ValueFromPipelineByPropertyName = $True)]
         [AllowNull()]
         [Alias('Password')]
-        [SecureString]$ServerPassword,
+        [string]$ServerPassword,
         [Parameter(ParameterSetName = 'installertoken')]
         [ValidatePattern('(?s:^[0-9a-z]+$)')]
         [string]$InstallerToken,
