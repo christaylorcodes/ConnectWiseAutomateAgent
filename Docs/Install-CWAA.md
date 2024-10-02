@@ -14,14 +14,13 @@ This function will install the LabTech agent on the machine.
 
 ### deployment (Default)
 ```
-Install-CWAA [[-Server] <String[]>] [[-ServerPassword] <SecureString>] [[-LocationID] <Int32>]
- [[-TrayPort] <Int32>] [[-Rename] <String>] [-Hide] [-SkipDotNet] [-Force] [-NoWait] [-WhatIf] [-Confirm]
- [<CommonParameters>]
+Install-CWAA [[-Server] <String[]>] [[-ServerPassword] <String>] [[-LocationID] <Int32>] [[-TrayPort] <Int32>]
+ [[-Rename] <String>] [-Hide] [-SkipDotNet] [-Force] [-NoWait] [-WhatIf] [-Confirm] [<CommonParameters>]
 ```
 
 ### installertoken
 ```
-Install-CWAA [[-Server] <String[]>] [[-ServerPassword] <SecureString>] [-InstallerToken <String>]
+Install-CWAA [[-Server] <String[]>] [[-ServerPassword] <String>] [-InstallerToken <String>]
  [[-LocationID] <Int32>] [[-TrayPort] <Int32>] [[-Rename] <String>] [-Hide] [-SkipDotNet] [-Force] [-NoWait]
  [-WhatIf] [-Confirm] [<CommonParameters>]
 ```
@@ -63,7 +62,7 @@ This is the server password that agents use to authenticate with the LabTech ser
 SELECT SystemPassword FROM config;
 
 ```yaml
-Type: SecureString
+Type: String
 Parameter Sets: deployment
 Aliases: Password
 
@@ -75,7 +74,7 @@ Accept wildcard characters: False
 ```
 
 ```yaml
-Type: SecureString
+Type: String
 Parameter Sets: installertoken
 Aliases: Password
 

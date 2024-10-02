@@ -228,7 +228,7 @@
         <maml:para>Version:        1.3 Author:         Chris Taylor Website:        labtechconsulting.com Creation Date:  3/14/2016 Purpose/Change: Initial script development</maml:para>
         <maml:para>Update Date: 6/1/2017 Purpose/Change: Updates for better overall compatibility, including better support for PowerShell V2</maml:para>
         <maml:para>Update Date: 3/18/2018 Purpose/Change: Changed Erroraction from Stop to unspecified to allow caller to set the ErrorAction.</maml:para>
-        <maml:para>Update Date: 1/26/2019 Purpose/Change: Update for better international date parsing support. function rename.</maml:para>
+        <maml:para>Update Date: 1/26/2019 Purpose/Change: Update for better international date parsing support. Function rename.</maml:para>
       </maml:alert>
     </maml:alertSet>
     <command:examples>
@@ -723,9 +723,9 @@
           <maml:description>
             <maml:para>This is the server password that agents use to authenticate with the LabTech server. SELECT SystemPassword FROM config;</maml:para>
           </maml:description>
-          <command:parameterValue required="true" variableLength="false">SecureString</command:parameterValue>
+          <command:parameterValue required="true" variableLength="false">String</command:parameterValue>
           <dev:type>
-            <maml:name>SecureString</maml:name>
+            <maml:name>String</maml:name>
             <maml:uri />
           </dev:type>
           <dev:defaultValue>None</dev:defaultValue>
@@ -852,9 +852,9 @@
           <maml:description>
             <maml:para>This is the server password that agents use to authenticate with the LabTech server. SELECT SystemPassword FROM config;</maml:para>
           </maml:description>
-          <command:parameterValue required="true" variableLength="false">SecureString</command:parameterValue>
+          <command:parameterValue required="true" variableLength="false">String</command:parameterValue>
           <dev:type>
-            <maml:name>SecureString</maml:name>
+            <maml:name>String</maml:name>
             <maml:uri />
           </dev:type>
           <dev:defaultValue>None</dev:defaultValue>
@@ -994,9 +994,9 @@
         <maml:description>
           <maml:para>This is the server password that agents use to authenticate with the LabTech server. SELECT SystemPassword FROM config;</maml:para>
         </maml:description>
-        <command:parameterValue required="true" variableLength="false">SecureString</command:parameterValue>
+        <command:parameterValue required="true" variableLength="false">String</command:parameterValue>
         <dev:type>
-          <maml:name>SecureString</maml:name>
+          <maml:name>String</maml:name>
           <maml:uri />
         </dev:type>
         <dev:defaultValue>None</dev:defaultValue>
