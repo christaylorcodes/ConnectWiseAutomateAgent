@@ -13,9 +13,8 @@ Creates or updates a scheduled task for periodic ConnectWise Automate agent heal
 ## SYNTAX
 
 ```
-Register-CWAAHealthCheckTask [-InstallerToken] <String> [[-Server] <String>] [[-LocationID] <Int32>]
- [[-TaskName] <String>] [[-IntervalHours] <Int32>] [-Force] [-ProgressAction <ActionPreference>] [-WhatIf]
- [-Confirm] [<CommonParameters>]
+Register-CWAAHealthCheckTask [-InstallerToken] <String> [[-Server] <String[]>] [[-LocationID] <Int32>]
+ [[-TaskName] <String>] [[-IntervalHours] <Int32>] [-Force] [-WhatIf] [-Confirm] [<CommonParameters>]
 ```
 
 ## DESCRIPTION
@@ -117,22 +116,7 @@ Aliases:
 Required: False
 Position: 3
 Default value: 0
-Accept pipeline input: False
-Accept wildcard characters: False
-```
-
-### -ProgressAction
-{{ Fill ProgressAction Description }}
-
-```yaml
-Type: ActionPreference
-Parameter Sets: (All)
-Aliases: proga
-
-Required: False
-Position: Named
-Default value: None
-Accept pipeline input: False
+Accept pipeline input: True (ByPropertyName)
 Accept wildcard characters: False
 ```
 
@@ -142,14 +126,14 @@ When provided, the scheduled task passes this to Repair-CWAA
 in Install mode (with Server, LocationID, and InstallerToken).
 
 ```yaml
-Type: String
+Type: String[]
 Parameter Sets: (All)
 Aliases:
 
 Required: False
 Position: 2
 Default value: None
-Accept pipeline input: False
+Accept pipeline input: True (ByPropertyName)
 Accept wildcard characters: False
 ```
 

@@ -1,4 +1,4 @@
----
+﻿---
 Module Name: ConnectWiseAutomateAgent
 Module Guid: 37424fc5-48d4-4d15-8b19-e1c2bf4bab67
 Download Help Link: {{ Update Download Link }}

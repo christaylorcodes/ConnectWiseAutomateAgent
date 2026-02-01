@@ -129,6 +129,32 @@ function Initialize-CWAA {
     $Script:CWAAEventLogSource = 'ConnectWiseAutomateAgent'
     $Script:CWAAEventLogName   = 'Application'
 
+    # Timeout and retry configuration — used by Wait-CWAACondition and Install-CWAA callers.
+    # Centralized here so they are tunable and self-documenting in one place.
+    $Script:CWAAInstallMaxAttempts       = 3
+    $Script:CWAAInstallRetryDelaySeconds = 30
+    $Script:CWAAServiceStartTimeoutSec   = 120   # 2 minutes — proxy startup wait
+    $Script:CWAARegistrationTimeoutSec   = 900   # 15 minutes — agent registration wait
+    $Script:CWAATrayPortMin              = 42000
+    $Script:CWAATrayPortMax              = 42009
+    $Script:CWAATrayPortDefault          = 42000
+    $Script:CWAAUninstallWaitSeconds     = 10
+    $Script:CWAAServiceWaitTimeoutSec    = 60    # 1 minute — Start/Stop/Restart/Reset service waits
+    $Script:CWAARedoSettleDelaySeconds   = 20    # Redo-CWAA settling delay between uninstall and reinstall
+
+    # Server version thresholds — document breaking changes in the server's deployment API.
+    # Each threshold gates a different URL construction or installer format in Install-CWAA.
+    $Script:CWAAVersionZipInstaller     = '240.331'  # InstallerToken deployments return ZIP (MSI+MST)
+    $Script:CWAAVersionAnonymousChange  = '110.374'  # Anonymous MSI download URL changed (LT11 Patch 13)
+    $Script:CWAAVersionVulnerabilityFix = '200.197'  # CVE fix: unauthenticated Deployment.aspx access
+    $Script:CWAAVersionUpdateMinimum    = '105.001'  # Minimum version with update support
+
+    # Agent process names — for forceful termination in Stop-CWAA after service stop timeout.
+    $Script:CWAAAgentProcessNames = @('LTTray', 'LTSVC', 'LTSvcMon')
+
+    # All service names including LabVNC — for full service cleanup in Uninstall-CWAA.
+    $Script:CWAAAllServiceNames = @('LTService', 'LTSvcMon', 'LabVNC')
+
     # Service credential storage â€" populated on-demand by Get-CWAAProxy
     $Script:LTServiceKeys = [PSCustomObject]@{
         ServerPasswordString = ''

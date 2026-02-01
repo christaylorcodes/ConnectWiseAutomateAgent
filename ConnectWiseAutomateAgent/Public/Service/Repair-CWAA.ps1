@@ -53,14 +53,14 @@
     [CmdletBinding(SupportsShouldProcess = $True)]
     [Alias('Repair-LTService')]
     Param(
-        [Parameter(ParameterSetName = 'Install', Mandatory = $True)]
+        [Parameter(ParameterSetName = 'Install', Mandatory = $True, ValueFromPipelineByPropertyName = $true)]
         [ValidateScript({
             if ($_ -match '^(https?://)?(([12]?[0-9]{1,2}\.){3}[12]?[0-9]{1,2}|[a-z0-9][a-z0-9_-]*(\.[a-z0-9][a-z0-9_-]*)*)$') { $true }
             else { throw "Server address '$_' is not valid. Expected format: https://automate.domain.com" }
         })]
         [string]$Server,
 
-        [Parameter(ParameterSetName = 'Install', Mandatory = $True)]
+        [Parameter(ParameterSetName = 'Install', Mandatory = $True, ValueFromPipelineByPropertyName = $true)]
         [ValidateRange(1, [int]::MaxValue)]
         [int]$LocationID,
 

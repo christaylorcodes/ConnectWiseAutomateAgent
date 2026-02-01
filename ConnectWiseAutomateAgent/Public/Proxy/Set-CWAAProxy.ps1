@@ -30,10 +30,17 @@ function Set-CWAAProxy {
         Automatically detect system proxy settings for module operations.
         Discovered settings are applied to the installed agent (if present).
         Cannot be used with other parameters.
+    .PARAMETER ProxyCredential
+        A PSCredential object containing the proxy username and password.
+        This is the preferred secure alternative to passing -ProxyUsername
+        and -ProxyPassword separately. Must be used with -ProxyServerURL.
     .PARAMETER ResetProxy
         Clears any currently defined proxy settings for module operations.
         Changes are applied to the installed agent (if present).
         Cannot be used with other parameters.
+    .PARAMETER SkipCertificateCheck
+        Bypasses SSL/TLS certificate validation for server connections.
+        Use in lab or test environments with self-signed certificates.
     .EXAMPLE
         Set-CWAAProxy -DetectProxy
         Automatically detects and configures the system proxy.
@@ -63,6 +70,10 @@ function Set-CWAAProxy {
         [parameter(Mandatory = $False, ValueFromPipeline = $False, ValueFromPipelineByPropertyName = $True)]
         [SecureString]$EncodedProxyPassword,
         [parameter(Mandatory = $False, ValueFromPipeline = $False, ValueFromPipelineByPropertyName = $True)]
+        [System.Management.Automation.PSCredential]
+        [System.Management.Automation.Credential()]
+        $ProxyCredential,
+        [parameter(Mandatory = $False, ValueFromPipeline = $False, ValueFromPipelineByPropertyName = $True)]
         [alias('Detect')]
         [alias('AutoDetect')]
         [switch]$DetectProxy,
@@ -88,6 +99,12 @@ function Set-CWAAProxy {
     }
 
     Process {
+        # If a PSCredential was provided, extract username and password.
+        # This is the preferred secure alternative to passing plain text proxy credentials.
+        if ($ProxyCredential) {
+            $ProxyUsername = $ProxyCredential.UserName
+            $ProxyPassword = $ProxyCredential.GetNetworkCredential().Password
+        }
 
         if (
             (($ResetProxy -eq $True) -and (($DetectProxy -eq $True) -or ($ProxyServerURL) -or ($ProxyUsername) -or ($ProxyPassword) -or ($EncodedProxyUsername) -or ($EncodedProxyPassword))) -or
@@ -224,7 +241,7 @@ function Set-CWAAProxy {
             }
             if ($settingsChanged -eq $True) {
                 $serviceRestartNeeded = $False
-                if ((Get-Service 'LTService', 'LTSvcMon' -ErrorAction SilentlyContinue | Where-Object { $_.Status -match 'Running' })) {
+                if ((Get-Service $Script:CWAAServiceNames -ErrorAction SilentlyContinue | Where-Object { $_.Status -match 'Running' })) {
                     $serviceRestartNeeded = $True
                     try { Stop-CWAA -EA 0 -WA 0 } catch { Write-Debug "Failed to stop services before proxy update. $_" }
                 }

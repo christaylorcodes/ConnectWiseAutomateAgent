@@ -13,8 +13,7 @@ Performs a read-only health assessment of the ConnectWise Automate agent.
 ## SYNTAX
 
 ```
-Test-CWAAHealth [[-Server] <String>] [-TestServerConnectivity] [-ProgressAction <ActionPreference>]
- [<CommonParameters>]
+Test-CWAAHealth [[-Server] <String[]>] [-TestServerConnectivity] [<CommonParameters>]
 ```
 
 ## DESCRIPTION
@@ -61,21 +60,6 @@ Uses the Healthy boolean for conditional logic.
 
 ## PARAMETERS
 
-### -ProgressAction
-{{ Fill ProgressAction Description }}
-
-```yaml
-Type: ActionPreference
-Parameter Sets: (All)
-Aliases: proga
-
-Required: False
-Position: Named
-Default value: None
-Accept pipeline input: False
-Accept wildcard characters: False
-```
-
 ### -Server
 An Automate server URL to validate against the installed agent's configured server.
 If provided, the ServerMatch property indicates whether the installed agent points
@@ -83,7 +67,7 @@ to this server.
 If omitted, ServerMatch is null.
 
 ```yaml
-Type: String
+Type: String[]
 Parameter Sets: (All)
 Aliases:
 

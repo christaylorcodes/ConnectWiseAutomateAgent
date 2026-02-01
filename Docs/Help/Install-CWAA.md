@@ -1,4 +1,4 @@
----
+﻿---
 external help file: ConnectWiseAutomateAgent-help.xml
 Module Name: ConnectWiseAutomateAgent
 online version: https://github.com/christaylorcodes/ConnectWiseAutomateAgent
@@ -14,25 +14,29 @@ Installs the ConnectWise Automate Agent on the local computer.
 
 ### deployment (Default)
 ```
-Install-CWAA [-Server <String[]>] [-ServerPassword <String>] [-LocationID <Int32>] [-TrayPort <Int32>]
- [-Rename <String>] [-Hide] [-SkipDotNet] [-Force] [-NoWait] [-SkipCertificateCheck]
- [-ProgressAction <ActionPreference>] [-WhatIf] [-Confirm] [<CommonParameters>]
+Install-CWAA [-Server <String[]>] [-ServerPassword <String>] [-Credential <PSCredential>] [-LocationID <Int32>]
+ [-TrayPort <Int32>] [-Rename <String>] [-Hide] [-SkipDotNet] [-Force] [-NoWait] [-SkipCertificateCheck]
+ [-ShowProgress] [-WhatIf] [-Confirm] [<CommonParameters>]
 ```
 
 ### installertoken
 ```
 Install-CWAA [-Server <String[]>] [-ServerPassword <String>] [-InstallerToken <String>] [-LocationID <Int32>]
  [-TrayPort <Int32>] [-Rename <String>] [-Hide] [-SkipDotNet] [-Force] [-NoWait] [-SkipCertificateCheck]
- [-ProgressAction <ActionPreference>] [-WhatIf] [-Confirm] [<CommonParameters>]
+ [-ShowProgress] [-WhatIf] [-Confirm] [<CommonParameters>]
 ```
 
 ## DESCRIPTION
 Downloads and installs the ConnectWise Automate agent from the specified server URL.
 Supports authentication via InstallerToken (preferred) or ServerPassword.
-The function handles .NET Framework 3.5 prerequisite checks, MSI download with file integrity validation, proxy configuration, TrayPort conflict resolution, and post-install agent registration verification.
+The function handles
+prerequisite checks for .NET Framework 3.5, MSI download with file integrity validation,
+proxy configuration, TrayPort conflict resolution, and post-install agent registration verification.
 
-If a previous installation is detected, the function will automatically call Uninstall-LTService before proceeding.
-The -Force parameter allows installation even when services are already present or when only .NET 4.0+ is available without 3.5.
+If a previous installation is detected, the function will automatically call Uninstall-LTService
+before proceeding.
+The -Force parameter allows installation even when services are already present
+or when only .NET 4.0+ is available without 3.5.
 
 ## EXAMPLES
 
@@ -58,6 +62,24 @@ Install-CWAA -Server https://automate.domain.com -InstallerToken 'token' -Locati
 Installs the agent without waiting for registration to complete.
 
 ## PARAMETERS
+
+### -Credential
+A PSCredential object containing the server password for deployment authentication.
+The password is extracted and used as the ServerPassword.
+This is the preferred
+secure alternative to passing -ServerPassword as plain text.
+
+```yaml
+Type: PSCredential
+Parameter Sets: deployment
+Aliases:
+
+Required: False
+Position: Named
+Default value: None
+Accept pipeline input: False
+Accept wildcard characters: False
+```
 
 ### -Force
 Disables safety checks including existing service detection and .NET version requirements.
@@ -91,7 +113,9 @@ Accept wildcard characters: False
 
 ### -InstallerToken
 An installer token for authenticated agent deployment.
-This is the preferred authentication method over ServerPassword.
+This is the preferred
+authentication method over ServerPassword.
+See: https://forums.mspgeek.org/topic/5882-contribution-generate-agent-installertoken
 
 ```yaml
 Type: String
@@ -115,7 +139,7 @@ Aliases:
 
 Required: False
 Position: Named
-Default value: None
+Default value: 0
 Accept pipeline input: True (ByPropertyName)
 Accept wildcard characters: False
 ```
@@ -132,21 +156,6 @@ Aliases:
 Required: False
 Position: Named
 Default value: False
-Accept pipeline input: False
-Accept wildcard characters: False
-```
-
-### -ProgressAction
-{{ Fill ProgressAction Description }}
-
-```yaml
-Type: ActionPreference
-Parameter Sets: (All)
-Aliases: proga
-
-Required: False
-Position: Named
-Default value: None
 Accept pipeline input: False
 Accept wildcard characters: False
 ```
@@ -168,7 +177,8 @@ Accept wildcard characters: False
 
 ### -Server
 One or more ConnectWise Automate server URLs to download the installer from.
-Example: https://automate.domain.com The function tries each server in order until a successful download occurs.
+Example: https://automate.domain.com
+The function tries each server in order until a successful download occurs.
 
 ```yaml
 Type: String[]
@@ -207,6 +217,23 @@ Aliases: Password
 Required: False
 Position: Named
 Default value: None
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### -ShowProgress
+Displays a Write-Progress bar showing installation progress.
+Off by default
+to avoid interference with unattended execution (RMM tools, GPO scripts).
+
+```yaml
+Type: SwitchParameter
+Parameter Sets: (All)
+Aliases:
+
+Required: False
+Position: Named
+Default value: False
 Accept pipeline input: False
 Accept wildcard characters: False
 ```
@@ -255,7 +282,7 @@ Aliases:
 
 Required: False
 Position: Named
-Default value: None
+Default value: 0
 Accept pipeline input: True (ByPropertyName)
 Accept wildcard characters: False
 ```
@@ -270,7 +297,7 @@ Aliases: cf
 
 Required: False
 Position: Named
-Default value: False
+Default value: None
 Accept pipeline input: False
 Accept wildcard characters: False
 ```
@@ -286,7 +313,7 @@ Aliases: wi
 
 Required: False
 Position: Named
-Default value: False
+Default value: None
 Accept pipeline input: False
 Accept wildcard characters: False
 ```
@@ -296,13 +323,13 @@ This cmdlet supports the common parameters: -Debug, -ErrorAction, -ErrorVariable
 
 ## INPUTS
 
-### System.String[]
-### System.String
-### System.Int32
 ## OUTPUTS
 
-### System.Object
 ## NOTES
-Author: Chris Taylor Alias: Install-LTService
+Author: Chris Taylor
+Alias: Install-LTService
 
 ## RELATED LINKS
+
+[https://github.com/christaylorcodes/ConnectWiseAutomateAgent](https://github.com/christaylorcodes/ConnectWiseAutomateAgent)
+

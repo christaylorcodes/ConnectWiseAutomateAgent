@@ -26,15 +26,7 @@ function Restart-CWAA {
     }
 
     Process {
-        if (-not (Get-Service 'LTService', 'LTSvcMon' -ErrorAction SilentlyContinue)) {
-            if ($WhatIfPreference -ne $True) {
-                Write-Error "Services NOT Found."
-            }
-            else {
-                Write-Error "What If: Services NOT Found."
-            }
-            return
-        }
+        if (-not (Test-CWAAServiceExists -WriteErrorOnMissing)) { return }
         if ($PSCmdlet.ShouldProcess('LTService, LTSvcMon', 'Restart Service')) {
             Try {
                 Stop-CWAA

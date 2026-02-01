@@ -25,7 +25,7 @@ function ConvertTo-CWAASecurity {
     [CmdletBinding()]
     [Alias('ConvertTo-LTSecurity')]
     Param(
-        [parameter(Mandatory = $true, ValueFromPipeline = $false, ValueFromPipelineByPropertyName = $false)]
+        [parameter(Mandatory = $true, ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $false)]
         [AllowNull()]
         [AllowEmptyString()]
         [AllowEmptyCollection()]
@@ -38,8 +38,11 @@ function ConvertTo-CWAASecurity {
         $Key
     )
 
-    Process {
+    Begin {
         Write-Debug "Starting $($MyInvocation.InvocationName)"
+    }
+
+    Process {
         $_initializationVector = [byte[]](240, 3, 45, 29, 0, 76, 173, 59)
         $DefaultKey = 'Thank you for using LabTech.'
 

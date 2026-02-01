@@ -27,8 +27,11 @@ function Get-CWAALogLevel {
     [Alias('Get-LTLogging')]
     Param ()
 
-    Process {
+    Begin {
         Write-Debug "Starting $($MyInvocation.InvocationName)"
+    }
+
+    Process {
         Try {
             # "Debuging" is the vendor's original spelling in the registry -- not a typo in this code.
             $logLevel = Get-CWAASettings | Select-Object -Expand Debuging -EA 0

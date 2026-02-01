@@ -1,4 +1,4 @@
----
+﻿---
 external help file: ConnectWiseAutomateAgent-help.xml
 Module Name: ConnectWiseAutomateAgent
 online version: https://github.com/christaylorcodes/ConnectWiseAutomateAgent
@@ -13,8 +13,7 @@ Tests connectivity to a ConnectWise Automate server's agent endpoint.
 ## SYNTAX
 
 ```
-Test-CWAAServerConnectivity [[-Server] <String[]>] [-Quiet] [-ProgressAction <ActionPreference>]
- [<CommonParameters>]
+Test-CWAAServerConnectivity [[-Server] <String[]>] [-Quiet] [<CommonParameters>]
 ```
 
 ## DESCRIPTION
@@ -53,21 +52,6 @@ Get-CWAAInfo | Test-CWAAServerConnectivity
 Tests connectivity to the server configured on the installed agent via pipeline.
 
 ## PARAMETERS
-
-### -ProgressAction
-{{ Fill ProgressAction Description }}
-
-```yaml
-Type: ActionPreference
-Parameter Sets: (All)
-Aliases: proga
-
-Required: False
-Position: Named
-Default value: None
-Accept pipeline input: False
-Accept wildcard characters: False
-```
 
 ### -Quiet
 Returns $True if all servers are reachable, $False otherwise.

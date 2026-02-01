@@ -1,4 +1,4 @@
----
+﻿---
 external help file: ConnectWiseAutomateAgent-help.xml
 Module Name: ConnectWiseAutomateAgent
 online version: https://github.com/christaylorcodes/ConnectWiseAutomateAgent
@@ -13,7 +13,7 @@ Retrieves backed-up ConnectWise Automate agent configuration from the registry.
 ## SYNTAX
 
 ```
-Get-CWAAInfoBackup [-ProgressAction <ActionPreference>] [<CommonParameters>]
+Get-CWAAInfoBackup [<CommonParameters>]
 ```
 
 ## DESCRIPTION
@@ -42,21 +42,6 @@ Get-CWAAInfoBackup | Select-Object -ExpandProperty Server
 Returns only the server addresses from the backup configuration.
 
 ## PARAMETERS
-
-### -ProgressAction
-{{ Fill ProgressAction Description }}
-
-```yaml
-Type: ActionPreference
-Parameter Sets: (All)
-Aliases: proga
-
-Required: False
-Position: Named
-Default value: None
-Accept pipeline input: False
-Accept wildcard characters: False
-```
 
 ### CommonParameters
 This cmdlet supports the common parameters: -Debug, -ErrorAction, -ErrorVariable, -InformationAction, -InformationVariable, -OutVariable, -OutBuffer, -PipelineVariable, -Verbose, -WarningAction, and -WarningVariable. For more information, see [about_CommonParameters](http://go.microsoft.com/fwlink/?LinkID=113216).

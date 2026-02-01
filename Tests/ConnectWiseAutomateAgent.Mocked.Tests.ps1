@@ -2640,3 +2640,680 @@ Describe 'Resolve-CWAAServer' {
         }
     }
 }
+
+# =============================================================================
+# Wait-CWAACondition Tests
+# =============================================================================
+
+Describe 'Wait-CWAACondition' {
+
+    Context 'when condition is met immediately' {
+        It 'returns $true' {
+            $result = InModuleScope 'ConnectWiseAutomateAgent' {
+                $callCount = 0
+                Wait-CWAACondition -Condition {
+                    $script:callCount++
+                    $true
+                } -TimeoutSeconds 10 -IntervalSeconds 1
+            }
+            $result | Should -Be $true
+        }
+    }
+
+    Context 'when condition is met after initial failure' {
+        It 'returns $true after retrying' {
+            $result = InModuleScope 'ConnectWiseAutomateAgent' {
+                $script:waitTestCounter = 0
+                Wait-CWAACondition -Condition {
+                    $script:waitTestCounter++
+                    $script:waitTestCounter -ge 2
+                } -TimeoutSeconds 30 -IntervalSeconds 1
+            }
+            $result | Should -Be $true
+        }
+    }
+
+    Context 'when timeout is reached' {
+        It 'returns $false' {
+            $result = InModuleScope 'ConnectWiseAutomateAgent' {
+                Wait-CWAACondition -Condition { $false } -TimeoutSeconds 2 -IntervalSeconds 1
+            }
+            $result | Should -Be $false
+        }
+    }
+
+    Context 'parameter validation' {
+        It 'rejects TimeoutSeconds of 0' {
+            {
+                InModuleScope 'ConnectWiseAutomateAgent' {
+                    Wait-CWAACondition -Condition { $true } -TimeoutSeconds 0 -IntervalSeconds 1
+                }
+            } | Should -Throw
+        }
+
+        It 'rejects IntervalSeconds of 0' {
+            {
+                InModuleScope 'ConnectWiseAutomateAgent' {
+                    Wait-CWAACondition -Condition { $true } -TimeoutSeconds 10 -IntervalSeconds 0
+                }
+            } | Should -Throw
+        }
+    }
+}
+
+# =============================================================================
+# Test-CWAADotNetPrerequisite Tests
+# =============================================================================
+
+Describe 'Test-CWAADotNetPrerequisite' {
+
+    Context 'when -SkipDotNet is specified' {
+        It 'returns $true immediately without checking registry' {
+            $result = InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock Get-ChildItem {}
+                Test-CWAADotNetPrerequisite -SkipDotNet
+            }
+            $result | Should -Be $true
+        }
+    }
+
+    Context 'when .NET 3.5 is already installed' {
+        It 'returns $true' {
+            $result = InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock Get-ChildItem {
+                    [PSCustomObject]@{ PSChildName = 'Full' }
+                }
+                Mock Get-ItemProperty {
+                    [PSCustomObject]@{ Version = '3.5.30729'; Release = $null; PSChildName = 'Full' }
+                }
+                Test-CWAADotNetPrerequisite -Confirm:$false
+            }
+            $result | Should -Be $true
+        }
+    }
+
+    Context 'when .NET 3.5 is missing and -Force allows .NET 2.0+' {
+        It 'returns $true with a non-terminating error when .NET 4.x is present' {
+            $result = InModuleScope 'ConnectWiseAutomateAgent' {
+                # First call: initial check returns only 4.x
+                # Second call (after install attempt): still only 4.x
+                Mock Get-ChildItem {
+                    [PSCustomObject]@{ PSChildName = 'Full' }
+                }
+                Mock Get-ItemProperty {
+                    [PSCustomObject]@{ Version = '4.8.03761'; Release = 528040; PSChildName = 'Full' }
+                }
+                Mock Get-WindowsOptionalFeature { [PSCustomObject]@{ State = 'Disabled' } }
+                Mock Enable-WindowsOptionalFeature { [PSCustomObject]@{ RestartNeeded = $false; State = 'Enabled' } }
+                Test-CWAADotNetPrerequisite -Force -Confirm:$false -ErrorAction SilentlyContinue
+            }
+            $result | Should -Be $true
+        }
+    }
+
+    Context 'when .NET 3.5 is missing and no .NET 2.0+ with -Force' {
+        It 'throws a terminating error' {
+            {
+                InModuleScope 'ConnectWiseAutomateAgent' {
+                    Mock Get-ChildItem {
+                        [PSCustomObject]@{ PSChildName = 'Full' }
+                    }
+                    Mock Get-ItemProperty {
+                        [PSCustomObject]@{ Version = '1.1.4322'; Release = $null; PSChildName = 'Full' }
+                    }
+                    Mock Get-WindowsOptionalFeature { [PSCustomObject]@{ State = 'Disabled' } }
+                    Mock Enable-WindowsOptionalFeature { [PSCustomObject]@{ RestartNeeded = $false; State = 'Enabled' } }
+                    Test-CWAADotNetPrerequisite -Force -Confirm:$false -ErrorAction Stop
+                }
+            } | Should -Throw '*2.0*'
+        }
+    }
+
+    Context 'when .NET 3.5 is missing without -Force' {
+        It 'throws a terminating error' {
+            {
+                InModuleScope 'ConnectWiseAutomateAgent' {
+                    Mock Get-ChildItem {
+                        [PSCustomObject]@{ PSChildName = 'Full' }
+                    }
+                    Mock Get-ItemProperty {
+                        [PSCustomObject]@{ Version = '4.8.03761'; Release = 528040; PSChildName = 'Full' }
+                    }
+                    Mock Get-WindowsOptionalFeature { [PSCustomObject]@{ State = 'Disabled' } }
+                    Mock Enable-WindowsOptionalFeature { [PSCustomObject]@{ RestartNeeded = $false; State = 'Enabled' } }
+                    Test-CWAADotNetPrerequisite -Confirm:$false -ErrorAction Stop
+                }
+            } | Should -Throw '*3.5*'
+        }
+    }
+}
+
+# =============================================================================
+# Invoke-CWAAMsiInstaller Tests
+# =============================================================================
+
+Describe 'Invoke-CWAAMsiInstaller' {
+
+    Context 'when service starts on first attempt' {
+        It 'returns $true' {
+            $result = InModuleScope 'ConnectWiseAutomateAgent' {
+                $script:msiCallCount = 0
+                Mock Start-Process {
+                    $script:msiCallCount++
+                }
+                Mock Start-Sleep {}
+                # First call returns 0 (pre-install check), second call returns 1 (post-install)
+                $script:getServiceCallCount = 0
+                Mock Get-Service {
+                    $script:getServiceCallCount++
+                    if ($script:getServiceCallCount -ge 2) {
+                        [PSCustomObject]@{ Name = 'LTService'; Status = 'Running' }
+                    }
+                }
+                Invoke-CWAAMsiInstaller -InstallerArguments '/i "test.msi" /qn' -Confirm:$false
+            }
+            $result | Should -Be $true
+        }
+    }
+
+    Context 'when service starts on retry' {
+        It 'returns $true after retrying' {
+            $result = InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock Start-Process {}
+                Mock Start-Sleep {}
+                Mock Wait-CWAACondition { $false }
+                # Service not present for first 4 calls (2 attempts x 2 checks each), then present
+                $script:svcCounter = 0
+                Mock Get-Service {
+                    $script:svcCounter++
+                    if ($script:svcCounter -ge 5) {
+                        [PSCustomObject]@{ Name = 'LTService'; Status = 'Running' }
+                    }
+                }
+                Invoke-CWAAMsiInstaller -InstallerArguments '/i "test.msi" /qn' -MaxAttempts 3 -RetryDelaySeconds 1 -Confirm:$false
+            }
+            $result | Should -Be $true
+        }
+    }
+
+    Context 'when service never starts' {
+        It 'returns $false after max attempts' {
+            $result = InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock Start-Process {}
+                Mock Start-Sleep {}
+                Mock Wait-CWAACondition { $false }
+                Mock Get-Service {}
+                Invoke-CWAAMsiInstaller -InstallerArguments '/i "test.msi" /qn' -MaxAttempts 2 -RetryDelaySeconds 1 -Confirm:$false -ErrorAction SilentlyContinue
+            }
+            $result | Should -Be $false
+        }
+    }
+
+    Context 'when -WhatIf is specified' {
+        It 'returns $true without calling Start-Process' {
+            $result = InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock Start-Process {}
+                Invoke-CWAAMsiInstaller -InstallerArguments '/i "test.msi" /qn' -WhatIf
+            }
+            $result | Should -Be $true
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                Should -Invoke Start-Process -Times 0
+            }
+        }
+    }
+}
+
+# =============================================================================
+# Pipeline Support Tests
+# =============================================================================
+
+Describe 'Pipeline Support' {
+
+    Context 'ConvertTo-CWAASecurity pipeline input' {
+
+        It 'accepts a single string from pipeline' {
+            $result = InModuleScope 'ConnectWiseAutomateAgent' {
+                'TestValue' | ConvertTo-CWAASecurity
+            }
+            $result | Should -Not -BeNullOrEmpty
+        }
+
+        It 'accepts multiple strings from pipeline' {
+            $results = InModuleScope 'ConnectWiseAutomateAgent' {
+                'Value1', 'Value2', 'Value3' | ConvertTo-CWAASecurity
+            }
+            $results | Should -HaveCount 3
+            $results[0] | Should -Not -Be $results[1]
+        }
+
+        It 'round-trips through pipeline with ConvertFrom-CWAASecurity' {
+            $result = InModuleScope 'ConnectWiseAutomateAgent' {
+                'PipelineRoundTrip' | ConvertTo-CWAASecurity | ConvertFrom-CWAASecurity
+            }
+            $result | Should -Be 'PipelineRoundTrip'
+        }
+
+        It 'round-trips multiple values through pipeline' {
+            $results = InModuleScope 'ConnectWiseAutomateAgent' {
+                'Alpha', 'Bravo', 'Charlie' | ConvertTo-CWAASecurity | ConvertFrom-CWAASecurity
+            }
+            $results | Should -HaveCount 3
+            $results[0] | Should -Be 'Alpha'
+            $results[1] | Should -Be 'Bravo'
+            $results[2] | Should -Be 'Charlie'
+        }
+    }
+
+    Context 'Rename-CWAAAddRemove pipeline input' {
+
+        It 'accepts Name from pipeline' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock Get-ItemProperty { [PSCustomObject]@{ DisplayName = 'LabTech' } } -ParameterFilter { $Name -eq 'DisplayName' }
+                Mock Get-ItemProperty { return $null } -ParameterFilter { $Name -eq 'HiddenProductName' }
+                Mock Get-ItemProperty { return $null } -ParameterFilter { $Name -eq 'Publisher' }
+                Mock Set-ItemProperty {}
+
+                'Piped Agent Name' | Rename-CWAAAddRemove -Confirm:$false
+
+                Should -Invoke Set-ItemProperty -Scope It -ParameterFilter { $Name -eq 'DisplayName' -and $Value -eq 'Piped Agent Name' }
+            }
+        }
+    }
+
+    Context 'Repair-CWAA Server ValueFromPipelineByPropertyName' {
+
+        It 'accepts Server and LocationID from piped object' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock Get-Service { [PSCustomObject]@{ Status = 'Running'; Name = 'LTService' } }
+                Mock Get-CWAAInfo {
+                    [PSCustomObject]@{
+                        Server              = 'https://automate.example.com'
+                        LastSuccessStatus   = (Get-Date).ToString()
+                        HeartbeatLastSent   = (Get-Date).ToString()
+                        HeartbeatLastReceived = (Get-Date).ToString()
+                    }
+                }
+                Mock Write-CWAAEventLog {}
+                Mock Get-CimInstance { return @() }
+
+                # Pipe an object with Server and LocationID — bind via ValueFromPipelineByPropertyName
+                # InstallerToken is provided explicitly (it wouldn't come from Get-CWAAInfo output)
+                $inputObject = [PSCustomObject]@{
+                    Server     = 'https://automate.example.com'
+                    LocationID = 1
+                }
+                $result = $inputObject | Repair-CWAA -InstallerToken 'abc123' -Confirm:$false -WarningAction SilentlyContinue
+                $result | Should -Not -BeNullOrEmpty
+                $result.ActionTaken | Should -Be 'None'
+            }
+        }
+    }
+
+    Context 'Invoke-CWAACommand multiple values from pipeline' {
+
+        It 'processes multiple commands piped as an array' {
+            $result = InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock Get-Service { [PSCustomObject]@{ Name = 'LTService'; Status = 'Running' } }
+                'Send Inventory', 'Send Apps' | Invoke-CWAACommand -Confirm:$false
+            }
+            ($result | Measure-Object).Count | Should -Be 2
+            $result[0] | Should -Match 'Send Inventory'
+            $result[1] | Should -Match 'Send Apps'
+        }
+    }
+
+    Context 'Set-CWAALogLevel pipeline input' {
+
+        It 'accepts Level from pipeline' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock Stop-CWAA {}
+                Mock Start-CWAA {}
+                Mock Set-ItemProperty {}
+                Mock Get-CWAALogLevel { 'Current logging level: Verbose' }
+
+                'Verbose' | Set-CWAALogLevel -Confirm:$false
+
+                Should -Invoke Set-ItemProperty -Scope It -ParameterFilter { $Name -eq 'Debuging' -and $Value -eq 1000 }
+            }
+        }
+    }
+
+    Context 'Test-CWAAServerConnectivity property-based pipeline' {
+
+        It 'accepts Server from piped PSCustomObject' {
+            $result = InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock Invoke-RestMethod { return '||||||220.105' }
+
+                [PSCustomObject]@{ Server = 'automate.example.com' } | Test-CWAAServerConnectivity
+            }
+            $result.Available | Should -BeTrue
+            $result.Version | Should -Be '220.105'
+        }
+    }
+
+    Context 'Test-CWAAHealth property-based pipeline' {
+
+        It 'accepts Server from piped PSCustomObject' {
+            $result = InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock Get-Service {
+                    param($Name)
+                    [PSCustomObject]@{ Name = $Name; Status = 'Running' }
+                }
+                Mock Get-CWAAInfo {
+                    [PSCustomObject]@{
+                        Server            = @('automate.example.com')
+                        LastSuccessStatus = (Get-Date).AddMinutes(-30).ToString()
+                        HeartbeatLastSent = (Get-Date).AddMinutes(-15).ToString()
+                    }
+                }
+
+                [PSCustomObject]@{ Server = 'automate.example.com' } | Test-CWAAHealth
+            }
+            $result.AgentInstalled | Should -BeTrue
+            $result.Healthy | Should -BeTrue
+        }
+    }
+
+    Context 'Test-CWAAPort property-based pipeline' {
+
+        It 'accepts Server and TrayPort from piped PSCustomObject' {
+            $result = InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock Get-CWAAInfo { [PSCustomObject]@{ TrayPort = '42000' } }
+                Mock Invoke-Expression { return $null }
+                function netstat { return @() }
+
+                [PSCustomObject]@{ Server = 'automate.example.com'; TrayPort = 42000 } | Test-CWAAPort -Quiet
+            }
+            $result | Should -BeTrue
+        }
+    }
+
+    Context 'Multi-server array pipeline binding' {
+
+        It 'Test-CWAAHealth accepts Server as string[] from pipeline and matches correctly' {
+            $result = InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock Get-Service {
+                    param($Name)
+                    [PSCustomObject]@{ Name = $Name; Status = 'Running' }
+                }
+                Mock Get-CWAAInfo {
+                    [PSCustomObject]@{
+                        Server            = @('primary.example.com', 'backup.example.com')
+                        LastSuccessStatus = (Get-Date).AddMinutes(-30).ToString()
+                        HeartbeatLastSent = (Get-Date).AddMinutes(-15).ToString()
+                    }
+                }
+
+                # Pipe an object with Server as a multi-element array (matching Get-CWAAInfo output)
+                [PSCustomObject]@{ Server = @('primary.example.com', 'backup.example.com') } | Test-CWAAHealth
+            }
+            $result.Healthy | Should -BeTrue
+            $result.ServerMatch | Should -BeTrue
+        }
+
+        It 'Test-CWAAServerConnectivity accepts Server as string[] from pipeline' {
+            $result = InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock Invoke-RestMethod { return '||||||220.105' }
+
+                [PSCustomObject]@{ Server = @('primary.example.com', 'backup.example.com') } | Test-CWAAServerConnectivity
+            }
+            # Should return results for both servers
+            ($result | Measure-Object).Count | Should -Be 2
+        }
+
+        It 'Register-CWAAHealthCheckTask accepts Server as string[] and builds valid command' {
+            $result = InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock schtasks { return $null }
+                Mock New-CWAABackup {}
+
+                [PSCustomObject]@{
+                    Server     = @('primary.example.com', 'backup.example.com')
+                    LocationID = 42
+                } | Register-CWAAHealthCheckTask -InstallerToken 'abc123' -Confirm:$false
+            }
+            $result | Should -Not -BeNullOrEmpty
+            $result.Created | Should -BeTrue
+        }
+    }
+}
+
+# =============================================================================
+# Credential Hardening Tests
+# =============================================================================
+
+Describe 'PSCredential Parameter Support' {
+
+    Context 'Install-CWAA Credential parameter' {
+
+        It 'has a Credential parameter of type PSCredential' {
+            $cmd = Get-Command Install-CWAA
+            $param = $cmd.Parameters['Credential']
+            $param | Should -Not -BeNullOrEmpty
+            $param.ParameterType.Name | Should -Be 'PSCredential'
+        }
+
+        It 'Credential parameter is in the deployment parameter set' {
+            $cmd = Get-Command Install-CWAA
+            $param = $cmd.Parameters['Credential']
+            $param.ParameterSets.Keys | Should -Contain 'deployment'
+        }
+    }
+
+    Context 'Set-CWAAProxy ProxyCredential parameter' {
+
+        It 'has a ProxyCredential parameter of type PSCredential' {
+            $cmd = Get-Command Set-CWAAProxy
+            $param = $cmd.Parameters['ProxyCredential']
+            $param | Should -Not -BeNullOrEmpty
+            $param.ParameterType.Name | Should -Be 'PSCredential'
+        }
+    }
+}
+
+# =============================================================================
+# Phase 1+2 Constants and Helpers
+# =============================================================================
+
+Describe 'Initialize-CWAA constants (Phase 1)' {
+
+    Context 'version threshold constants' {
+
+        It 'defines CWAAVersionZipInstaller' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                $Script:CWAAVersionZipInstaller | Should -Be '240.331'
+            }
+        }
+
+        It 'defines CWAAVersionAnonymousChange' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                $Script:CWAAVersionAnonymousChange | Should -Be '110.374'
+            }
+        }
+
+        It 'defines CWAAVersionVulnerabilityFix' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                $Script:CWAAVersionVulnerabilityFix | Should -Be '200.197'
+            }
+        }
+
+        It 'defines CWAAVersionUpdateMinimum' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                $Script:CWAAVersionUpdateMinimum | Should -Be '105.001'
+            }
+        }
+    }
+
+    Context 'service and process name constants' {
+
+        It 'defines CWAAAgentProcessNames with 3 entries' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                $Script:CWAAAgentProcessNames | Should -HaveCount 3
+                $Script:CWAAAgentProcessNames | Should -Contain 'LTTray'
+                $Script:CWAAAgentProcessNames | Should -Contain 'LTSVC'
+                $Script:CWAAAgentProcessNames | Should -Contain 'LTSvcMon'
+            }
+        }
+
+        It 'defines CWAAAllServiceNames with 3 entries including LabVNC' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                $Script:CWAAAllServiceNames | Should -HaveCount 3
+                $Script:CWAAAllServiceNames | Should -Contain 'LTService'
+                $Script:CWAAAllServiceNames | Should -Contain 'LTSvcMon'
+                $Script:CWAAAllServiceNames | Should -Contain 'LabVNC'
+            }
+        }
+    }
+
+    Context 'timeout constants' {
+
+        It 'defines CWAAServiceWaitTimeoutSec as 60' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                $Script:CWAAServiceWaitTimeoutSec | Should -Be 60
+            }
+        }
+
+        It 'defines CWAARedoSettleDelaySeconds as 20' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                $Script:CWAARedoSettleDelaySeconds | Should -Be 20
+            }
+        }
+    }
+}
+
+Describe 'Test-CWAAServiceExists' {
+
+    Context 'when services exist' {
+
+        It 'returns $true' {
+            $result = InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock Get-Service {
+                    [PSCustomObject]@{ Name = 'LTService'; Status = 'Running' }
+                }
+                Test-CWAAServiceExists
+            }
+            $result | Should -Be $true
+        }
+
+        It 'does not write an error' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock Get-Service {
+                    [PSCustomObject]@{ Name = 'LTService'; Status = 'Running' }
+                }
+                $err = $null
+                $null = Test-CWAAServiceExists -WriteErrorOnMissing -ErrorVariable err -ErrorAction SilentlyContinue
+                $err | Should -BeNullOrEmpty
+            }
+        }
+    }
+
+    Context 'when services do not exist' {
+
+        It 'returns $false' {
+            $result = InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock Get-Service {}
+                Test-CWAAServiceExists
+            }
+            $result | Should -Be $false
+        }
+
+        It 'does not write error without -WriteErrorOnMissing' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock Get-Service {}
+                $err = $null
+                $null = Test-CWAAServiceExists -ErrorVariable err -ErrorAction SilentlyContinue
+                $err | Should -BeNullOrEmpty
+            }
+        }
+
+        It 'writes error with -WriteErrorOnMissing' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock Get-Service {}
+                $err = $null
+                $null = Test-CWAAServiceExists -WriteErrorOnMissing -ErrorVariable err -ErrorAction SilentlyContinue
+                $err | Should -Not -BeNullOrEmpty
+                "$err" | Should -Match 'Services NOT Found'
+            }
+        }
+
+        It 'writes WhatIf-prefixed error when WhatIfPreference is true' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock Get-Service {}
+                $WhatIfPreference = $true
+                $err = $null
+                $null = Test-CWAAServiceExists -WriteErrorOnMissing -ErrorVariable err -ErrorAction SilentlyContinue
+                "$err" | Should -Match 'What If.*Services NOT Found'
+            }
+        }
+    }
+}
+
+Describe 'Assert-CWAANotProbeAgent' {
+
+    Context 'when ServiceInfo is null' {
+
+        It 'does not throw' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                { Assert-CWAANotProbeAgent -ServiceInfo $null -ActionName 'Test' } | Should -Not -Throw
+            }
+        }
+    }
+
+    Context 'when agent is not a probe' {
+
+        It 'does not throw' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                $info = [PSCustomObject]@{ Probe = '0' }
+                { Assert-CWAANotProbeAgent -ServiceInfo $info -ActionName 'Test' } | Should -Not -Throw
+            }
+        }
+    }
+
+    Context 'when agent is a probe without -Force' {
+
+        It 'throws with action name in message' {
+            {
+                InModuleScope 'ConnectWiseAutomateAgent' {
+                    $info = [PSCustomObject]@{ Probe = '1' }
+                    Assert-CWAANotProbeAgent -ServiceInfo $info -ActionName 'UnInstall'
+                }
+            } | Should -Throw '*Probe Agent Detected*UnInstall Denied*'
+        }
+
+        It 'uses Reset action name' {
+            {
+                InModuleScope 'ConnectWiseAutomateAgent' {
+                    $info = [PSCustomObject]@{ Probe = '1' }
+                    Assert-CWAANotProbeAgent -ServiceInfo $info -ActionName 'Reset'
+                }
+            } | Should -Throw '*Reset Denied*'
+        }
+    }
+
+    Context 'when agent is a probe with -Force' {
+
+        It 'does not throw' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                $info = [PSCustomObject]@{ Probe = '1' }
+                { Assert-CWAANotProbeAgent -ServiceInfo $info -ActionName 'UnInstall' -Force } | Should -Not -Throw
+            }
+        }
+
+        It 'writes Forced output message' {
+            $result = InModuleScope 'ConnectWiseAutomateAgent' {
+                $info = [PSCustomObject]@{ Probe = '1' }
+                Assert-CWAANotProbeAgent -ServiceInfo $info -ActionName 'Re-Install' -Force
+            }
+            $result | Should -Match 'Probe Agent Detected.*Re-Install Forced'
+        }
+    }
+
+    Context 'when ServiceInfo has no Probe property' {
+
+        It 'does not throw' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                $info = [PSCustomObject]@{ Server = 'test.com' }
+                { Assert-CWAANotProbeAgent -ServiceInfo $info -ActionName 'Test' } | Should -Not -Throw
+            }
+        }
+    }
+}

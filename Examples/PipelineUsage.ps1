@@ -181,3 +181,56 @@ catch {
 #         Match    = $current.$_ -eq $backup.$_
 #     }
 # } | Format-Table -AutoSize
+
+# --- Example 10: Encrypt Multiple Values via Pipeline -------------------------
+#
+# ConvertTo-CWAASecurity accepts pipeline input, so you can encrypt an array
+# of strings in one expression. ConvertFrom-CWAASecurity also supports pipeline,
+# enabling a full round-trip chain.
+
+# 'Password1', 'Secret2', 'Token3' | ConvertTo-CWAASecurity
+#
+# # Round-trip: encrypt then decrypt in a single pipeline
+# 'Password1', 'Secret2', 'Token3' | ConvertTo-CWAASecurity | ConvertFrom-CWAASecurity
+
+# --- Example 11: Pipe Agent Info to Repair ------------------------------------
+#
+# Get-CWAAInfo returns an object with a Server property. Repair-CWAA accepts
+# Server via ValueFromPipelineByPropertyName, enabling direct piping.
+
+# Get-CWAAInfo | Repair-CWAA -InstallerToken 'abc123def456' -LocationID 42
+
+# --- Example 12: Rename Agent from Pipeline -----------------------------------
+#
+# Rename-CWAAAddRemove accepts the Name parameter from pipeline input.
+
+# 'My Managed Agent' | Rename-CWAAAddRemove
+
+# --- Example 13: Test Server Connectivity from Agent Config -------------------
+#
+# Test-CWAAServerConnectivity accepts Server via ValueFromPipelineByPropertyName.
+# Pipe the installed agent's info to verify its configured server is reachable.
+
+# Get-CWAAInfo | Test-CWAAServerConnectivity
+
+# --- Example 14: Test Required Ports from Agent Config ------------------------
+#
+# Test-CWAAPort accepts Server and TrayPort via ValueFromPipelineByPropertyName.
+# Pipe agent info to test all required ports using the agent's own configuration.
+
+# Get-CWAAInfo | Test-CWAAPort
+
+# --- Example 15: Set Log Level from Pipeline -----------------------------------
+#
+# Set-CWAALogLevel accepts Level via ValueFromPipeline.
+# Useful for scripted toggle or conditional log level changes.
+
+# 'Verbose' | Set-CWAALogLevel
+
+# --- Example 16: Register Health Check from Agent Config ----------------------
+#
+# Register-CWAAHealthCheckTask accepts Server and LocationID via
+# ValueFromPipelineByPropertyName. Pipe agent info to register a health check
+# task using the agent's current server and location.
+
+# Get-CWAAInfo | Register-CWAAHealthCheckTask -InstallerToken 'abc123def456'

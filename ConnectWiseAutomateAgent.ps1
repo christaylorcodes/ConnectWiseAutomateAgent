@@ -1,7 +1,67 @@
 ﻿# ConnectWiseAutomateAgent 1.0.0-alpha001
-# Single-file distribution - built 2026-01-31
+# Single-file distribution - built 2026-02-01
 # https://github.com/christaylorcodes/ConnectWiseAutomateAgent
 
+function Assert-CWAANotProbeAgent {
+    <#
+    .SYNOPSIS
+        Blocks operations on probe agents unless -Force is specified.
+    .DESCRIPTION
+        Checks the agent info object to determine if the current machine is a probe agent.
+        If it is and -Force is not set, writes a terminating error to prevent accidental
+        removal of critical infrastructure. If -Force is set, writes a warning message and
+        allows continuation.
+        The ActionName parameter produces contextual messages like
+        "Probe Agent Detected. UnInstall Denied." or "Probe Agent Detected. Reset Forced."
+        This consolidates the duplicated probe agent protection check found in
+        Uninstall-CWAA, Redo-CWAA, and Reset-CWAA.
+    .PARAMETER ServiceInfo
+        The agent info object from Get-CWAAInfo. If null or missing the Probe property,
+        the check is skipped silently.
+    .PARAMETER ActionName
+        The name of the operation for error/output messages. Used directly in the message
+        string, e.g., 'UnInstall', 'Re-Install', 'Reset'.
+    .PARAMETER Force
+        When set, allows the operation to proceed on a probe agent with an output message
+        instead of a terminating error.
+    .NOTES
+        Version: 1.0.0
+        Author: Chris Taylor
+        Private function - not exported.
+    .LINK
+        https://github.com/christaylorcodes/ConnectWiseAutomateAgent
+    #>
+    [CmdletBinding()]
+    Param(
+        [Parameter()]
+        [AllowNull()]
+        $ServiceInfo,
+        [Parameter(Mandatory = $True)]
+        [string]$ActionName,
+        [switch]$Force
+    )
+    Begin {
+        Write-Debug "Starting $($MyInvocation.InvocationName)"
+    }
+    Process {
+        if ($ServiceInfo -and ($ServiceInfo | Select-Object -Expand Probe -EA 0) -eq '1') {
+            if ($Force) {
+                Write-Output "Probe Agent Detected. $ActionName Forced."
+            }
+            else {
+                if ($WhatIfPreference -ne $True) {
+                    Write-Error -Exception ([System.OperationCanceledException]"Probe Agent Detected. $ActionName Denied.") -ErrorAction Stop
+                }
+                else {
+                    Write-Error -Exception ([System.OperationCanceledException]"What If: Probe Agent Detected. $ActionName Denied.") -ErrorAction Stop
+                }
+            }
+        }
+    }
+    End {
+        Write-Debug "Exiting $($MyInvocation.InvocationName)"
+    }
+}
 function Clear-CWAAInstallerArtifacts {
     <#
     .SYNOPSIS
@@ -39,6 +99,73 @@ function Clear-CWAAInstallerArtifacts {
         Write-Debug "Exiting $($MyInvocation.InvocationName)"
     }
 }
+function Invoke-CWAAMsiInstaller {
+    <#
+    .SYNOPSIS
+        Executes the Automate agent MSI installer with retry logic.
+    .DESCRIPTION
+        Launches msiexec.exe with the provided arguments and retries up to a configurable
+        number of attempts if the LTService service is not detected after installation.
+        Between retries, polls for the service using Wait-CWAACondition. Redacts server
+        passwords from verbose output for security.
+    .PARAMETER InstallerArguments
+        The full argument string to pass to msiexec.exe (e.g., '/i "path\Agent_Install.msi" SERVERADDRESS=... /qn').
+    .PARAMETER MaxAttempts
+        Maximum number of install attempts before giving up. Defaults to $Script:CWAAInstallMaxAttempts.
+    .PARAMETER RetryDelaySeconds
+        Seconds to wait (polling for service) between retry attempts. Defaults to $Script:CWAAInstallRetryDelaySeconds.
+    .NOTES
+        Version: 1.0.0
+        Author: Chris Taylor
+        Private function - not exported.
+    .LINK
+        https://github.com/christaylorcodes/ConnectWiseAutomateAgent
+    #>
+    [CmdletBinding(SupportsShouldProcess = $True)]
+    Param(
+        [Parameter(Mandatory = $True)]
+        [string]$InstallerArguments,
+        [Parameter()]
+        [int]$MaxAttempts = $Script:CWAAInstallMaxAttempts,
+        [Parameter()]
+        [int]$RetryDelaySeconds = $Script:CWAAInstallRetryDelaySeconds
+    )
+    Begin {
+        Write-Debug "Starting $($MyInvocation.InvocationName)"
+    }
+    Process {
+        if (-not $PSCmdlet.ShouldProcess("msiexec.exe $InstallerArguments", 'Execute Install')) {
+            return $true
+        }
+        $installAttempt = 0
+        Do {
+            if ($installAttempt -gt 0) {
+                Write-Warning "Service Failed to Install. Retrying in $RetryDelaySeconds seconds." -WarningAction 'Continue'
+                $Null = Wait-CWAACondition -Condition {
+                    $serviceCount = ('LTService') | Get-Service -EA 0 | Measure-Object | Select-Object -Expand Count
+                    $serviceCount -eq 1
+                } -TimeoutSeconds $RetryDelaySeconds -IntervalSeconds 5 -Activity 'Waiting for service availability before retry'
+            }
+            $installAttempt++
+            $runningServiceCount = ('LTService') | Get-Service -EA 0 | Measure-Object | Select-Object -Expand Count
+            if ($runningServiceCount -eq 0) {
+                $redactedArguments = $InstallerArguments -replace 'SERVERPASS="[^"]*"', 'SERVERPASS="REDACTED"'
+                Write-Verbose "Launching Installation Process: msiexec.exe $redactedArguments"
+                Start-Process -Wait -FilePath "${env:windir}\system32\msiexec.exe" -ArgumentList $InstallerArguments -WorkingDirectory $env:TEMP
+                Start-Sleep 5
+            }
+            $runningServiceCount = ('LTService') | Get-Service -EA 0 | Measure-Object | Select-Object -Expand Count
+        } Until ($installAttempt -ge $MaxAttempts -or $runningServiceCount -eq 1)
+        if ($runningServiceCount -eq 0) {
+            Write-Error "LTService was not installed. Installation failed after $MaxAttempts attempts."
+            return $false
+        }
+        return $true
+    }
+    End {
+        Write-Debug "Exiting $($MyInvocation.InvocationName)"
+    }
+}
 function Remove-CWAAFolderRecursive {
     <#
     .SYNOPSIS
@@ -61,7 +188,8 @@ function Remove-CWAAFolderRecursive {
     [CmdletBinding(SupportsShouldProcess = $True)]
     Param(
         [Parameter(Mandatory = $True)]
-        [string]$Path
+        [string]$Path,
+        [switch]$ShowProgress
     )
     Begin {
         Write-Debug "Starting $($MyInvocation.InvocationName)"
@@ -73,8 +201,11 @@ function Remove-CWAAFolderRecursive {
         }
         if ($PSCmdlet.ShouldProcess($Path, 'Remove Folder')) {
             Write-Debug "Removing Folder: $Path"
+            $folderProgressId = 10
+            $folderProgressActivity = "Removing folder: $Path"
             Try {
                 # Pass 1: Remove files inside each subfolder (leaves first)
+                if ($ShowProgress) { Write-Progress -Id $folderProgressId -Activity $folderProgressActivity -Status 'Removing files (pass 1 of 3)' -PercentComplete 33 }
                 Get-ChildItem -Path $Path -Recurse -Force -ErrorAction SilentlyContinue |
                     Where-Object { $_.psiscontainer } |
                     ForEach-Object {
@@ -83,14 +214,18 @@ function Remove-CWAAFolderRecursive {
                             Remove-Item -Force -ErrorAction SilentlyContinue -Confirm:$False -WhatIf:$False
                     }
                 # Pass 2: Remove subfolders sorted by path depth (deepest first)
+                if ($ShowProgress) { Write-Progress -Id $folderProgressId -Activity $folderProgressActivity -Status 'Removing subfolders (pass 2 of 3)' -PercentComplete 66 }
                 Get-ChildItem -Path $Path -Recurse -Force -ErrorAction SilentlyContinue |
                     Where-Object { $_.psiscontainer } |
                     Sort-Object { $_.FullName.Length } -Descending |
                     Remove-Item -Force -ErrorAction SilentlyContinue -Recurse -Confirm:$False -WhatIf:$False
                 # Pass 3: Remove the root folder itself
+                if ($ShowProgress) { Write-Progress -Id $folderProgressId -Activity $folderProgressActivity -Status 'Removing root folder (pass 3 of 3)' -PercentComplete 100 }
                 Remove-Item -Recurse -Force -Path $Path -ErrorAction SilentlyContinue -Confirm:$False -WhatIf:$False
+                if ($ShowProgress) { Write-Progress -Id $folderProgressId -Activity $folderProgressActivity -Completed }
             }
             Catch {
+                if ($ShowProgress) { Write-Progress -Id $folderProgressId -Activity $folderProgressActivity -Completed }
                 Write-Debug "Error removing folder '$Path': $($_.Exception.Message)"
             }
         }
@@ -174,6 +309,110 @@ function Resolve-CWAAServer {
         Write-Debug "Exiting $($MyInvocation.InvocationName)"
     }
 }
+function Test-CWAADotNetPrerequisite {
+    <#
+    .SYNOPSIS
+        Checks for and optionally installs the .NET Framework 3.5 prerequisite.
+    .DESCRIPTION
+        Verifies that .NET Framework 3.5 is installed, which is required by the ConnectWise
+        Automate agent. If 3.5 is missing, attempts automatic installation via
+        Enable-WindowsOptionalFeature (Windows 8+) or Dism.exe (Windows 7/Server 2008 R2).
+        With -Force, allows the agent install to proceed if .NET 2.0 or higher is present
+        even when 3.5 cannot be installed. Without -Force, a missing 3.5 is a terminating error.
+    .PARAMETER SkipDotNet
+        Skips the .NET Framework check entirely. Returns $true immediately.
+    .PARAMETER Force
+        Allows fallback to .NET 2.0+ if 3.5 cannot be installed.
+        Without -Force, missing 3.5 is a terminating error.
+    .NOTES
+        Version: 1.0.0
+        Author: Chris Taylor
+        Private function - not exported.
+    .LINK
+        https://github.com/christaylorcodes/ConnectWiseAutomateAgent
+    #>
+    [CmdletBinding(SupportsShouldProcess = $True)]
+    Param(
+        [switch]$SkipDotNet,
+        [switch]$Force
+    )
+    Begin {
+        Write-Debug "Starting $($MyInvocation.InvocationName)"
+    }
+    Process {
+        if ($SkipDotNet) {
+            Write-Debug 'SkipDotNet specified, skipping .NET prerequisite check.'
+            return $true
+        }
+        $DotNET = Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP' -Recurse -EA 0 | Get-ItemProperty -Name Version, Release -EA 0 | Where-Object { $_.PSChildName -match '^(?!S)\p{L}' } | Select-Object -ExpandProperty Version -EA 0
+        if ($DotNet -like '3.5.*') {
+            Write-Debug '.NET Framework 3.5 is already installed.'
+            return $true
+        }
+        Write-Warning '.NET Framework 3.5 installation needed.'
+        $OSVersion = [System.Environment]::OSVersion.Version
+        if ([version]$OSVersion -gt [version]'6.2') {
+            # Windows 8 / Server 2012 and later -- use Enable-WindowsOptionalFeature
+            Try {
+                if ($PSCmdlet.ShouldProcess('NetFx3', 'Enable-WindowsOptionalFeature')) {
+                    $Install = Get-WindowsOptionalFeature -Online -FeatureName 'NetFx3'
+                    if ($Install.State -ne 'EnablePending') {
+                        $Install = Enable-WindowsOptionalFeature -Online -FeatureName 'NetFx3' -All -NoRestart
+                    }
+                    if ($Install.RestartNeeded -or $Install.State -eq 'EnablePending') {
+                        Write-Warning '.NET Framework 3.5 installed but a reboot is needed.'
+                    }
+                }
+            }
+            Catch {
+                Write-Error ".NET 3.5 install failed." -ErrorAction Continue
+                if (-not $Force) { Write-Error $Install -ErrorAction Stop }
+            }
+        }
+        Elseif ([version]$OSVersion -gt [version]'6.1') {
+            # Windows 7 / Server 2008 R2 -- use Dism.exe
+            if ($PSCmdlet.ShouldProcess('NetFx3', 'Add Windows Feature')) {
+                Try { $Result = & "${env:windir}\system32\Dism.exe" /English /NoRestart /Online /Enable-Feature /FeatureName:NetFx3 2>'' }
+                Catch { Write-Warning 'Error calling Dism.exe.'; $Result = $Null }
+                Try { $Result = & "${env:windir}\system32\Dism.exe" /English /Online /Get-FeatureInfo /FeatureName:NetFx3 2>'' }
+                Catch { Write-Warning 'Error calling Dism.exe.'; $Result = $Null }
+                if ($Result -contains 'State : Enabled') {
+                    Write-Warning ".Net Framework 3.5 has been installed and enabled."
+                }
+                Elseif ($Result -contains 'State : Enable Pending') {
+                    Write-Warning ".Net Framework 3.5 installed but a reboot is needed."
+                }
+                else {
+                    Write-Error ".NET Framework 3.5 install failed." -ErrorAction Continue
+                    if (-not $Force) { Write-Error $Result -ErrorAction Stop }
+                }
+            }
+        }
+        # Re-check after install attempt
+        $DotNET = Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP' -Recurse | Get-ItemProperty -Name Version -EA 0 | Where-Object { $_.PSChildName -match '^(?!S)\p{L}' } | Select-Object -ExpandProperty Version
+        if ($DotNet -like '3.5.*') {
+            return $true
+        }
+        # .NET 3.5 still not available after install attempt
+        if ($Force) {
+            if ($DotNet -match '(?m)^[2-4].\d') {
+                Write-Error ".NET 3.5 is not detected and could not be installed." -ErrorAction Continue
+                return $true
+            }
+            else {
+                Write-Error ".NET 2.0 or greater is not detected and could not be installed." -ErrorAction Stop
+                return $false
+            }
+        }
+        else {
+            Write-Error ".NET 3.5 is not detected and could not be installed." -ErrorAction Stop
+            return $false
+        }
+    }
+    End {
+        Write-Debug "Exiting $($MyInvocation.InvocationName)"
+    }
+}
 function Test-CWAADownloadIntegrity {
     <#
     .SYNOPSIS
@@ -219,6 +458,116 @@ function Test-CWAADownloadIntegrity {
         }
         Write-Debug "$FileName integrity check passed ($([math]::Round($fileSizeKB, 1)) KB >= $MinimumSizeKB KB)."
         return $true
+    }
+    End {
+        Write-Debug "Exiting $($MyInvocation.InvocationName)"
+    }
+}
+function Test-CWAAServiceExists {
+    <#
+    .SYNOPSIS
+        Tests whether the Automate agent services are installed on the local computer.
+    .DESCRIPTION
+        Checks for the existence of the LTService and LTSvcMon services using the
+        centralized $Script:CWAAServiceNames constant. Returns $true if at least one
+        service is found, $false otherwise.
+        When -WriteErrorOnMissing is specified, writes a WhatIf-aware error message
+        if the services are not found. This consolidates the duplicated service existence
+        check pattern found in Start-CWAA, Stop-CWAA, Restart-CWAA, and Reset-CWAA.
+    .PARAMETER WriteErrorOnMissing
+        When specified, writes a Write-Error message if the services are not found.
+        The error message is WhatIf-aware (includes 'What If:' prefix when
+        $WhatIfPreference is $true in the caller's scope).
+    .NOTES
+        Version: 1.0.0
+        Author: Chris Taylor
+        Private function - not exported.
+    .LINK
+        https://github.com/christaylorcodes/ConnectWiseAutomateAgent
+    #>
+    [CmdletBinding()]
+    Param(
+        [switch]$WriteErrorOnMissing
+    )
+    Begin {
+        Write-Debug "Starting $($MyInvocation.InvocationName)"
+    }
+    Process {
+        $services = Get-Service $Script:CWAAServiceNames -ErrorAction SilentlyContinue
+        if ($services) {
+            return $true
+        }
+        if ($WriteErrorOnMissing) {
+            if ($WhatIfPreference -ne $True) {
+                Write-Error "Services NOT Found."
+            }
+            else {
+                Write-Error "What If: Services NOT Found."
+            }
+        }
+        return $false
+    }
+    End {
+        Write-Debug "Exiting $($MyInvocation.InvocationName)"
+    }
+}
+function Wait-CWAACondition {
+    <#
+    .SYNOPSIS
+        Polls a condition script block until it returns $true or a timeout is reached.
+    .DESCRIPTION
+        Generic polling helper that evaluates a condition at regular intervals. Returns $true
+        if the condition was satisfied before the timeout, or $false if the timeout expired.
+        Used to replace duplicated stopwatch-based Do-Until polling loops throughout the module.
+    .PARAMETER Condition
+        A script block that is evaluated each interval. The loop exits when this returns $true.
+    .PARAMETER TimeoutSeconds
+        Maximum number of seconds to wait before giving up. Must be at least 1.
+    .PARAMETER IntervalSeconds
+        Number of seconds to sleep between condition evaluations. Defaults to 5.
+    .PARAMETER Activity
+        Optional description logged via Write-Verbose at start and finish for diagnostics.
+    .NOTES
+        Version: 1.0.0
+        Author: Chris Taylor
+        Private function - not exported.
+    .LINK
+        https://github.com/christaylorcodes/ConnectWiseAutomateAgent
+    #>
+    [CmdletBinding()]
+    Param(
+        [Parameter(Mandatory = $True)]
+        [ScriptBlock]$Condition,
+        [Parameter(Mandatory = $True)]
+        [ValidateRange(1, [int]::MaxValue)]
+        [int]$TimeoutSeconds,
+        [Parameter()]
+        [ValidateRange(1, [int]::MaxValue)]
+        [int]$IntervalSeconds = 5,
+        [Parameter()]
+        [string]$Activity
+    )
+    Begin {
+        Write-Debug "Starting $($MyInvocation.InvocationName)"
+    }
+    Process {
+        if ($Activity) { Write-Verbose "Waiting for: $Activity" }
+        $timeout = New-TimeSpan -Seconds $TimeoutSeconds
+        $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+        Do {
+            Start-Sleep -Seconds $IntervalSeconds
+            $conditionMet = & $Condition
+        } Until ($stopwatch.Elapsed -gt $timeout -or $conditionMet)
+        $stopwatch.Stop()
+        $elapsedSeconds = [int]$stopwatch.Elapsed.TotalSeconds
+        if ($conditionMet) {
+            if ($Activity) { Write-Verbose "$Activity completed after $elapsedSeconds seconds." }
+            return $true
+        }
+        else {
+            if ($Activity) { Write-Verbose "$Activity timed out after $elapsedSeconds seconds." }
+            return $false
+        }
     }
     End {
         Write-Debug "Exiting $($MyInvocation.InvocationName)"
@@ -395,6 +744,28 @@ function Initialize-CWAA {
     # Windows Event Log settings (used by Write-CWAAEventLog)
     $Script:CWAAEventLogSource = 'ConnectWiseAutomateAgent'
     $Script:CWAAEventLogName   = 'Application'
+    # Timeout and retry configuration — used by Wait-CWAACondition and Install-CWAA callers.
+    # Centralized here so they are tunable and self-documenting in one place.
+    $Script:CWAAInstallMaxAttempts       = 3
+    $Script:CWAAInstallRetryDelaySeconds = 30
+    $Script:CWAAServiceStartTimeoutSec   = 120   # 2 minutes — proxy startup wait
+    $Script:CWAARegistrationTimeoutSec   = 900   # 15 minutes — agent registration wait
+    $Script:CWAATrayPortMin              = 42000
+    $Script:CWAATrayPortMax              = 42009
+    $Script:CWAATrayPortDefault          = 42000
+    $Script:CWAAUninstallWaitSeconds     = 10
+    $Script:CWAAServiceWaitTimeoutSec    = 60    # 1 minute — Start/Stop/Restart/Reset service waits
+    $Script:CWAARedoSettleDelaySeconds   = 20    # Redo-CWAA settling delay between uninstall and reinstall
+    # Server version thresholds — document breaking changes in the server's deployment API.
+    # Each threshold gates a different URL construction or installer format in Install-CWAA.
+    $Script:CWAAVersionZipInstaller     = '240.331'  # InstallerToken deployments return ZIP (MSI+MST)
+    $Script:CWAAVersionAnonymousChange  = '110.374'  # Anonymous MSI download URL changed (LT11 Patch 13)
+    $Script:CWAAVersionVulnerabilityFix = '200.197'  # CVE fix: unauthenticated Deployment.aspx access
+    $Script:CWAAVersionUpdateMinimum    = '105.001'  # Minimum version with update support
+    # Agent process names — for forceful termination in Stop-CWAA after service stop timeout.
+    $Script:CWAAAgentProcessNames = @('LTTray', 'LTSVC', 'LTSvcMon')
+    # All service names including LabVNC — for full service cleanup in Uninstall-CWAA.
+    $Script:CWAAAllServiceNames = @('LTService', 'LTSvcMon', 'LabVNC')
     # Service credential storage â€" populated on-demand by Get-CWAAProxy
     $Script:LTServiceKeys = [PSCustomObject]@{
         ServerPasswordString = ''
@@ -679,7 +1050,7 @@ function ConvertTo-CWAASecurity {
     [CmdletBinding()]
     [Alias('ConvertTo-LTSecurity')]
     Param(
-        [parameter(Mandatory = $true, ValueFromPipeline = $false, ValueFromPipelineByPropertyName = $false)]
+        [parameter(Mandatory = $true, ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $false)]
         [AllowNull()]
         [AllowEmptyString()]
         [AllowEmptyCollection()]
@@ -690,8 +1061,10 @@ function ConvertTo-CWAASecurity {
         [AllowEmptyCollection()]
         $Key
     )
-    Process {
+    Begin {
         Write-Debug "Starting $($MyInvocation.InvocationName)"
+    }
+    Process {
         $_initializationVector = [byte[]](240, 3, 45, 29, 0, 76, 173, 59)
         $DefaultKey = 'Thank you for using LabTech.'
         if ($Null -eq $Key) {
@@ -866,6 +1239,9 @@ function Test-CWAAPort {
     .EXAMPLE
         Test-CWAAPort -Quiet
         Returns $True if the TrayPort is available, $False otherwise.
+    .EXAMPLE
+        Get-CWAAInfo | Test-CWAAPort
+        Pipes the installed agent's Server and TrayPort into Test-CWAAPort via pipeline.
     .NOTES
         Author: Chris Taylor
         Alias: Test-LTPorts
@@ -1238,7 +1614,7 @@ function Rename-CWAAAddRemove {
     [CmdletBinding(SupportsShouldProcess = $True)]
     [Alias('Rename-LTAddRemove')]
     Param(
-        [Parameter(Mandatory = $True)]
+        [Parameter(Mandatory = $True, ValueFromPipeline = $true)]
         $Name,
         [Parameter(Mandatory = $False)]
         [AllowNull()]
@@ -1418,8 +1794,8 @@ function Install-CWAA {
     .DESCRIPTION
         Downloads and installs the ConnectWise Automate agent from the specified server URL.
         Supports authentication via InstallerToken (preferred) or ServerPassword. The function handles
-        .NET Framework 3.5 prerequisite checks, MSI download with file integrity validation, proxy
-        configuration, TrayPort conflict resolution, and post-install agent registration verification.
+        prerequisite checks for .NET Framework 3.5, MSI download with file integrity validation,
+        proxy configuration, TrayPort conflict resolution, and post-install agent registration verification.
         If a previous installation is detected, the function will automatically call Uninstall-LTService
         before proceeding. The -Force parameter allows installation even when services are already present
         or when only .NET 4.0+ is available without 3.5.
@@ -1450,9 +1826,16 @@ function Install-CWAA {
     .PARAMETER NoWait
         Skips the post-install health check that waits for agent registration.
         The function exits immediately after the installer completes.
+    .PARAMETER Credential
+        A PSCredential object containing the server password for deployment authentication.
+        The password is extracted and used as the ServerPassword. This is the preferred
+        secure alternative to passing -ServerPassword as plain text.
     .PARAMETER SkipCertificateCheck
         Bypasses SSL/TLS certificate validation for server connections.
         Use in lab or test environments with self-signed certificates.
+    .PARAMETER ShowProgress
+        Displays a Write-Progress bar showing installation progress. Off by default
+        to avoid interference with unattended execution (RMM tools, GPO scripts).
     .EXAMPLE
         Install-CWAA -Server https://automate.domain.com -InstallerToken 'GeneratedToken' -LocationID 42
         Installs the agent using an InstallerToken for authentication.
@@ -1462,6 +1845,9 @@ function Install-CWAA {
     .EXAMPLE
         Install-CWAA -Server https://automate.domain.com -InstallerToken 'token' -LocationID 42 -NoWait
         Installs the agent without waiting for registration to complete.
+    .EXAMPLE
+        Get-CWAAInfoBackup | Install-CWAA -InstallerToken 'GeneratedToken'
+        Reinstalls the agent using Server and LocationID from a previous backup via pipeline.
     .NOTES
         Author: Chris Taylor
         Alias: Install-LTService
@@ -1484,6 +1870,10 @@ function Install-CWAA {
         [AllowNull()]
         [Alias('Password')]
         [string]$ServerPassword,
+        [Parameter(ParameterSetName = 'deployment')]
+        [System.Management.Automation.PSCredential]
+        [System.Management.Automation.Credential()]
+        $Credential,
         [Parameter(ParameterSetName = 'installertoken')]
         [ValidatePattern('(?s:^[0-9a-z]+$)')]
         [string]$InstallerToken,
@@ -1500,15 +1890,27 @@ function Install-CWAA {
         [switch]$SkipDotNet,
         [switch]$Force,
         [switch]$NoWait,
-        [switch]$SkipCertificateCheck
+        [switch]$SkipCertificateCheck,
+        [switch]$ShowProgress
     )
     Begin {
         Write-Debug "Starting $($myInvocation.InvocationName)"
+        # Snapshot error count so we can detect new errors from this function only,
+        # rather than checking the global $Error collection which accumulates all session errors.
+        $errorCountAtStart = $Error.Count
+        # If a PSCredential was provided, extract the password for the deployment workflow.
+        # This is the preferred secure alternative to passing -ServerPassword as plain text.
+        if ($Credential) {
+            $ServerPassword = $Credential.GetNetworkCredential().Password
+        }
         # Lazy initialization of SSL/TLS, WebClient, and proxy configuration.
         # Only runs once per session, skips immediately on subsequent calls.
         $Null = Initialize-CWAANetworking -SkipCertificateCheck:$SkipCertificateCheck
+        $progressId = 1
+        $progressActivity = 'Installing ConnectWise Automate Agent'
+        if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Checking prerequisites' -PercentComplete 11 }
         if (-not $Force) {
-            if (Get-Service 'LTService', 'LTSvcMon' -ErrorAction SilentlyContinue) {
+            if (Get-Service $Script:CWAAServiceNames -ErrorAction SilentlyContinue) {
                 if ($WhatIfPreference -ne $True) {
                     Write-Error "Services are already installed." -ErrorAction Stop
                 }
@@ -1520,66 +1922,10 @@ function Install-CWAA {
         if (-not ([bool](([System.Security.Principal.WindowsIdentity]::GetCurrent() | Select-Object -Expand groups -EA 0) -match 'S-1-5-32-544'))) {
             Throw 'Needs to be ran as Administrator'
         }
-        if (-not $SkipDotNet) {
-            $DotNET = Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP' -Recurse -EA 0 | Get-ItemProperty -Name Version, Release -EA 0 | Where-Object { $_.PSChildName -match '^(?!S)\p{L}' } | Select-Object -ExpandProperty Version -EA 0
-            if (-not ($DotNet -like '3.5.*')) {
-                Write-Output '.NET Framework 3.5 installation needed.'
-                $OSVersion = [System.Environment]::OSVersion.Version
-                if ([version]$OSVersion -gt [version]'6.2') {
-                    Try {
-                        if ($PSCmdlet.ShouldProcess('NetFx3', 'Enable-WindowsOptionalFeature')) {
-                            $Install = Get-WindowsOptionalFeature -Online -FeatureName 'NetFx3'
-                            if ($Install.State -ne 'EnablePending') {
-                                $Install = Enable-WindowsOptionalFeature -Online -FeatureName 'NetFx3' -All -NoRestart
-                            }
-                            if ($Install.RestartNeeded -or $Install.State -eq 'EnablePending') {
-                                Write-Output '.NET Framework 3.5 installed but a reboot is needed.'
-                            }
-                        }
-                    }
-                    Catch {
-                        Write-Error ".NET 3.5 install failed." -ErrorAction Continue
-                        if (-not $Force) { Write-Error $Install -ErrorAction Stop }
-                    }
-                }
-                Elseif ([version]$OSVersion -gt [version]'6.1') {
-                    if ($PSCmdlet.ShouldProcess('NetFx3', 'Add Windows Feature')) {
-                        Try { $Result = & "${env:windir}\system32\Dism.exe" /English /NoRestart /Online /Enable-Feature /FeatureName:NetFx3 2>'' }
-                        Catch { Write-Output 'Error calling Dism.exe.'; $Result = $Null }
-                        Try { $Result = & "${env:windir}\system32\Dism.exe" /English /Online /Get-FeatureInfo /FeatureName:NetFx3 2>'' }
-                        Catch { Write-Output 'Error calling Dism.exe.'; $Result = $Null }
-                        if ($Result -contains 'State : Enabled') {
-                            Write-Warning ".Net Framework 3.5 has been installed and enabled."
-                        }
-                        Elseif ($Result -contains 'State : Enable Pending') {
-                            Write-Warning ".Net Framework 3.5 installed but a reboot is needed."
-                        }
-                        else {
-                            Write-Error ".NET Framework 3.5 install failed." -ErrorAction Continue
-                            if (-not $Force) { Write-Error $Result -ErrorAction Stop }
-                        }
-                    }
-                }
-                $DotNET = Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP' -Recurse | Get-ItemProperty -Name Version -EA 0 | Where-Object { $_.PSChildName -match '^(?!S)\p{L}' } | Select-Object -ExpandProperty Version
-            }
-            if (-not ($DotNet -like '3.5.*')) {
-                if ($Force) {
-                    if ($DotNet -match '(?m)^[2-4].\d') {
-                        Write-Error ".NET 3.5 is not detected and could not be installed." -ErrorAction Continue
-                    }
-                    else {
-                        Write-Error ".NET 2.0 or greater is not detected and could not be installed." -ErrorAction Stop
-                    }
-                }
-                else {
-                    Write-Error ".NET 3.5 is not detected and could not be installed." -ErrorAction Stop
-                }
-            }
-        }
+        $Null = Test-CWAADotNetPrerequisite -SkipDotNet:$SkipDotNet -Force:$Force
         $InstallBase = $Script:CWAAInstallerTempPath
         $logfile = 'LTAgentInstall'
         $curlog = "$InstallBase\$logfile.log"
-        if ($ServerPassword -match '"') { $ServerPassword = $ServerPassword.Replace('"', '""') }
         if (-not (Test-Path -PathType Container -Path "$InstallBase\Installer")) {
             New-Item "$InstallBase\Installer" -type directory -ErrorAction SilentlyContinue | Out-Null
         }
@@ -1593,13 +1939,17 @@ function Install-CWAA {
         }
     }
     Process {
+        # Escape double quotes in ServerPassword for MSI argument safety.
+        # Placed in Process (not Begin) because ServerPassword may arrive via pipeline binding.
+        if ($ServerPassword -match '"') { $ServerPassword = $ServerPassword.Replace('"', '""') }
         if (-not ($LocationID -or $PSCmdlet.ParameterSetName -eq 'installertoken')) {
             $LocationID = '1'
         }
         if (-not ($TrayPort) -or -not ($TrayPort -ge 1 -and $TrayPort -le 65535)) {
-            $TrayPort = '42000'
+            $TrayPort = $Script:CWAATrayPortDefault
         }
         # Resolve the first reachable server and its advertised version
+        if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Resolving server address' -PercentComplete 22 }
         $serverResult = Resolve-CWAAServer -Server $Server
         if ($serverResult) {
             $serverUrl = $serverResult.ServerUrl
@@ -1616,7 +1966,7 @@ function Install-CWAA {
             # - Pre-110.374: Legacy deployment URL with per-location MSI targeting
             if ($PSCmdlet.ParameterSetName -eq 'installertoken') {
                 $installer = "$serverUrl/LabTech/Deployment.aspx?InstallerToken=$InstallerToken"
-                if ([System.Version]$serverVersion -ge [System.Version]'240.331') {
+                if ([System.Version]$serverVersion -ge [System.Version]$Script:CWAAVersionZipInstaller) {
                     Write-Debug "New MSI Installer Format Needed"
                     $InstallMSI = 'Agent_Install.zip'
                 }
@@ -1624,7 +1974,7 @@ function Install-CWAA {
             Elseif ($ServerPassword) {
                 $installer = "$serverUrl/LabTech/Service/LabTechRemoteAgent.msi"
             }
-            Elseif ([System.Version]$serverVersion -ge [System.Version]'110.374') {
+            Elseif ([System.Version]$serverVersion -ge [System.Version]$Script:CWAAVersionAnonymousChange) {
                 $installer = "$serverUrl/LabTech/Deployment.aspx?Probe=1&installType=msi&MSILocations=1"
             }
             else {
@@ -1633,7 +1983,7 @@ function Install-CWAA {
             }
             # Vulnerability test June 10, 2020: ConnectWise Automate API Vulnerability
             # Servers below v200.197 may allow unauthenticated access to Deployment.aspx
-            if ([System.Version]$serverVersion -lt [System.Version]'200.197') {
+            if ([System.Version]$serverVersion -lt [System.Version]$Script:CWAAVersionVulnerabilityFix) {
                 Try {
                     $HTTP_Request = [System.Net.WebRequest]::Create("$serverUrl/LabTech/Deployment.aspx")
                     if ($HTTP_Request.GetResponse().StatusCode -eq 'OK') {
@@ -1649,6 +1999,7 @@ function Install-CWAA {
                 }
             }
             if ($PSCmdlet.ShouldProcess($installer, 'DownloadFile')) {
+                if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Downloading agent installer' -PercentComplete 33 }
                 Write-Debug "Downloading $InstallMSI from $installer"
                 $Script:LTServiceNetWebClient.DownloadFile($installer, "$InstallBase\Installer\$InstallMSI")
                 if (-not (Test-CWAADownloadIntegrity -FilePath "$InstallBase\Installer\$InstallMSI" -FileName $InstallMSI)) {
@@ -1662,7 +2013,7 @@ function Install-CWAA {
                 Elseif (Test-Path "$InstallBase\Installer\$InstallMSI") {
                     $GoodServer = $serverUrl
                     Write-Verbose "$InstallMSI downloaded successfully from server $serverUrl."
-                    if (($PSCmdlet.ParameterSetName -eq 'installertoken') -and [System.Version]$serverVersion -ge [System.Version]'240.331') {
+                    if (($PSCmdlet.ParameterSetName -eq 'installertoken') -and [System.Version]$serverVersion -ge [System.Version]$Script:CWAAVersionZipInstaller) {
                         Expand-Archive "$InstallBase\Installer\$InstallMSI" -DestinationPath "$InstallBase\Installer" -Force
                         Remove-Item "$InstallBase\Installer\$InstallMSI" -ErrorAction SilentlyContinue -Force -Confirm:$False
                         $InstallMSI = 'Agent_Install.msi'
@@ -1675,176 +2026,141 @@ function Install-CWAA {
         }
     }
     End {
-        if ($GoodServer) {
-            if ($WhatIfPreference -eq $True -and (Get-PSCallStack)[1].Command -in @('Redo-CWAA', 'Redo-LTService', 'Reinstall-CWAA', 'Reinstall-LTService')) {
-                Write-Debug "Skipping Preinstall Check: Called by Redo-CWAA with -WhatIf"
-            }
-            else {
-                if ((Test-Path $Script:CWAAInstallPath -EA 0) -or (Test-Path "${env:windir}\temp\_ltupdate" -EA 0) -or (Test-Path registry::HKLM\Software\LabTech\Service -EA 0) -or (Test-Path registry::HKLM\Software\WOW6432Node\Labtech\Service -EA 0)) {
-                    Write-Warning "Previous installation detected. Calling Uninstall-CWAA"
-                    Uninstall-CWAA -Server $GoodServer -Force
-                    Start-Sleep 10
+        try {
+            if ($GoodServer) {
+                if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Preparing installation environment' -PercentComplete 44 }
+                if ($WhatIfPreference -eq $True -and (Get-PSCallStack)[1].Command -in @('Redo-CWAA', 'Redo-LTService', 'Reinstall-CWAA', 'Reinstall-LTService')) {
+                    Write-Debug "Skipping Preinstall Check: Called by Redo-CWAA with -WhatIf"
                 }
-            }
-            if ($WhatIfPreference -ne $True) {
-                # TrayPort conflict resolution: LTSvc.exe listens on a local TCP port (default 42000)
-                # for communication with LTTray.exe (system tray UI). The valid range is 42000-42009.
-                # If the requested port is occupied by another process, we scan sequentially through
-                # the range, wrapping from 42009 back to 42000, trying up to 10 alternatives.
-                $GoodTrayPort = $Null
-                $TestTrayPort = $TrayPort
-                For ($i = 0; $i -le 10; $i++) {
-                    if (-not $GoodTrayPort) {
-                        if (-not (Test-CWAAPort -TrayPort $TestTrayPort -Quiet)) {
-                            $TestTrayPort++
-                            if ($TestTrayPort -gt 42009) { $TestTrayPort = 42000 }
-                        }
-                        else {
-                            $GoodTrayPort = $TestTrayPort
-                        }
+                else {
+                    if ((Test-Path $Script:CWAAInstallPath -EA 0) -or (Test-Path "${env:windir}\temp\_ltupdate" -EA 0) -or (Test-Path registry::HKLM\Software\LabTech\Service -EA 0) -or (Test-Path registry::HKLM\Software\WOW6432Node\Labtech\Service -EA 0)) {
+                        Write-Warning "Previous installation detected. Calling Uninstall-CWAA"
+                        Uninstall-CWAA -Server $GoodServer -Force
+                        Start-Sleep $Script:CWAAUninstallWaitSeconds
                     }
                 }
-                if ($GoodTrayPort -and $GoodTrayPort -ne $TrayPort -and $GoodTrayPort -ge 1 -and $GoodTrayPort -le 65535) {
-                    Write-Verbose "TrayPort $TrayPort is in use. Changing TrayPort to $GoodTrayPort"
-                    $TrayPort = $GoodTrayPort
-                }
-                Write-Output 'Starting Install.'
-            }
-            # Build parameter string
-            $installerArguments = ($(
-                "/i `"$InstallBase\Installer\$InstallMSI`""
-                "SERVERADDRESS=$GoodServer"
-                if (($PSCmdlet.ParameterSetName -eq 'installertoken') -and [System.Version]$serverVersion -ge [System.Version]'240.331') { "TRANSFORMS=`"Agent_Install.mst`"" }
-                if ($ServerPassword -and $ServerPassword -match '.') { "SERVERPASS=`"$ServerPassword`"" }
-                if ($LocationID -and $LocationID -match '^\d+$') { "LOCATION=$LocationID" }
-                if ($TrayPort -and $TrayPort -ne 42000) { "SERVICEPORT=$TrayPort" }
-                "/qn"
-                "/l `"$InstallBase\$logfile.log`""
-            ) | Where-Object { $_ }) -join ' '
-            Try {
-                if ($PSCmdlet.ShouldProcess("msiexec.exe $installerArguments", 'Execute Install')) {
-                    $InstallAttempt = 0
-                    Do {
-                        if ($InstallAttempt -gt 0) {
-                            Write-Warning "Service Failed to Install. Retrying in 30 seconds." -WarningAction 'Continue'
-                            $timeout = New-TimeSpan -Seconds 30
-                            $stopwatch = [diagnostics.stopwatch]::StartNew()
-                            Write-Verbose 'Waiting for service to become available...'
-                            Do {
-                                Start-Sleep 5
-                                $runningServiceCount = ('LTService') | Get-Service -EA 0 | Measure-Object | Select-Object -Expand Count
-                            } Until ($stopwatch.elapsed -gt $timeout -or $runningServiceCount -eq 1)
-                            $stopwatch.Stop()
-                            Write-Verbose 'Service wait completed.'
+                if ($WhatIfPreference -ne $True) {
+                    if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Resolving TrayPort' -PercentComplete 55 }
+                    # TrayPort conflict resolution: LTSvc.exe listens on a local TCP port (default 42000)
+                    # for communication with LTTray.exe (system tray UI). The valid range is 42000-42009.
+                    # If the requested port is occupied by another process, we scan sequentially through
+                    # the range, wrapping from 42009 back to 42000, trying up to 10 alternatives.
+                    $GoodTrayPort = $Null
+                    $TestTrayPort = $TrayPort
+                    For ($i = 0; $i -le 10; $i++) {
+                        if (-not $GoodTrayPort) {
+                            if (-not (Test-CWAAPort -TrayPort $TestTrayPort -Quiet)) {
+                                $TestTrayPort++
+                                if ($TestTrayPort -gt $Script:CWAATrayPortMax) { $TestTrayPort = $Script:CWAATrayPortMin }
+                            }
+                            else {
+                                $GoodTrayPort = $TestTrayPort
+                            }
                         }
-                        $InstallAttempt++
-                        $runningServiceCount = ('LTService') | Get-Service -EA 0 | Measure-Object | Select-Object -Expand Count
-                        if ($runningServiceCount -eq 0) {
-                            $redactedArguments = ($installerArguments -join '') -replace 'SERVERPASS="[^"]*"', 'SERVERPASS="REDACTED"'
-                    Write-Verbose "Launching Installation Process: msiexec.exe $redactedArguments"
-                            Start-Process -Wait -FilePath "${env:windir}\system32\msiexec.exe" -ArgumentList $installerArguments -WorkingDirectory $env:TEMP
-                            Start-Sleep 5
-                        }
-                        $runningServiceCount = ('LTService') | Get-Service -EA 0 | Measure-Object | Select-Object -Expand Count
-                    } Until ($InstallAttempt -ge 3 -or $runningServiceCount -eq 1)
-                    if ($runningServiceCount -eq 0) {
-                        Write-Error "LTService was not installed. Installation failed."
-                        Return
                     }
+                    if ($GoodTrayPort -and $GoodTrayPort -ne $TrayPort -and $GoodTrayPort -ge 1 -and $GoodTrayPort -le 65535) {
+                        Write-Verbose "TrayPort $TrayPort is in use. Changing TrayPort to $GoodTrayPort"
+                        $TrayPort = $GoodTrayPort
+                    }
+                    Write-Output 'Starting Install.'
                 }
-                if (($Script:LTProxy.Enabled) -eq $True) {
-                    Write-Verbose 'Proxy Configuration Needed. Applying Proxy Settings to Agent Installation.'
-                    if ($PSCmdlet.ShouldProcess($Script:LTProxy.ProxyServerURL, 'Configure Agent Proxy')) {
-                        $runningServiceCount = ('LTService') | Get-Service -EA 0 | Where-Object { $_.Status -eq 'Running' } | Measure-Object | Select-Object -Expand Count
-                        if ($runningServiceCount -ne 0) {
-                            $timeout = New-TimeSpan -Minutes 2
-                            $stopwatch = [diagnostics.stopwatch]::StartNew()
-                            Write-Verbose 'Waiting for service to start...'
-                            Do {
-                                Start-Sleep 2
-                                $runningServiceCount = ('LTService') | Get-Service -EA 0 | Where-Object { $_.Status -eq 'Running' } | Measure-Object | Select-Object -Expand Count
-                            } Until ($stopwatch.elapsed -gt $timeout -or $runningServiceCount -eq 1)
-                            $stopwatch.Stop()
-                            if ($runningServiceCount -eq 1) {
+                # Build parameter string
+                $installerArguments = ($(
+                    "/i `"$InstallBase\Installer\$InstallMSI`""
+                    "SERVERADDRESS=$GoodServer"
+                    if (($PSCmdlet.ParameterSetName -eq 'installertoken') -and [System.Version]$serverVersion -ge [System.Version]$Script:CWAAVersionZipInstaller) { "TRANSFORMS=`"Agent_Install.mst`"" }
+                    if ($ServerPassword -and $ServerPassword -match '.') { "SERVERPASS=`"$ServerPassword`"" }
+                    if ($LocationID -and $LocationID -match '^\d+$') { "LOCATION=$LocationID" }
+                    if ($TrayPort -and $TrayPort -ne $Script:CWAATrayPortDefault) { "SERVICEPORT=$TrayPort" }
+                    "/qn"
+                    "/l `"$InstallBase\$logfile.log`""
+                ) | Where-Object { $_ }) -join ' '
+                Try {
+                    if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Running MSI installer' -PercentComplete 66 }
+                    $installSuccess = Invoke-CWAAMsiInstaller -InstallerArguments $installerArguments
+                    if (-not $installSuccess) { Return }
+                    if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Waiting for services to start' -PercentComplete 77 }
+                    if (($Script:LTProxy.Enabled) -eq $True) {
+                        Write-Verbose 'Proxy Configuration Needed. Applying Proxy Settings to Agent Installation.'
+                        if ($PSCmdlet.ShouldProcess($Script:LTProxy.ProxyServerURL, 'Configure Agent Proxy')) {
+                            $serviceRunning = Wait-CWAACondition -Condition {
+                                $count = ('LTService') | Get-Service -EA 0 | Where-Object { $_.Status -eq 'Running' } | Measure-Object | Select-Object -Expand Count
+                                $count -eq 1
+                            } -TimeoutSeconds $Script:CWAAServiceStartTimeoutSec -IntervalSeconds 2 -Activity 'LTService initial startup'
+                            if ($serviceRunning) {
                                 Write-Debug "LTService Initial Startup Successful."
                             }
                             else {
                                 Write-Debug "LTService Initial Startup failed to complete within expected period."
                             }
-                            Write-Verbose 'Service wait completed.'
+                            Set-CWAAProxy -ProxyServerURL $Script:LTProxy.ProxyServerURL -ProxyUsername $Script:LTProxy.ProxyUsername -ProxyPassword $Script:LTProxy.ProxyPassword -Confirm:$False -WhatIf:$False
                         }
-                        Set-CWAAProxy -ProxyServerURL $Script:LTProxy.ProxyServerURL -ProxyUsername $Script:LTProxy.ProxyUsername -ProxyPassword $Script:LTProxy.ProxyPassword -Confirm:$False -WhatIf:$False
-                    }
-                }
-                else {
-                    Write-Verbose 'No Proxy Configuration has been specified - Continuing.'
-                }
-                if (-not $NoWait -and $PSCmdlet.ShouldProcess('LTService', 'Monitor For Successful Agent Registration')) {
-                    $timeout = New-TimeSpan -Minutes 15
-                    $stopwatch = [diagnostics.stopwatch]::StartNew()
-                    Write-Verbose 'Waiting for agent to register...'
-                    Do {
-                        Start-Sleep 5
-                        $tempServiceInfo = (Get-CWAAInfo -EA 0 -Verbose:$False -WhatIf:$False -Confirm:$False -Debug:$False | Select-Object -Expand 'ID' -EA 0)
-                    } Until ($stopwatch.elapsed -gt $timeout -or $tempServiceInfo -ge 1)
-                    $stopwatch.Stop()
-                    Write-Verbose "Agent registration wait completed after $(([int32]$stopwatch.Elapsed.TotalSeconds).ToString()) seconds."
-                    $Null = Get-CWAAProxy -ErrorAction Continue
-                }
-                if ($Hide) { Hide-CWAAAddRemove }
-            }
-            Catch {
-                Write-Error "There was an error during the install process. $_"
-                Write-CWAAEventLog -EventId 1002 -EntryType Error -Message "Agent installation failed. Error: $($_.Exception.Message)"
-                Return
-            }
-            if ($WhatIfPreference -ne $True) {
-                # Cleanup install files
-                Remove-Item "$InstallBase\Installer\$InstallMSI" -ErrorAction SilentlyContinue -Force -Confirm:$False
-                Remove-Item "$InstallBase\Installer\Agent_Install.mst" -ErrorAction SilentlyContinue -Force -Confirm:$False
-                @($curlog, "$Script:CWAAInstallPath\Install.log") | ForEach-Object {
-                    if (Test-Path -PathType Leaf -LiteralPath $_) {
-                        $logcontents = Get-Content -Path $_
-                        $logcontents = $logcontents -replace '(?<=PreInstallPass:[^\r\n]+? (?:result|value)): [^\r\n]+', ': <REDACTED>'
-                        if ($logcontents) { Set-Content -Path $_ -Value $logcontents -Force -Confirm:$False }
-                    }
-                }
-                $tempServiceInfo = Get-CWAAInfo -EA 0 -Verbose:$False -WhatIf:$False -Confirm:$False -Debug:$False
-                if ($tempServiceInfo) {
-                    if (($tempServiceInfo | Select-Object -Expand 'ID' -EA 0) -ge 1) {
-                        Write-Output "Automate agent has been installed successfully. Agent ID: $($tempServiceInfo | Select-Object -Expand 'ID' -EA 0) LocationID: $($tempServiceInfo | Select-Object -Expand 'LocationID' -EA 0)"
-                        Write-CWAAEventLog -EventId 1000 -EntryType Information -Message "Agent installed successfully. Agent ID: $($tempServiceInfo | Select-Object -Expand 'ID' -EA 0), LocationID: $($tempServiceInfo | Select-Object -Expand 'LocationID' -EA 0)"
-                    }
-                    Elseif (-not $NoWait) {
-                        Write-Error "Automate agent installation completed but agent failed to register within expected period." -ErrorAction Continue
-                        Write-CWAAEventLog -EventId 1001 -EntryType Warning -Message "Agent installed but failed to register within expected period."
                     }
                     else {
-                        Write-Warning "Automate agent installation completed but agent did not yet register." -WarningAction Continue
+                        Write-Verbose 'No Proxy Configuration has been specified - Continuing.'
                     }
+                    if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Waiting for agent registration' -PercentComplete 88 }
+                    if (-not $NoWait -and $PSCmdlet.ShouldProcess('LTService', 'Monitor For Successful Agent Registration')) {
+                        $Null = Wait-CWAACondition -Condition {
+                            $agentId = Get-CWAAInfo -EA 0 -Verbose:$False -WhatIf:$False -Confirm:$False -Debug:$False | Select-Object -Expand 'ID' -EA 0
+                            $agentId -ge 1
+                        } -TimeoutSeconds $Script:CWAARegistrationTimeoutSec -IntervalSeconds 5 -Activity 'Agent registration'
+                        $Null = Get-CWAAProxy -ErrorAction Continue
+                    }
+                    if ($Hide) { Hide-CWAAAddRemove }
                 }
-                else {
-                    if ($Error) {
-                        Write-Error "There was an error installing Automate agent. Check the log, $InstallBase\$logfile.log"
-                        Write-CWAAEventLog -EventId 1002 -EntryType Error -Message "Agent installation failed. Check log: $InstallBase\$logfile.log"
-                        Return
+                Catch {
+                    Write-Error "There was an error during the install process. $_"
+                    Write-CWAAEventLog -EventId 1002 -EntryType Error -Message "Agent installation failed. Error: $($_.Exception.Message)"
+                    Return
+                }
+                if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Completing installation' -PercentComplete 100 }
+                if ($WhatIfPreference -ne $True) {
+                    # Cleanup install files
+                    Remove-Item "$InstallBase\Installer\$InstallMSI" -ErrorAction SilentlyContinue -Force -Confirm:$False
+                    Remove-Item "$InstallBase\Installer\Agent_Install.mst" -ErrorAction SilentlyContinue -Force -Confirm:$False
+                    @($curlog, "$Script:CWAAInstallPath\Install.log") | ForEach-Object {
+                        if (Test-Path -PathType Leaf -LiteralPath $_) {
+                            $logcontents = Get-Content -Path $_
+                            $logcontents = $logcontents -replace '(?<=PreInstallPass:[^\r\n]+? (?:result|value)): [^\r\n]+', ': <REDACTED>'
+                            if ($logcontents) { Set-Content -Path $_ -Value $logcontents -Force -Confirm:$False }
+                        }
                     }
-                    Elseif (-not $NoWait) {
-                        Write-Error "There was an error installing Automate agent. Check the log, $InstallBase\$logfile.log"
-                        Write-CWAAEventLog -EventId 1002 -EntryType Error -Message "Agent installation failed. Check log: $InstallBase\$logfile.log"
-                        Return
+                    $tempServiceInfo = Get-CWAAInfo -EA 0 -Verbose:$False -WhatIf:$False -Confirm:$False -Debug:$False
+                    if ($tempServiceInfo) {
+                        if (($tempServiceInfo | Select-Object -Expand 'ID' -EA 0) -ge 1) {
+                            Write-Output "Automate agent has been installed successfully. Agent ID: $($tempServiceInfo | Select-Object -Expand 'ID' -EA 0) LocationID: $($tempServiceInfo | Select-Object -Expand 'LocationID' -EA 0)"
+                            Write-CWAAEventLog -EventId 1000 -EntryType Information -Message "Agent installed successfully. Agent ID: $($tempServiceInfo | Select-Object -Expand 'ID' -EA 0), LocationID: $($tempServiceInfo | Select-Object -Expand 'LocationID' -EA 0)"
+                        }
+                        Elseif (-not $NoWait) {
+                            Write-Error "Automate agent installation completed but agent failed to register within expected period." -ErrorAction Continue
+                            Write-CWAAEventLog -EventId 1001 -EntryType Warning -Message "Agent installed but failed to register within expected period."
+                        }
+                        else {
+                            Write-Warning "Automate agent installation completed but agent did not yet register." -WarningAction Continue
+                        }
                     }
                     else {
-                        Write-Warning "Automate agent installation may not have succeeded." -WarningAction Continue
+                        if ($Error.Count -gt $errorCountAtStart -or (-not $NoWait)) {
+                            Write-Error "There was an error installing Automate agent. Check the log, $InstallBase\$logfile.log"
+                            Write-CWAAEventLog -EventId 1002 -EntryType Error -Message "Agent installation failed. Check log: $InstallBase\$logfile.log"
+                            Return
+                        }
+                        else {
+                            Write-Warning "Automate agent installation may not have succeeded." -WarningAction Continue
+                        }
                     }
                 }
+                if ($Rename) { Rename-CWAAAddRemove -Name $Rename }
             }
-            if ($Rename -and $Rename -notmatch 'False') { Rename-CWAAAddRemove -Name $Rename }
+            Elseif ($WhatIfPreference -ne $True) {
+                Write-Error "No valid server was reached to use for the install."
+            }
         }
-        Elseif ($WhatIfPreference -ne $True) {
-            Write-Error "No valid server was reached to use for the install."
+        finally {
+            if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Completed }
+            Write-Debug "Exiting $($myInvocation.InvocationName)"
         }
-        Write-Debug "Exiting $($myInvocation.InvocationName)"
     }
 }
 function Redo-CWAA {
@@ -1894,6 +2210,9 @@ function Redo-CWAA {
     .EXAMPLE
         Redo-CWAA -Backup -Force
         Backs up settings, then forces reinstallation even if a probe agent is detected.
+    .EXAMPLE
+        Get-CWAAInfo | Redo-CWAA -InstallerToken 'token'
+        Reinstalls the agent using Server and LocationID from the current installation via pipeline.
     .NOTES
         Author: Chris Taylor
         Alias: Reinstall-CWAA, Redo-LTService, Reinstall-LTService
@@ -1934,21 +2253,7 @@ function Redo-CWAA {
         Catch {
             Write-Debug "Failed to retrieve current Agent Settings: $_"
         }
-        # Probe protection — outside Try/Catch so the terminating error propagates to caller.
-        # Matches the pattern in Reset-CWAA and Uninstall-CWAA.
-        if ($Null -ne $Settings -and ($Settings | Select-Object -Expand Probe -EA 0) -eq '1') {
-            if ($Force -eq $True) {
-                Write-Output 'Probe Agent Detected. Re-Install Forced.'
-            }
-            else {
-                if ($WhatIfPreference -ne $True) {
-                    Write-Error -Exception [System.OperationCanceledException]"Probe Agent Detected. Re-Install Denied." -ErrorAction Stop
-                }
-                else {
-                    Write-Error -Exception [System.OperationCanceledException]"What If: Probe Agent Detected. Re-Install Denied." -ErrorAction Stop
-                }
-            }
-        }
+        Assert-CWAANotProbeAgent -ServiceInfo $Settings -ActionName 'Re-Install' -Force:$Force
         if ($Null -eq $Settings) {
             Write-Debug "Unable to retrieve current Agent Settings. Testing for Backup Settings."
             Try {
@@ -2060,6 +2365,12 @@ function Uninstall-CWAA {
     .PARAMETER Force
         Forces uninstallation even when a probe agent is detected. Use with extreme caution,
         as probe agents are typically critical infrastructure components.
+    .PARAMETER SkipCertificateCheck
+        Bypasses SSL/TLS certificate validation for server connections.
+        Use in lab or test environments with self-signed certificates.
+    .PARAMETER ShowProgress
+        Displays a Write-Progress bar showing uninstall progress. Off by default
+        to avoid interference with unattended execution (RMM tools, GPO scripts).
     .EXAMPLE
         Uninstall-CWAA
         Uninstalls the agent using the server URL from the agent's registry settings.
@@ -2078,6 +2389,9 @@ function Uninstall-CWAA {
     .EXAMPLE
         Uninstall-CWAA -WhatIf
         Simulates the uninstall process without making any actual changes.
+    .EXAMPLE
+        Get-CWAAInfo | Uninstall-CWAA
+        Pipes the installed agent's Server property into Uninstall-CWAA via pipeline.
     .NOTES
         Author: Chris Taylor
         Alias: Uninstall-LTService
@@ -2091,10 +2405,10 @@ function Uninstall-CWAA {
         [Parameter(ValueFromPipelineByPropertyName = $true)]
         [AllowNull()]
         [string[]]$Server,
-        [Parameter(ValueFromPipelineByPropertyName = $true)]
         [switch]$Backup,
         [switch]$Force,
-        [switch]$SkipCertificateCheck
+        [switch]$SkipCertificateCheck,
+        [switch]$ShowProgress
     )
     Begin {
         Write-Debug "Starting $($myInvocation.InvocationName)"
@@ -2105,14 +2419,7 @@ function Uninstall-CWAA {
             Throw "Needs to be ran as Administrator"
         }
         $serviceInfo = Get-CWAAInfo -EA 0 -Verbose:$False -WhatIf:$False -Confirm:$False -Debug:$False
-        if ($serviceInfo -and ($serviceInfo | Select-Object -Expand Probe -EA 0) -eq '1') {
-            if ($Force -eq $True) {
-                Write-Output 'Probe Agent Detected. UnInstall Forced.'
-            }
-            else {
-                Write-Error -Exception [System.OperationCanceledException]"Probe Agent Detected. UnInstall Denied." -ErrorAction Stop
-            }
-        }
+        Assert-CWAANotProbeAgent -ServiceInfo $serviceInfo -ActionName 'UnInstall' -Force:$Force
         if ($Backup) {
             if ($PSCmdlet.ShouldProcess('LTService', 'Backup Current Service Settings')) {
                 New-CWAABackup
@@ -2168,9 +2475,13 @@ function Uninstall-CWAA {
             $Server = Read-Host -Prompt 'Provide the URL to your Automate server (https://automate.domain.com):'
         }
         # Resolve the first reachable server and its advertised version
+        $progressId = 2
+        $progressActivity = 'Uninstalling ConnectWise Automate Agent'
+        if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Resolving server address' -PercentComplete 12 }
         $serverResult = Resolve-CWAAServer -Server $Server
         if (-not $serverResult) { return }
         $serverUrl = $serverResult.ServerUrl
+        if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Downloading uninstaller files' -PercentComplete 25 }
         Try {
             # Download the uninstall MSI (same URL for all server versions)
             $installer = "$serverUrl/LabTech/Service/LabTechRemoteAgent.msi"
@@ -2234,9 +2545,11 @@ function Uninstall-CWAA {
         }
     }
     End {
+        try {
         if ($GoodServer -match 'https?://.+' -or $AlternateServer -match 'https?://.+') {
             Try {
                 Write-Output 'Starting Uninstall.'
+                if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Stopping services and processes' -PercentComplete 37 }
                 Try { Stop-CWAA -ErrorAction SilentlyContinue } Catch { Write-Debug "Stop-CWAA encountered an error: $_" }
                 # Kill all running processes from %ltsvcdir%
                 if (Test-Path $BasePath) {
@@ -2255,6 +2568,7 @@ function Uninstall-CWAA {
                         Catch { Write-Output 'Error calling regsvr32.exe.' }
                     }
                 }
+                if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Running MSI uninstaller' -PercentComplete 50 }
                 if ($PSCmdlet.ShouldProcess("msiexec.exe $uninstallArguments", 'Execute MSI Uninstall')) {
                     if (Test-Path "$Script:CWAAInstallerTempPath\Installer\Agent_Uninstall.msi") {
                         Write-Verbose 'Launching MSI Uninstall.'
@@ -2266,6 +2580,7 @@ function Uninstall-CWAA {
                         Write-Verbose "$Script:CWAAInstallerTempPath\Installer\Agent_Uninstall.msi was not found."
                     }
                 }
+                if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Running agent uninstaller' -PercentComplete 62 }
                 if ($PSCmdlet.ShouldProcess("${env:windir}\temp\Agent_Uninstall.exe", 'Execute Agent Uninstall')) {
                     if (Test-Path "${env:windir}\temp\Agent_Uninstall.exe") {
                         # Remove previously extracted SFX files to prevent UnRAR overwrite prompts
@@ -2279,8 +2594,9 @@ function Uninstall-CWAA {
                         Write-Verbose "${env:windir}\temp\Agent_Uninstall.exe was not found."
                     }
                 }
+                if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Removing services' -PercentComplete 75 }
                 Write-Verbose 'Removing Services if found.'
-                @('LTService', 'LTSvcMon', 'LabVNC') | ForEach-Object {
+                $Script:CWAAAllServiceNames | ForEach-Object {
                     if (Get-Service $_ -EA 0) {
                         if ($PSCmdlet.ShouldProcess($_, 'Remove Service')) {
                             Write-Debug "Removing Service: $_"
@@ -2294,6 +2610,7 @@ function Uninstall-CWAA {
                         }
                     }
                 }
+                if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Cleaning up files and registry' -PercentComplete 87 }
                 Write-Verbose 'Cleaning Files remaining if found.'
                 # Depth-first removal to get as much removed as possible if complete removal fails
                 @($BasePath, "${env:windir}\temp\_ltupdate") | ForEach-Object {
@@ -2337,6 +2654,7 @@ function Uninstall-CWAA {
                 Write-CWAAEventLog -EventId 1012 -EntryType Error -Message "Agent uninstall failed. Error: $($_.Exception.Message)"
                 Write-Error "There was an error during the uninstall process. $($_.Exception.Message)" -ErrorAction Stop
             }
+            if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Verifying uninstall' -PercentComplete 100 }
             if ($WhatIfPreference -ne $True) {
                 # Post Uninstall Check
                 If ((Test-Path $Script:CWAAInstallPath) -or (Test-Path "${env:windir}\temp\_ltupdate") -or (Test-Path registry::HKLM\Software\LabTech\Service) -or (Test-Path registry::HKLM\Software\WOW6432Node\Labtech\Service)) {
@@ -2355,7 +2673,11 @@ function Uninstall-CWAA {
         Elseif ($WhatIfPreference -ne $True) {
             Write-Error "No valid server was reached to use for the uninstall." -ErrorAction Stop
         }
-        Write-Debug "Exiting $($myInvocation.InvocationName)"
+        }
+        finally {
+            if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Completed }
+            Write-Debug "Exiting $($myInvocation.InvocationName)"
+        }
     }
 }
 function Update-CWAA {
@@ -2379,6 +2701,12 @@ function Update-CWAA {
         The target agent version to update to.
         Example: 120.240
         If omitted, the version advertised by the server will be used.
+    .PARAMETER SkipCertificateCheck
+        Bypasses SSL/TLS certificate validation for server connections.
+        Use in lab or test environments with self-signed certificates.
+    .PARAMETER ShowProgress
+        Displays a Write-Progress bar showing update progress. Off by default
+        to avoid interference with unattended execution (RMM tools, GPO scripts).
     .EXAMPLE
         Update-CWAA -Version 120.240
         Updates the agent to the specific version requested.
@@ -2397,7 +2725,8 @@ function Update-CWAA {
         [parameter(Position = 0)]
         [AllowNull()]
         [string]$Version,
-        [switch]$SkipCertificateCheck
+        [switch]$SkipCertificateCheck,
+        [switch]$ShowProgress
     )
     Begin {
         Write-Debug "Starting $($myInvocation.InvocationName)"
@@ -2416,6 +2745,9 @@ function Update-CWAA {
             }
         }
         # Resolve the first reachable server and its advertised version
+        $progressId = 3
+        $progressActivity = 'Updating ConnectWise Automate Agent'
+        if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Resolving server address' -PercentComplete 14 }
         if (-not $Server) { return }
         $serverResult = Resolve-CWAAServer -Server $Server
         if ($serverResult) {
@@ -2427,7 +2759,7 @@ function Update-CWAA {
             if ($Version -match '[1-9][0-9]{2}\.[0-9]{1,3}') {
                 $updater = "$GoodServer/Labtech/Updates/LabtechUpdate_$Version.zip"
             }
-            Elseif ([System.Version]$serverVersion -ge [System.Version]'105.001') {
+            Elseif ([System.Version]$serverVersion -ge [System.Version]$Script:CWAAVersionUpdateMinimum) {
                 $Version = $serverVersion
                 Write-Verbose "Using detected version ($Version) from server: $GoodServer."
                 $updater = "$GoodServer/Labtech/Updates/LabtechUpdate_$Version.zip"
@@ -2444,6 +2776,7 @@ function Update-CWAA {
                 }
             }
             # Remove stale updater directory using depth-first removal
+            if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Cleaning previous update files' -PercentComplete 28 }
             Remove-CWAAFolderRecursive -Path $updaterPath
             Try {
                 if (-not (Test-Path -PathType Container -Path $updaterPath)) {
@@ -2464,6 +2797,7 @@ function Update-CWAA {
                 }
                 else {
                     if ($PSCmdlet.ShouldProcess($updater, 'DownloadFile')) {
+                        if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Downloading update package' -PercentComplete 42 }
                         Write-Debug "Downloading LabtechUpdate.exe from $updater"
                         $Script:LTServiceNetWebClient.DownloadFile($updater, "$updaterPath\LabtechUpdate.exe")
                         if (-not (Test-CWAADownloadIntegrity -FilePath "$updaterPath\LabtechUpdate.exe" -FileName 'LabtechUpdate.exe')) {
@@ -2488,6 +2822,7 @@ function Update-CWAA {
         }
     }
     End {
+        try {
         $detectedVersion = $Settings | Select-Object -Expand 'Version' -EA 0
         if ($Null -eq $detectedVersion) {
             Write-Error "No existing installation was found." -ErrorAction Stop
@@ -2505,6 +2840,7 @@ function Update-CWAA {
             Write-Warning "Server version detected ($serverVersion) is higher than the requested version ($Version)."
             Return
         }
+        if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Stopping services' -PercentComplete 57 }
         Try {
             Stop-CWAA
         }
@@ -2515,6 +2851,7 @@ function Update-CWAA {
         }
         Write-Output "Updating Agent with the following information: Server $GoodServer, Version $Version"
         Try {
+            if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Extracting update' -PercentComplete 71 }
             if ($PSCmdlet.ShouldProcess("LabtechUpdate.exe $extractArguments", 'Extracting update files')) {
                 if (Test-Path "$updaterPath\LabtechUpdate.exe") {
                     Write-Verbose 'Launching LabtechUpdate Self-Extractor.'
@@ -2531,6 +2868,7 @@ function Update-CWAA {
                     Write-Verbose "$updaterPath\LabtechUpdate.exe was not found."
                 }
             }
+            if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Applying update' -PercentComplete 85 }
             if ($PSCmdlet.ShouldProcess("Update.exe $updaterArguments", 'Launching Updater')) {
                 if (Test-Path "$updaterPath\Update.exe") {
                     Write-Verbose 'Launching Labtech Updater'
@@ -2548,6 +2886,7 @@ function Update-CWAA {
             Write-Error "There was an error during the update process. $_" -ErrorAction Continue
             Write-CWAAEventLog -EventId 1032 -EntryType Error -Message "Agent update process failed. Error: $($_.Exception.Message)"
         }
+        if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Restarting services' -PercentComplete 100 }
         Try {
             Start-CWAA
         }
@@ -2557,7 +2896,11 @@ function Update-CWAA {
             Return
         }
         Write-CWAAEventLog -EventId 1030 -EntryType Information -Message "Agent updated successfully to version $Version."
-        Write-Debug "Exiting $($myInvocation.InvocationName)"
+        }
+        finally {
+            if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Completed }
+            Write-Debug "Exiting $($myInvocation.InvocationName)"
+        }
     }
 }
 function Get-CWAAError {
@@ -2645,8 +2988,10 @@ function Get-CWAALogLevel {
     [CmdletBinding()]
     [Alias('Get-LTLogging')]
     Param ()
-    Process {
+    Begin {
         Write-Debug "Starting $($MyInvocation.InvocationName)"
+    }
+    Process {
         Try {
             # "Debuging" is the vendor's original spelling in the registry -- not a typo in this code.
             $logLevel = Get-CWAASettings | Select-Object -Expand Debuging -EA 0
@@ -2749,6 +3094,9 @@ function Set-CWAALogLevel {
     .EXAMPLE
         Set-CWAALogLevel -Level Verbose -WhatIf
         Shows what changes would be made without applying them.
+    .EXAMPLE
+        'Verbose' | Set-CWAALogLevel
+        Sets the log level to Verbose via pipeline input.
     .NOTES
         Author: Chris Taylor
         Alias: Set-LTLogging
@@ -2758,11 +3106,14 @@ function Set-CWAALogLevel {
     [CmdletBinding(SupportsShouldProcess = $True)]
     [Alias('Set-LTLogging')]
     Param (
+        [Parameter(ValueFromPipeline = $True)]
         [ValidateSet('Normal', 'Verbose')]
         $Level = 'Normal'
     )
-    Process {
+    Begin {
         Write-Debug "Starting $($MyInvocation.InvocationName)"
+    }
+    Process {
         Try {
             # "Debuging" is the vendor's original spelling in the registry -- not a typo in this code.
             $registryPath = "$Script:CWAARegistrySettings"
@@ -2920,10 +3271,17 @@ function Set-CWAAProxy {
         Automatically detect system proxy settings for module operations.
         Discovered settings are applied to the installed agent (if present).
         Cannot be used with other parameters.
+    .PARAMETER ProxyCredential
+        A PSCredential object containing the proxy username and password.
+        This is the preferred secure alternative to passing -ProxyUsername
+        and -ProxyPassword separately. Must be used with -ProxyServerURL.
     .PARAMETER ResetProxy
         Clears any currently defined proxy settings for module operations.
         Changes are applied to the installed agent (if present).
         Cannot be used with other parameters.
+    .PARAMETER SkipCertificateCheck
+        Bypasses SSL/TLS certificate validation for server connections.
+        Use in lab or test environments with self-signed certificates.
     .EXAMPLE
         Set-CWAAProxy -DetectProxy
         Automatically detects and configures the system proxy.
@@ -2953,6 +3311,10 @@ function Set-CWAAProxy {
         [parameter(Mandatory = $False, ValueFromPipeline = $False, ValueFromPipelineByPropertyName = $True)]
         [SecureString]$EncodedProxyPassword,
         [parameter(Mandatory = $False, ValueFromPipeline = $False, ValueFromPipelineByPropertyName = $True)]
+        [System.Management.Automation.PSCredential]
+        [System.Management.Automation.Credential()]
+        $ProxyCredential,
+        [parameter(Mandatory = $False, ValueFromPipeline = $False, ValueFromPipelineByPropertyName = $True)]
         [alias('Detect')]
         [alias('AutoDetect')]
         [switch]$DetectProxy,
@@ -2974,6 +3336,12 @@ function Set-CWAAProxy {
         catch { Write-Debug "Failed to retrieve service settings. $_" }
     }
     Process {
+        # If a PSCredential was provided, extract username and password.
+        # This is the preferred secure alternative to passing plain text proxy credentials.
+        if ($ProxyCredential) {
+            $ProxyUsername = $ProxyCredential.UserName
+            $ProxyPassword = $ProxyCredential.GetNetworkCredential().Password
+        }
         if (
             (($ResetProxy -eq $True) -and (($DetectProxy -eq $True) -or ($ProxyServerURL) -or ($ProxyUsername) -or ($ProxyPassword) -or ($EncodedProxyUsername) -or ($EncodedProxyPassword))) -or
             (($DetectProxy -eq $True) -and (($ResetProxy -eq $True) -or ($ProxyServerURL) -or ($ProxyUsername) -or ($ProxyPassword) -or ($EncodedProxyUsername) -or ($EncodedProxyPassword))) -or
@@ -3107,7 +3475,7 @@ function Set-CWAAProxy {
             }
             if ($settingsChanged -eq $True) {
                 $serviceRestartNeeded = $False
-                if ((Get-Service 'LTService', 'LTSvcMon' -ErrorAction SilentlyContinue | Where-Object { $_.Status -match 'Running' })) {
+                if ((Get-Service $Script:CWAAServiceNames -ErrorAction SilentlyContinue | Where-Object { $_.Status -match 'Running' })) {
                     $serviceRestartNeeded = $True
                     try { Stop-CWAA -EA 0 -WA 0 } catch { Write-Debug "Failed to stop services before proxy update. $_" }
                 }
@@ -3173,6 +3541,9 @@ function Register-CWAAHealthCheckTask {
     .EXAMPLE
         Register-CWAAHealthCheckTask -InstallerToken 'token' -IntervalHours 12 -TaskName 'MyHealthCheck'
         Creates a custom-named task running every 12 hours.
+    .EXAMPLE
+        Get-CWAAInfo | Register-CWAAHealthCheckTask -InstallerToken 'token'
+        Uses Server and LocationID from the installed agent via pipeline to register a health check task.
     .NOTES
         Author: Chris Taylor
         Alias: Register-LTHealthCheckTask
@@ -3185,8 +3556,10 @@ function Register-CWAAHealthCheckTask {
         [Parameter(Mandatory = $True)]
         [ValidatePattern('(?s:^[0-9a-z]+$)')]
         [string]$InstallerToken,
+        [Parameter(ValueFromPipelineByPropertyName = $True)]
         [ValidatePattern('^[a-zA-Z0-9\.\-\:\/]+$')]
-        [string]$Server,
+        [string[]]$Server,
+        [Parameter(ValueFromPipelineByPropertyName = $True)]
         [int]$LocationID,
         [ValidatePattern('^[\w\-\. ]+$')]
         [string]$TaskName = 'CWAAHealthCheck',
@@ -3226,7 +3599,10 @@ function Register-CWAAHealthCheckTask {
             # Build the PowerShell command for the scheduled task action
             # Use Install mode if Server and LocationID are provided, otherwise Checkup mode
             if ($Server -and $LocationID) {
-                $repairCommand = "Import-Module ConnectWiseAutomateAgent; Repair-CWAA -Server '$Server' -LocationID $LocationID -InstallerToken '$InstallerToken'"
+                # Build a proper PowerShell array literal for the Server argument.
+                # Handles both single-server and multi-server arrays from Get-CWAAInfo pipeline.
+                $serverArgument = ($Server | ForEach-Object { "'$_'" }) -join ','
+                $repairCommand = "Import-Module ConnectWiseAutomateAgent; Repair-CWAA -Server $serverArgument -LocationID $LocationID -InstallerToken '$InstallerToken'"
             }
             else {
                 $repairCommand = "Import-Module ConnectWiseAutomateAgent; Repair-CWAA -InstallerToken '$InstallerToken'"
@@ -3370,13 +3746,13 @@ function Repair-CWAA {
     [CmdletBinding(SupportsShouldProcess = $True)]
     [Alias('Repair-LTService')]
     Param(
-        [Parameter(ParameterSetName = 'Install', Mandatory = $True)]
+        [Parameter(ParameterSetName = 'Install', Mandatory = $True, ValueFromPipelineByPropertyName = $true)]
         [ValidateScript({
             if ($_ -match '^(https?://)?(([12]?[0-9]{1,2}\.){3}[12]?[0-9]{1,2}|[a-z0-9][a-z0-9_-]*(\.[a-z0-9][a-z0-9_-]*)*)$') { $true }
             else { throw "Server address '$_' is not valid. Expected format: https://automate.domain.com" }
         })]
         [string]$Server,
-        [Parameter(ParameterSetName = 'Install', Mandatory = $True)]
+        [Parameter(ParameterSetName = 'Install', Mandatory = $True, ValueFromPipelineByPropertyName = $true)]
         [ValidateRange(1, [int]::MaxValue)]
         [int]$LocationID,
         [Parameter(ParameterSetName = 'Install', Mandatory = $True)]
@@ -3702,15 +4078,7 @@ function Restart-CWAA {
         Write-Debug "Starting $($MyInvocation.InvocationName)"
     }
     Process {
-        if (-not (Get-Service 'LTService', 'LTSvcMon' -ErrorAction SilentlyContinue)) {
-            if ($WhatIfPreference -ne $True) {
-                Write-Error "Services NOT Found."
-            }
-            else {
-                Write-Error "What If: Services NOT Found."
-            }
-            return
-        }
+        if (-not (Test-CWAAServiceExists -WriteErrorOnMissing)) { return }
         if ($PSCmdlet.ShouldProcess('LTService, LTSvcMon', 'Restart Service')) {
             Try {
                 Stop-CWAA
@@ -3771,15 +4139,7 @@ function Start-CWAA {
         $startedSvcCount = 0
     }
     Process {
-        if (-not (Get-Service 'LTService', 'LTSvcMon' -ErrorAction SilentlyContinue)) {
-            if ($WhatIfPreference -ne $True) {
-                Write-Error "Services NOT Found."
-            }
-            else {
-                Write-Error "What If: Services NOT Found."
-            }
-            return
-        }
+        if (-not (Test-CWAAServiceExists -WriteErrorOnMissing)) { return }
         Try {
             if ((('LTService') | Get-Service -EA 0 | Where-Object { $_.Status -eq 'Stopped' } | Measure-Object | Select-Object -Expand Count) -gt 0) {
                 Try { $netstat = & "$env:windir\system32\netstat.exe" -a -o -n 2>'' | Select-String -Pattern " .*[0-9\.]+:$($Port).*[0-9\.]+:[0-9]+ .*?([0-9]+)" -EA 0 }
@@ -3798,7 +4158,7 @@ function Start-CWAA {
                             # TrayPort wraps within the 42000-42009 range. If a protected process holds
                             # the current port, increment and wrap back to 42000 after 42009.
                             $newPort = [int]$Port + 1
-                            if ($newPort -gt 42009) { $newPort = 42000 }
+                            if ($newPort -gt $Script:CWAATrayPortMax) { $newPort = $Script:CWAATrayPortMin }
                             Write-Warning "Setting tray port to $newPort."
                             New-ItemProperty -Path $Script:CWAARegistryRoot -Name TrayPort -PropertyType String -Value $newPort -Force -WhatIf:$False -Confirm:$False | Out-Null
                         }
@@ -3820,15 +4180,11 @@ function Start-CWAA {
                 # Wait for services if we issued start commands
                 $stoppedServiceCount = ('LTService') | Get-Service -EA 0 | Where-Object { $_.Status -ne 'Running' } | Measure-Object | Select-Object -Expand Count
                 if ($stoppedServiceCount -gt 0 -and $startedSvcCount -eq 2) {
-                    $timeout = New-TimeSpan -Minutes 1
-                    $stopwatch = [Diagnostics.Stopwatch]::StartNew()
-                    Write-Verbose 'Waiting for services to start...'
-                    Do {
-                        Start-Sleep 2
-                        $stoppedServiceCount = ('LTService') | Get-Service -EA 0 | Where-Object { $_.Status -ne 'Running' } | Measure-Object | Select-Object -Expand Count
-                    } Until ($stopwatch.Elapsed -gt $timeout -or $stoppedServiceCount -eq 0)
-                    $stopwatch.Stop()
-                    Write-Verbose 'Service start wait completed.'
+                    $Null = Wait-CWAACondition -Condition {
+                        $count = ('LTService') | Get-Service -EA 0 | Where-Object { $_.Status -ne 'Running' } | Measure-Object | Select-Object -Expand Count
+                        $count -eq 0
+                    } -TimeoutSeconds $Script:CWAAServiceWaitTimeoutSec -IntervalSeconds 2 -Activity 'Services starting'
+                    $stoppedServiceCount = ('LTService') | Get-Service -EA 0 | Where-Object { $_.Status -ne 'Running' } | Measure-Object | Select-Object -Expand Count
                 }
                 # Report final state
                 if ($stoppedServiceCount -eq 0) {
@@ -3882,15 +4238,7 @@ function Stop-CWAA {
         Write-Debug "Starting $($MyInvocation.InvocationName)"
     }
     Process {
-        if (-not (Get-Service 'LTService', 'LTSvcMon' -ErrorAction SilentlyContinue)) {
-            if ($WhatIfPreference -ne $True) {
-                Write-Error "Services NOT Found."
-            }
-            else {
-                Write-Error "What If: Services NOT Found."
-            }
-            return
-        }
+        if (-not (Test-CWAAServiceExists -WriteErrorOnMissing)) { return }
         if ($PSCmdlet.ShouldProcess('LTService, LTSvcMon', 'Stop-Service')) {
             $Null = Invoke-CWAACommand ('Kill VNC', 'Kill Trays') -EA 0 -WhatIf:$False -Confirm:$False
             Write-Verbose 'Stopping Automate agent services.'
@@ -3904,19 +4252,14 @@ function Stop-CWAA {
                     }
                     Catch { Write-Debug "Failed to call sc.exe stop for service $_." }
                 }
-                $timeout = New-TimeSpan -Minutes 1
-                $stopwatch = [Diagnostics.Stopwatch]::StartNew()
-                Write-Verbose 'Waiting for services to stop...'
-                Do {
-                    Start-Sleep 2
-                    $runningServiceCount = $Script:CWAAServiceNames | Get-Service -EA 0 | Where-Object { $_.Status -ne 'Stopped' } | Measure-Object | Select-Object -Expand Count
-                } Until ($stopwatch.Elapsed -gt $timeout -or $runningServiceCount -eq 0)
-                $stopwatch.Stop()
-                Write-Verbose 'Service stop wait completed.'
-                if ($runningServiceCount -gt 0) {
-                    Write-Verbose "Services did not stop. Terminating processes after $(([int32]$stopwatch.Elapsed.TotalSeconds).ToString()) seconds."
+                $servicesStopped = Wait-CWAACondition -Condition {
+                    $count = $Script:CWAAServiceNames | Get-Service -EA 0 | Where-Object { $_.Status -ne 'Stopped' } | Measure-Object | Select-Object -Expand Count
+                    $count -eq 0
+                } -TimeoutSeconds $Script:CWAAServiceWaitTimeoutSec -IntervalSeconds 2 -Activity 'Services stopping'
+                if (-not $servicesStopped) {
+                    Write-Verbose 'Services did not stop in time. Terminating processes.'
                 }
-                Get-Process | Where-Object { @('LTTray', 'LTSVC', 'LTSvcMon') -contains $_.ProcessName } | Stop-Process -Force -ErrorAction Stop -WhatIf:$False -Confirm:$False
+                Get-Process | Where-Object { $Script:CWAAAgentProcessNames -contains $_.ProcessName } | Stop-Process -Force -ErrorAction Stop -WhatIf:$False -Confirm:$False
                 # Verify final state and report
                 $remainingCount = $Script:CWAAServiceNames | Get-Service -EA 0 | Where-Object { $_.Status -ne 'Stopped' } | Measure-Object | Select-Object -Expand Count
                 if ($remainingCount -eq 0) {
@@ -3972,6 +4315,9 @@ function Test-CWAAHealth {
     .EXAMPLE
         if ((Test-CWAAHealth).Healthy) { Write-Output 'Agent is healthy' }
         Uses the Healthy boolean for conditional logic.
+    .EXAMPLE
+        Get-CWAAInfo | Test-CWAAHealth
+        Pipes the installed agent's Server property into Test-CWAAHealth via pipeline.
     .NOTES
         Author: Chris Taylor
         Alias: Test-LTHealth
@@ -3982,7 +4328,7 @@ function Test-CWAAHealth {
     [Alias('Test-LTHealth')]
     Param(
         [Parameter(ValueFromPipelineByPropertyName = $True)]
-        [string]$Server,
+        [string[]]$Server,
         [switch]$TestServerConnectivity
     )
     Begin {
@@ -4033,14 +4379,15 @@ function Test-CWAAHealth {
                 Catch {
                     Write-Verbose 'HeartbeatLastSent not available or not a valid datetime.'
                 }
-                # If a Server was provided, check if it matches the installed configuration
+                # If a Server was provided, check if any matches the installed configuration.
+                # Server is string[] to handle Get-CWAAInfo pipeline output (which returns Server as an array).
                 if ($Server) {
                     $installedServers = @($agentInfo | Select-Object -Expand 'Server' -EA 0)
-                    $cleanServer = $Server -replace 'https?://', '' -replace '/$', ''
+                    $cleanProvided = @($Server | ForEach-Object { $_ -replace 'https?://', '' -replace '/$', '' })
                     $serverMatch = $False
                     foreach ($installedServer in $installedServers) {
                         $cleanInstalled = $installedServer -replace 'https?://', '' -replace '/$', ''
-                        if ($cleanInstalled -eq $cleanServer) {
+                        if ($cleanProvided -contains $cleanInstalled) {
                             $serverMatch = $True
                             break
                         }
@@ -4477,32 +4824,11 @@ function Reset-CWAA {
             $MAC = $True
         }
         $serviceInfo = Get-CWAAInfo -EA 0 -Verbose:$False -WhatIf:$False -Confirm:$False -Debug:$False
-        if ($serviceInfo -and ($serviceInfo | Select-Object -Expand Probe -EA 0) -eq '1') {
-            if ($Force) {
-                Write-Output 'Probe Agent Detected. Reset Forced.'
-            }
-            else {
-                if ($WhatIfPreference -ne $True) {
-                    Write-Error -Exception [System.OperationCanceledException]"Probe Agent Detected. Reset Denied." -ErrorAction Stop
-                }
-                else {
-                    Write-Error -Exception [System.OperationCanceledException]"What If: Probe Agent Detected. Reset Denied." -ErrorAction Stop
-                }
-            }
-        }
+        Assert-CWAANotProbeAgent -ServiceInfo $serviceInfo -ActionName 'Reset' -Force:$Force
         Write-Output "OLD ID: $($serviceInfo | Select-Object -Expand ID -EA 0) LocationID: $($serviceInfo | Select-Object -Expand LocationID -EA 0) MAC: $($serviceInfo | Select-Object -Expand MAC -EA 0)"
     }
     Process {
-        if (-not (Get-Service $Script:CWAAServiceNames -ErrorAction SilentlyContinue)) {
-            if ($WhatIfPreference -ne $True) {
-                Write-Error "Automate agent services NOT Found."
-                return
-            }
-            else {
-                Write-Error "What If: Stopping: Automate agent services NOT Found."
-                return
-            }
-        }
+        if (-not (Test-CWAAServiceExists -WriteErrorOnMissing)) { return }
         Try {
             if ($ID -or $Location -or $MAC) {
                 Stop-CWAA
@@ -4528,20 +4854,12 @@ function Reset-CWAA {
     }
     End {
         if (-not $NoWait -and $PSCmdlet.ShouldProcess('LTService', 'Discover new settings after Service Start')) {
-            $timeout = New-TimeSpan -Minutes 1
-            $stopwatch = [Diagnostics.Stopwatch]::StartNew()
-            $serviceInfo = Get-CWAAInfo -EA 0 -Verbose:$False -WhatIf:$False -Confirm:$False -Debug:$False
-            Write-Verbose 'Waiting for agent to register...'
-            while (
-                (-not ($serviceInfo | Select-Object -Expand ID -EA 0) -or
-                 -not ($serviceInfo | Select-Object -Expand LocationID -EA 0) -or
-                 -not ($serviceInfo | Select-Object -Expand MAC -EA 0)) -and
-                $stopwatch.Elapsed -lt $timeout
-            ) {
-                Start-Sleep 2
-                $serviceInfo = Get-CWAAInfo -EA 0 -Verbose:$False -WhatIf:$False -Confirm:$False -Debug:$False
-            }
-            Write-Verbose 'Agent registration wait complete.'
+            $Null = Wait-CWAACondition -Condition {
+                $svcInfo = Get-CWAAInfo -EA 0 -Verbose:$False -WhatIf:$False -Confirm:$False -Debug:$False
+                ($svcInfo | Select-Object -Expand ID -EA 0) -and
+                ($svcInfo | Select-Object -Expand LocationID -EA 0) -and
+                ($svcInfo | Select-Object -Expand MAC -EA 0)
+            } -TimeoutSeconds $Script:CWAARegistrationTimeoutSec -IntervalSeconds 2 -Activity 'Agent re-registration'
             $serviceInfo = Get-CWAAInfo -EA 0 -Verbose:$False -WhatIf:$False -Confirm:$False -Debug:$False
             Write-Output "NEW ID: $($serviceInfo | Select-Object -Expand ID -EA 0) LocationID: $($serviceInfo | Select-Object -Expand LocationID -EA 0) MAC: $($serviceInfo | Select-Object -Expand MAC -EA 0)"
             Write-CWAAEventLog -EventId 3000 -EntryType Information -Message "Agent reset successfully. New ID: $($serviceInfo | Select-Object -Expand ID -EA 0), LocationID: $($serviceInfo | Select-Object -Expand LocationID -EA 0)"

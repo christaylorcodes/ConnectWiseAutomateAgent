@@ -28,15 +28,7 @@ function Stop-CWAA {
     }
 
     Process {
-        if (-not (Get-Service 'LTService', 'LTSvcMon' -ErrorAction SilentlyContinue)) {
-            if ($WhatIfPreference -ne $True) {
-                Write-Error "Services NOT Found."
-            }
-            else {
-                Write-Error "What If: Services NOT Found."
-            }
-            return
-        }
+        if (-not (Test-CWAAServiceExists -WriteErrorOnMissing)) { return }
         if ($PSCmdlet.ShouldProcess('LTService, LTSvcMon', 'Stop-Service')) {
             $Null = Invoke-CWAACommand ('Kill VNC', 'Kill Trays') -EA 0 -WhatIf:$False -Confirm:$False
             Write-Verbose 'Stopping Automate agent services.'
@@ -50,19 +42,14 @@ function Stop-CWAA {
                     }
                     Catch { Write-Debug "Failed to call sc.exe stop for service $_." }
                 }
-                $timeout = New-TimeSpan -Minutes 1
-                $stopwatch = [Diagnostics.Stopwatch]::StartNew()
-                Write-Verbose 'Waiting for services to stop...'
-                Do {
-                    Start-Sleep 2
-                    $runningServiceCount = $Script:CWAAServiceNames | Get-Service -EA 0 | Where-Object { $_.Status -ne 'Stopped' } | Measure-Object | Select-Object -Expand Count
-                } Until ($stopwatch.Elapsed -gt $timeout -or $runningServiceCount -eq 0)
-                $stopwatch.Stop()
-                Write-Verbose 'Service stop wait completed.'
-                if ($runningServiceCount -gt 0) {
-                    Write-Verbose "Services did not stop. Terminating processes after $(([int32]$stopwatch.Elapsed.TotalSeconds).ToString()) seconds."
+                $servicesStopped = Wait-CWAACondition -Condition {
+                    $count = $Script:CWAAServiceNames | Get-Service -EA 0 | Where-Object { $_.Status -ne 'Stopped' } | Measure-Object | Select-Object -Expand Count
+                    $count -eq 0
+                } -TimeoutSeconds $Script:CWAAServiceWaitTimeoutSec -IntervalSeconds 2 -Activity 'Services stopping'
+                if (-not $servicesStopped) {
+                    Write-Verbose 'Services did not stop in time. Terminating processes.'
                 }
-                Get-Process | Where-Object { @('LTTray', 'LTSVC', 'LTSvcMon') -contains $_.ProcessName } | Stop-Process -Force -ErrorAction Stop -WhatIf:$False -Confirm:$False
+                Get-Process | Where-Object { $Script:CWAAAgentProcessNames -contains $_.ProcessName } | Stop-Process -Force -ErrorAction Stop -WhatIf:$False -Confirm:$False
 
                 # Verify final state and report
                 $remainingCount = $Script:CWAAServiceNames | Get-Service -EA 0 | Where-Object { $_.Status -ne 'Stopped' } | Measure-Object | Select-Object -Expand Count

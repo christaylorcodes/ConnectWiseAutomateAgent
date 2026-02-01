@@ -1,4 +1,4 @@
----
+﻿---
 external help file: ConnectWiseAutomateAgent-help.xml
 Module Name: ConnectWiseAutomateAgent
 online version: https://github.com/christaylorcodes/ConnectWiseAutomateAgent
@@ -13,7 +13,7 @@ Starts the ConnectWise Automate agent services.
 ## SYNTAX
 
 ```
-Start-CWAA [-ProgressAction <ActionPreference>] [-WhatIf] [-Confirm] [<CommonParameters>]
+Start-CWAA [-WhatIf] [-Confirm] [<CommonParameters>]
 ```
 
 ## DESCRIPTION
@@ -45,21 +45,6 @@ Start-CWAA -WhatIf
 Shows what would happen without actually starting the services.
 
 ## PARAMETERS
-
-### -ProgressAction
-{{ Fill ProgressAction Description }}
-
-```yaml
-Type: ActionPreference
-Parameter Sets: (All)
-Aliases: proga
-
-Required: False
-Position: Named
-Default value: None
-Accept pipeline input: False
-Accept wildcard characters: False
-```
 
 ### -Confirm
 Prompts you for confirmation before running the cmdlet.

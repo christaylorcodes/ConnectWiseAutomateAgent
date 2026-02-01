@@ -1,4 +1,4 @@
----
+﻿---
 external help file: ConnectWiseAutomateAgent-help.xml
 Module Name: ConnectWiseAutomateAgent
 online version: https://github.com/christaylorcodes/ConnectWiseAutomateAgent
@@ -13,8 +13,7 @@ Sends a service command to the ConnectWise Automate agent.
 ## SYNTAX
 
 ```
-Invoke-CWAACommand [-Command] <String[]> [-ProgressAction <ActionPreference>] [-WhatIf] [-Confirm]
- [<CommonParameters>]
+Invoke-CWAACommand [-Command] <String[]> [-WhatIf] [-Confirm] [<CommonParameters>]
 ```
 
 ## DESCRIPTION
@@ -58,21 +57,6 @@ Required: True
 Position: 2
 Default value: None
 Accept pipeline input: True (ByValue)
-Accept wildcard characters: False
-```
-
-### -ProgressAction
-{{ Fill ProgressAction Description }}
-
-```yaml
-Type: ActionPreference
-Parameter Sets: (All)
-Aliases: proga
-
-Required: False
-Position: Named
-Default value: None
-Accept pipeline input: False
 Accept wildcard characters: False
 ```
 

@@ -21,6 +21,9 @@ function Set-CWAALogLevel {
     .EXAMPLE
         Set-CWAALogLevel -Level Verbose -WhatIf
         Shows what changes would be made without applying them.
+    .EXAMPLE
+        'Verbose' | Set-CWAALogLevel
+        Sets the log level to Verbose via pipeline input.
     .NOTES
         Author: Chris Taylor
         Alias: Set-LTLogging
@@ -30,12 +33,16 @@ function Set-CWAALogLevel {
     [CmdletBinding(SupportsShouldProcess = $True)]
     [Alias('Set-LTLogging')]
     Param (
+        [Parameter(ValueFromPipeline = $True)]
         [ValidateSet('Normal', 'Verbose')]
         $Level = 'Normal'
     )
 
-    Process {
+    Begin {
         Write-Debug "Starting $($MyInvocation.InvocationName)"
+    }
+
+    Process {
         Try {
             # "Debuging" is the vendor's original spelling in the registry -- not a typo in this code.
             $registryPath = "$Script:CWAARegistrySettings"

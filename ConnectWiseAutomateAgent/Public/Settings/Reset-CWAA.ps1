@@ -57,33 +57,12 @@ function Reset-CWAA {
         }
 
         $serviceInfo = Get-CWAAInfo -EA 0 -Verbose:$False -WhatIf:$False -Confirm:$False -Debug:$False
-        if ($serviceInfo -and ($serviceInfo | Select-Object -Expand Probe -EA 0) -eq '1') {
-            if ($Force) {
-                Write-Output 'Probe Agent Detected. Reset Forced.'
-            }
-            else {
-                if ($WhatIfPreference -ne $True) {
-                    Write-Error -Exception [System.OperationCanceledException]"Probe Agent Detected. Reset Denied." -ErrorAction Stop
-                }
-                else {
-                    Write-Error -Exception [System.OperationCanceledException]"What If: Probe Agent Detected. Reset Denied." -ErrorAction Stop
-                }
-            }
-        }
+        Assert-CWAANotProbeAgent -ServiceInfo $serviceInfo -ActionName 'Reset' -Force:$Force
         Write-Output "OLD ID: $($serviceInfo | Select-Object -Expand ID -EA 0) LocationID: $($serviceInfo | Select-Object -Expand LocationID -EA 0) MAC: $($serviceInfo | Select-Object -Expand MAC -EA 0)"
     }
 
     Process {
-        if (-not (Get-Service $Script:CWAAServiceNames -ErrorAction SilentlyContinue)) {
-            if ($WhatIfPreference -ne $True) {
-                Write-Error "Automate agent services NOT Found."
-                return
-            }
-            else {
-                Write-Error "What If: Stopping: Automate agent services NOT Found."
-                return
-            }
-        }
+        if (-not (Test-CWAAServiceExists -WriteErrorOnMissing)) { return }
 
         Try {
             if ($ID -or $Location -or $MAC) {
@@ -111,20 +90,12 @@ function Reset-CWAA {
 
     End {
         if (-not $NoWait -and $PSCmdlet.ShouldProcess('LTService', 'Discover new settings after Service Start')) {
-            $timeout = New-TimeSpan -Minutes 1
-            $stopwatch = [Diagnostics.Stopwatch]::StartNew()
-            $serviceInfo = Get-CWAAInfo -EA 0 -Verbose:$False -WhatIf:$False -Confirm:$False -Debug:$False
-            Write-Verbose 'Waiting for agent to register...'
-            while (
-                (-not ($serviceInfo | Select-Object -Expand ID -EA 0) -or
-                 -not ($serviceInfo | Select-Object -Expand LocationID -EA 0) -or
-                 -not ($serviceInfo | Select-Object -Expand MAC -EA 0)) -and
-                $stopwatch.Elapsed -lt $timeout
-            ) {
-                Start-Sleep 2
-                $serviceInfo = Get-CWAAInfo -EA 0 -Verbose:$False -WhatIf:$False -Confirm:$False -Debug:$False
-            }
-            Write-Verbose 'Agent registration wait complete.'
+            $Null = Wait-CWAACondition -Condition {
+                $svcInfo = Get-CWAAInfo -EA 0 -Verbose:$False -WhatIf:$False -Confirm:$False -Debug:$False
+                ($svcInfo | Select-Object -Expand ID -EA 0) -and
+                ($svcInfo | Select-Object -Expand LocationID -EA 0) -and
+                ($svcInfo | Select-Object -Expand MAC -EA 0)
+            } -TimeoutSeconds $Script:CWAARegistrationTimeoutSec -IntervalSeconds 2 -Activity 'Agent re-registration'
             $serviceInfo = Get-CWAAInfo -EA 0 -Verbose:$False -WhatIf:$False -Confirm:$False -Debug:$False
             Write-Output "NEW ID: $($serviceInfo | Select-Object -Expand ID -EA 0) LocationID: $($serviceInfo | Select-Object -Expand LocationID -EA 0) MAC: $($serviceInfo | Select-Object -Expand MAC -EA 0)"
             Write-CWAAEventLog -EventId 3000 -EntryType Information -Message "Agent reset successfully. New ID: $($serviceInfo | Select-Object -Expand ID -EA 0), LocationID: $($serviceInfo | Select-Object -Expand LocationID -EA 0)"

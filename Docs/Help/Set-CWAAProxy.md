@@ -1,4 +1,4 @@
----
+﻿---
 external help file: ConnectWiseAutomateAgent-help.xml
 Module Name: ConnectWiseAutomateAgent
 online version: https://github.com/christaylorcodes/ConnectWiseAutomateAgent
@@ -14,8 +14,8 @@ Configures module proxy settings for all operations during the current session.
 
 ```
 Set-CWAAProxy [[-ProxyServerURL] <String>] [[-ProxyUsername] <String>] [[-ProxyPassword] <SecureString>]
- [-EncodedProxyUsername <String>] [-EncodedProxyPassword <SecureString>] [-DetectProxy] [-ResetProxy]
- [-SkipCertificateCheck] [-ProgressAction <ActionPreference>] [-WhatIf] [-Confirm] [<CommonParameters>]
+ [-EncodedProxyUsername <String>] [-EncodedProxyPassword <SecureString>] [-ProxyCredential <PSCredential>]
+ [-DetectProxy] [-ResetProxy] [-SkipCertificateCheck] [-WhatIf] [-Confirm] [<CommonParameters>]
 ```
 
 ## DESCRIPTION
@@ -102,18 +102,21 @@ Accept pipeline input: True (ByPropertyName)
 Accept wildcard characters: False
 ```
 
-### -ProgressAction
-{{ Fill ProgressAction Description }}
+### -ProxyCredential
+A PSCredential object containing the proxy username and password.
+This is the preferred secure alternative to passing -ProxyUsername
+and -ProxyPassword separately.
+Must be used with -ProxyServerURL.
 
 ```yaml
-Type: ActionPreference
+Type: PSCredential
 Parameter Sets: (All)
-Aliases: proga
+Aliases:
 
 Required: False
 Position: Named
 Default value: None
-Accept pipeline input: False
+Accept pipeline input: True (ByPropertyName)
 Accept wildcard characters: False
 ```
 
@@ -185,7 +188,8 @@ Accept wildcard characters: False
 ```
 
 ### -SkipCertificateCheck
-{{ Fill SkipCertificateCheck Description }}
+Bypasses SSL/TLS certificate validation for server connections.
+Use in lab or test environments with self-signed certificates.
 
 ```yaml
 Type: SwitchParameter

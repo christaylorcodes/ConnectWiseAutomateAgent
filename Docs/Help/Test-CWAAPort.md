@@ -1,4 +1,4 @@
----
+﻿---
 external help file: ConnectWiseAutomateAgent-help.xml
 Module Name: ConnectWiseAutomateAgent
 online version: https://github.com/christaylorcodes/ConnectWiseAutomateAgent
@@ -13,8 +13,7 @@ Tests connectivity to TCP ports required by the ConnectWise Automate agent.
 ## SYNTAX
 
 ```
-Test-CWAAPort [[-Server] <String[]>] [[-TrayPort] <Int32>] [-Quiet] [-ProgressAction <ActionPreference>]
- [<CommonParameters>]
+Test-CWAAPort [[-Server] <String[]>] [[-TrayPort] <Int32>] [-Quiet] [<CommonParameters>]
 ```
 
 ## DESCRIPTION
@@ -41,21 +40,6 @@ Test-CWAAPort -Quiet
 Returns $True if the TrayPort is available, $False otherwise.
 
 ## PARAMETERS
-
-### -ProgressAction
-{{ Fill ProgressAction Description }}
-
-```yaml
-Type: ActionPreference
-Parameter Sets: (All)
-Aliases: proga
-
-Required: False
-Position: Named
-Default value: None
-Accept pipeline input: False
-Accept wildcard characters: False
-```
 
 ### -Quiet
 Returns a boolean connectivity result instead of verbose output.

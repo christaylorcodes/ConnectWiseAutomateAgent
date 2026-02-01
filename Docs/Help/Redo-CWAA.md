@@ -1,4 +1,4 @@
----
+﻿---
 external help file: ConnectWiseAutomateAgent-help.xml
 Module Name: ConnectWiseAutomateAgent
 online version: https://github.com/christaylorcodes/ConnectWiseAutomateAgent
@@ -15,15 +15,13 @@ Reinstalls the ConnectWise Automate Agent on the local computer.
 ### deployment
 ```
 Redo-CWAA [-Server <String[]>] [-ServerPassword <String>] [-LocationID <Int32>] [-Backup] [-Hide]
- [-Rename <String>] [-SkipDotNet] [-Force] [-ProgressAction <ActionPreference>] [-WhatIf] [-Confirm]
- [<CommonParameters>]
+ [-Rename <String>] [-SkipDotNet] [-Force] [-WhatIf] [-Confirm] [<CommonParameters>]
 ```
 
 ### installertoken
 ```
 Redo-CWAA [-Server <String[]>] [-ServerPassword <String>] [-InstallerToken <String>] [-LocationID <Int32>]
- [-Backup] [-Hide] [-Rename <String>] [-SkipDotNet] [-Force] [-ProgressAction <ActionPreference>] [-WhatIf]
- [-Confirm] [<CommonParameters>]
+ [-Backup] [-Hide] [-Rename <String>] [-SkipDotNet] [-Force] [-WhatIf] [-Confirm] [<CommonParameters>]
 ```
 
 ## DESCRIPTION
@@ -143,23 +141,8 @@ Aliases:
 
 Required: False
 Position: Named
-Default value: None
+Default value: 0
 Accept pipeline input: True (ByPropertyName)
-Accept wildcard characters: False
-```
-
-### -ProgressAction
-{{ Fill ProgressAction Description }}
-
-```yaml
-Type: ActionPreference
-Parameter Sets: (All)
-Aliases: proga
-
-Required: False
-Position: Named
-Default value: None
-Accept pipeline input: False
 Accept wildcard characters: False
 ```
 

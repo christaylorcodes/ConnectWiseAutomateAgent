@@ -35,6 +35,9 @@
     .EXAMPLE
         if ((Test-CWAAHealth).Healthy) { Write-Output 'Agent is healthy' }
         Uses the Healthy boolean for conditional logic.
+    .EXAMPLE
+        Get-CWAAInfo | Test-CWAAHealth
+        Pipes the installed agent's Server property into Test-CWAAHealth via pipeline.
     .NOTES
         Author: Chris Taylor
         Alias: Test-LTHealth
@@ -45,7 +48,7 @@
     [Alias('Test-LTHealth')]
     Param(
         [Parameter(ValueFromPipelineByPropertyName = $True)]
-        [string]$Server,
+        [string[]]$Server,
 
         [switch]$TestServerConnectivity
     )
@@ -106,14 +109,15 @@
                     Write-Verbose 'HeartbeatLastSent not available or not a valid datetime.'
                 }
 
-                # If a Server was provided, check if it matches the installed configuration
+                # If a Server was provided, check if any matches the installed configuration.
+                # Server is string[] to handle Get-CWAAInfo pipeline output (which returns Server as an array).
                 if ($Server) {
                     $installedServers = @($agentInfo | Select-Object -Expand 'Server' -EA 0)
-                    $cleanServer = $Server -replace 'https?://', '' -replace '/$', ''
+                    $cleanProvided = @($Server | ForEach-Object { $_ -replace 'https?://', '' -replace '/$', '' })
                     $serverMatch = $False
                     foreach ($installedServer in $installedServers) {
                         $cleanInstalled = $installedServer -replace 'https?://', '' -replace '/$', ''
-                        if ($cleanInstalled -eq $cleanServer) {
+                        if ($cleanProvided -contains $cleanInstalled) {
                             $serverMatch = $True
                             break
                         }

@@ -13,8 +13,8 @@ Completely uninstalls the ConnectWise Automate Agent from the local computer.
 ## SYNTAX
 
 ```
-Uninstall-CWAA [[-Server] <String[]>] [-Backup] [-Force] [-SkipCertificateCheck]
- [-ProgressAction <ActionPreference>] [-WhatIf] [-Confirm] [<CommonParameters>]
+Uninstall-CWAA [[-Server] <String[]>] [-Backup] [-Force] [-SkipCertificateCheck] [-ShowProgress] [-WhatIf]
+ [-Confirm] [<CommonParameters>]
 ```
 
 ## DESCRIPTION
@@ -108,7 +108,7 @@ Aliases:
 Required: False
 Position: Named
 Default value: False
-Accept pipeline input: True (ByPropertyName)
+Accept pipeline input: False
 Accept wildcard characters: False
 ```
 
@@ -125,21 +125,6 @@ Aliases:
 Required: False
 Position: Named
 Default value: False
-Accept pipeline input: False
-Accept wildcard characters: False
-```
-
-### -ProgressAction
-{{ Fill ProgressAction Description }}
-
-```yaml
-Type: ActionPreference
-Parameter Sets: (All)
-Aliases: proga
-
-Required: False
-Position: Named
-Default value: None
 Accept pipeline input: False
 Accept wildcard characters: False
 ```
@@ -162,8 +147,26 @@ Accept pipeline input: True (ByPropertyName)
 Accept wildcard characters: False
 ```
 
+### -ShowProgress
+Displays a Write-Progress bar showing uninstall progress.
+Off by default
+to avoid interference with unattended execution (RMM tools, GPO scripts).
+
+```yaml
+Type: SwitchParameter
+Parameter Sets: (All)
+Aliases:
+
+Required: False
+Position: Named
+Default value: False
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
 ### -SkipCertificateCheck
-{{ Fill SkipCertificateCheck Description }}
+Bypasses SSL/TLS certificate validation for server connections.
+Use in lab or test environments with self-signed certificates.
 
 ```yaml
 Type: SwitchParameter

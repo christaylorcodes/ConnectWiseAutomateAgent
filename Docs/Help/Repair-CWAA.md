@@ -1,4 +1,4 @@
----
+﻿---
 external help file: ConnectWiseAutomateAgent-help.xml
 Module Name: ConnectWiseAutomateAgent
 online version: https://github.com/christaylorcodes/ConnectWiseAutomateAgent
@@ -15,13 +15,13 @@ Performs escalating remediation of the ConnectWise Automate agent.
 ### Install
 ```
 Repair-CWAA -Server <String> -LocationID <Int32> -InstallerToken <String> [-HoursRestart <Int32>]
- [-HoursReinstall <Int32>] [-ProgressAction <ActionPreference>] [-WhatIf] [-Confirm] [<CommonParameters>]
+ [-HoursReinstall <Int32>] [-WhatIf] [-Confirm] [<CommonParameters>]
 ```
 
 ### Checkup
 ```
-Repair-CWAA -InstallerToken <String> [-HoursRestart <Int32>] [-HoursReinstall <Int32>]
- [-ProgressAction <ActionPreference>] [-WhatIf] [-Confirm] [<CommonParameters>]
+Repair-CWAA -InstallerToken <String> [-HoursRestart <Int32>] [-HoursReinstall <Int32>] [-WhatIf] [-Confirm]
+ [<CommonParameters>]
 ```
 
 ## DESCRIPTION
@@ -29,19 +29,19 @@ Checks the health of the installed Automate agent and takes corrective action
 using an escalating strategy:
 
 1.
-If the agent is installed and healthy â€" no action taken.
+If the agent is installed and healthy - no action taken.
 2.
-If the agent is installed but has not checked in within HoursRestart â€" restarts
+If the agent is installed but has not checked in within HoursRestart - restarts
    services and waits up to 2 minutes for the agent to recover.
 3.
-If the agent is still not checking in after HoursReinstall â€" reinstalls the agent
+If the agent is still not checking in after HoursReinstall - reinstalls the agent
    using Redo-CWAA.
 4.
-If the agent configuration is unreadable â€" uninstalls and reinstalls.
+If the agent configuration is unreadable - uninstalls and reinstalls.
 5.
-If the installed agent points to the wrong server â€" reinstalls with the correct server.
+If the installed agent points to the wrong server - reinstalls with the correct server.
 6.
-If the agent is not installed â€" performs a fresh install from provided parameters
+If the agent is not installed - performs a fresh install from provided parameters
    or from backup settings.
 
 All remediation actions are logged to the Windows Event Log (Application log,
@@ -141,22 +141,7 @@ Aliases:
 Required: True
 Position: Named
 Default value: 0
-Accept pipeline input: False
-Accept wildcard characters: False
-```
-
-### -ProgressAction
-{{ Fill ProgressAction Description }}
-
-```yaml
-Type: ActionPreference
-Parameter Sets: (All)
-Aliases: proga
-
-Required: False
-Position: Named
-Default value: None
-Accept pipeline input: False
+Accept pipeline input: True (ByPropertyName)
 Accept wildcard characters: False
 ```
 
@@ -172,7 +157,7 @@ Aliases:
 Required: True
 Position: Named
 Default value: None
-Accept pipeline input: False
+Accept pipeline input: True (ByPropertyName)
 Accept wildcard characters: False
 ```
 

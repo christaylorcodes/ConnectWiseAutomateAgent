@@ -1,4 +1,4 @@
----
+﻿---
 external help file: ConnectWiseAutomateAgent-help.xml
 Module Name: ConnectWiseAutomateAgent
 online version: https://github.com/christaylorcodes/ConnectWiseAutomateAgent
@@ -13,11 +13,11 @@ Retrieves ConnectWise Automate agent settings from the registry.
 ## SYNTAX
 
 ```
-Get-CWAASettings [-ProgressAction <ActionPreference>] [<CommonParameters>]
+Get-CWAASettings [<CommonParameters>]
 ```
 
 ## DESCRIPTION
-Reads agent settings from the Automate agent service settings registry subkey
+Reads agent settings from the Automate agent service Settings registry subkey
 (HKLM:\SOFTWARE\LabTech\Service\Settings) and returns them as an object.
 These settings are separate from the main agent configuration returned by
 Get-CWAAInfo and include proxy configuration (ProxyServerURL, ProxyUsername,
@@ -41,21 +41,6 @@ Returns an object containing all agent settings registry properties.
 Returns just the configured proxy URL, if any.
 
 ## PARAMETERS
-
-### -ProgressAction
-{{ Fill ProgressAction Description }}
-
-```yaml
-Type: ActionPreference
-Parameter Sets: (All)
-Aliases: proga
-
-Required: False
-Position: Named
-Default value: None
-Accept pipeline input: False
-Accept wildcard characters: False
-```
 
 ### CommonParameters
 This cmdlet supports the common parameters: -Debug, -ErrorAction, -ErrorVariable, -InformationAction, -InformationVariable, -OutVariable, -OutBuffer, -PipelineVariable, -Verbose, -WarningAction, and -WarningVariable. For more information, see [about_CommonParameters](http://go.microsoft.com/fwlink/?LinkID=113216).

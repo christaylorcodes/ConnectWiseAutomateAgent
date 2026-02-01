@@ -1,4 +1,4 @@
----
+﻿---
 external help file: ConnectWiseAutomateAgent-help.xml
 Module Name: ConnectWiseAutomateAgent
 online version: https://github.com/christaylorcodes/ConnectWiseAutomateAgent
@@ -13,8 +13,7 @@ Decodes a Base64-encoded string using TripleDES decryption.
 ## SYNTAX
 
 ```
-ConvertFrom-CWAASecurity [-InputString] <String[]> [-Key <String[]>] [-Force]
- [-ProgressAction <ActionPreference>] [<CommonParameters>]
+ConvertFrom-CWAASecurity [-InputString] <String[]> [-Key <String[]>] [-Force] [<CommonParameters>]
 ```
 
 ## DESCRIPTION
@@ -86,21 +85,6 @@ Required: False
 Position: Named
 Default value: None
 Accept pipeline input: True (ByPropertyName)
-Accept wildcard characters: False
-```
-
-### -ProgressAction
-{{ Fill ProgressAction Description }}
-
-```yaml
-Type: ActionPreference
-Parameter Sets: (All)
-Aliases: proga
-
-Required: False
-Position: Named
-Default value: None
-Accept pipeline input: False
 Accept wildcard characters: False
 ```
 

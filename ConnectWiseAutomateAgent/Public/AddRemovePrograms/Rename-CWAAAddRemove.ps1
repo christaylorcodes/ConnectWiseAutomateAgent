@@ -25,7 +25,7 @@ function Rename-CWAAAddRemove {
     [CmdletBinding(SupportsShouldProcess = $True)]
     [Alias('Rename-LTAddRemove')]
     Param(
-        [Parameter(Mandatory = $True)]
+        [Parameter(Mandatory = $True, ValueFromPipeline = $true)]
         $Name,
 
         [Parameter(Mandatory = $False)]

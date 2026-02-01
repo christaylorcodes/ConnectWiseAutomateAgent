@@ -35,15 +35,7 @@ function Start-CWAA {
     }
 
     Process {
-        if (-not (Get-Service 'LTService', 'LTSvcMon' -ErrorAction SilentlyContinue)) {
-            if ($WhatIfPreference -ne $True) {
-                Write-Error "Services NOT Found."
-            }
-            else {
-                Write-Error "What If: Services NOT Found."
-            }
-            return
-        }
+        if (-not (Test-CWAAServiceExists -WriteErrorOnMissing)) { return }
         Try {
             if ((('LTService') | Get-Service -EA 0 | Where-Object { $_.Status -eq 'Stopped' } | Measure-Object | Select-Object -Expand Count) -gt 0) {
                 Try { $netstat = & "$env:windir\system32\netstat.exe" -a -o -n 2>'' | Select-String -Pattern " .*[0-9\.]+:$($Port).*[0-9\.]+:[0-9]+ .*?([0-9]+)" -EA 0 }
@@ -62,7 +54,7 @@ function Start-CWAA {
                             # TrayPort wraps within the 42000-42009 range. If a protected process holds
                             # the current port, increment and wrap back to 42000 after 42009.
                             $newPort = [int]$Port + 1
-                            if ($newPort -gt 42009) { $newPort = 42000 }
+                            if ($newPort -gt $Script:CWAATrayPortMax) { $newPort = $Script:CWAATrayPortMin }
                             Write-Warning "Setting tray port to $newPort."
                             New-ItemProperty -Path $Script:CWAARegistryRoot -Name TrayPort -PropertyType String -Value $newPort -Force -WhatIf:$False -Confirm:$False | Out-Null
                         }
@@ -85,15 +77,11 @@ function Start-CWAA {
                 # Wait for services if we issued start commands
                 $stoppedServiceCount = ('LTService') | Get-Service -EA 0 | Where-Object { $_.Status -ne 'Running' } | Measure-Object | Select-Object -Expand Count
                 if ($stoppedServiceCount -gt 0 -and $startedSvcCount -eq 2) {
-                    $timeout = New-TimeSpan -Minutes 1
-                    $stopwatch = [Diagnostics.Stopwatch]::StartNew()
-                    Write-Verbose 'Waiting for services to start...'
-                    Do {
-                        Start-Sleep 2
-                        $stoppedServiceCount = ('LTService') | Get-Service -EA 0 | Where-Object { $_.Status -ne 'Running' } | Measure-Object | Select-Object -Expand Count
-                    } Until ($stopwatch.Elapsed -gt $timeout -or $stoppedServiceCount -eq 0)
-                    $stopwatch.Stop()
-                    Write-Verbose 'Service start wait completed.'
+                    $Null = Wait-CWAACondition -Condition {
+                        $count = ('LTService') | Get-Service -EA 0 | Where-Object { $_.Status -ne 'Running' } | Measure-Object | Select-Object -Expand Count
+                        $count -eq 0
+                    } -TimeoutSeconds $Script:CWAAServiceWaitTimeoutSec -IntervalSeconds 2 -Activity 'Services starting'
+                    $stoppedServiceCount = ('LTService') | Get-Service -EA 0 | Where-Object { $_.Status -ne 'Running' } | Measure-Object | Select-Object -Expand Count
                 }
 
                 # Report final state

@@ -32,6 +32,12 @@
     .PARAMETER Force
         Forces uninstallation even when a probe agent is detected. Use with extreme caution,
         as probe agents are typically critical infrastructure components.
+    .PARAMETER SkipCertificateCheck
+        Bypasses SSL/TLS certificate validation for server connections.
+        Use in lab or test environments with self-signed certificates.
+    .PARAMETER ShowProgress
+        Displays a Write-Progress bar showing uninstall progress. Off by default
+        to avoid interference with unattended execution (RMM tools, GPO scripts).
     .EXAMPLE
         Uninstall-CWAA
         Uninstalls the agent using the server URL from the agent's registry settings.
@@ -50,6 +56,9 @@
     .EXAMPLE
         Uninstall-CWAA -WhatIf
         Simulates the uninstall process without making any actual changes.
+    .EXAMPLE
+        Get-CWAAInfo | Uninstall-CWAA
+        Pipes the installed agent's Server property into Uninstall-CWAA via pipeline.
     .NOTES
         Author: Chris Taylor
         Alias: Uninstall-LTService
@@ -63,10 +72,10 @@
         [Parameter(ValueFromPipelineByPropertyName = $true)]
         [AllowNull()]
         [string[]]$Server,
-        [Parameter(ValueFromPipelineByPropertyName = $true)]
         [switch]$Backup,
         [switch]$Force,
-        [switch]$SkipCertificateCheck
+        [switch]$SkipCertificateCheck,
+        [switch]$ShowProgress
     )
 
     Begin {
@@ -81,14 +90,7 @@
         }
 
         $serviceInfo = Get-CWAAInfo -EA 0 -Verbose:$False -WhatIf:$False -Confirm:$False -Debug:$False
-        if ($serviceInfo -and ($serviceInfo | Select-Object -Expand Probe -EA 0) -eq '1') {
-            if ($Force -eq $True) {
-                Write-Output 'Probe Agent Detected. UnInstall Forced.'
-            }
-            else {
-                Write-Error -Exception [System.OperationCanceledException]"Probe Agent Detected. UnInstall Denied." -ErrorAction Stop
-            }
-        }
+        Assert-CWAANotProbeAgent -ServiceInfo $serviceInfo -ActionName 'UnInstall' -Force:$Force
 
         if ($Backup) {
             if ($PSCmdlet.ShouldProcess('LTService', 'Backup Current Service Settings')) {
@@ -151,10 +153,14 @@
         }
 
         # Resolve the first reachable server and its advertised version
+        $progressId = 2
+        $progressActivity = 'Uninstalling ConnectWise Automate Agent'
+        if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Resolving server address' -PercentComplete 12 }
         $serverResult = Resolve-CWAAServer -Server $Server
         if (-not $serverResult) { return }
         $serverUrl = $serverResult.ServerUrl
 
+        if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Downloading uninstaller files' -PercentComplete 25 }
         Try {
             # Download the uninstall MSI (same URL for all server versions)
             $installer = "$serverUrl/LabTech/Service/LabTechRemoteAgent.msi"
@@ -223,9 +229,11 @@
     }
 
     End {
+        try {
         if ($GoodServer -match 'https?://.+' -or $AlternateServer -match 'https?://.+') {
             Try {
                 Write-Output 'Starting Uninstall.'
+                if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Stopping services and processes' -PercentComplete 37 }
 
                 Try { Stop-CWAA -ErrorAction SilentlyContinue } Catch { Write-Debug "Stop-CWAA encountered an error: $_" }
 
@@ -248,6 +256,7 @@
                     }
                 }
 
+                if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Running MSI uninstaller' -PercentComplete 50 }
                 if ($PSCmdlet.ShouldProcess("msiexec.exe $uninstallArguments", 'Execute MSI Uninstall')) {
                     if (Test-Path "$Script:CWAAInstallerTempPath\Installer\Agent_Uninstall.msi") {
                         Write-Verbose 'Launching MSI Uninstall.'
@@ -260,6 +269,7 @@
                     }
                 }
 
+                if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Running agent uninstaller' -PercentComplete 62 }
                 if ($PSCmdlet.ShouldProcess("${env:windir}\temp\Agent_Uninstall.exe", 'Execute Agent Uninstall')) {
                     if (Test-Path "${env:windir}\temp\Agent_Uninstall.exe") {
                         # Remove previously extracted SFX files to prevent UnRAR overwrite prompts
@@ -274,8 +284,9 @@
                     }
                 }
 
+                if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Removing services' -PercentComplete 75 }
                 Write-Verbose 'Removing Services if found.'
-                @('LTService', 'LTSvcMon', 'LabVNC') | ForEach-Object {
+                $Script:CWAAAllServiceNames | ForEach-Object {
                     if (Get-Service $_ -EA 0) {
                         if ($PSCmdlet.ShouldProcess($_, 'Remove Service')) {
                             Write-Debug "Removing Service: $_"
@@ -290,6 +301,7 @@
                     }
                 }
 
+                if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Cleaning up files and registry' -PercentComplete 87 }
                 Write-Verbose 'Cleaning Files remaining if found.'
                 # Depth-first removal to get as much removed as possible if complete removal fails
                 @($BasePath, "${env:windir}\temp\_ltupdate") | ForEach-Object {
@@ -337,6 +349,7 @@
                 Write-Error "There was an error during the uninstall process. $($_.Exception.Message)" -ErrorAction Stop
             }
 
+            if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Verifying uninstall' -PercentComplete 100 }
             if ($WhatIfPreference -ne $True) {
                 # Post Uninstall Check
                 If ((Test-Path $Script:CWAAInstallPath) -or (Test-Path "${env:windir}\temp\_ltupdate") -or (Test-Path registry::HKLM\Software\LabTech\Service) -or (Test-Path registry::HKLM\Software\WOW6432Node\Labtech\Service)) {
@@ -355,6 +368,10 @@
         Elseif ($WhatIfPreference -ne $True) {
             Write-Error "No valid server was reached to use for the uninstall." -ErrorAction Stop
         }
-        Write-Debug "Exiting $($myInvocation.InvocationName)"
+        }
+        finally {
+            if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Completed }
+            Write-Debug "Exiting $($myInvocation.InvocationName)"
+        }
     }
 }

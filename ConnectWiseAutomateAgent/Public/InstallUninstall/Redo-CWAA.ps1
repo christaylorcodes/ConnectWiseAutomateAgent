@@ -46,6 +46,9 @@
     .EXAMPLE
         Redo-CWAA -Backup -Force
         Backs up settings, then forces reinstallation even if a probe agent is detected.
+    .EXAMPLE
+        Get-CWAAInfo | Redo-CWAA -InstallerToken 'token'
+        Reinstalls the agent using Server and LocationID from the current installation via pipeline.
     .NOTES
         Author: Chris Taylor
         Alias: Reinstall-CWAA, Redo-LTService, Reinstall-LTService
@@ -89,21 +92,7 @@
             Write-Debug "Failed to retrieve current Agent Settings: $_"
         }
 
-        # Probe protection — outside Try/Catch so the terminating error propagates to caller.
-        # Matches the pattern in Reset-CWAA and Uninstall-CWAA.
-        if ($Null -ne $Settings -and ($Settings | Select-Object -Expand Probe -EA 0) -eq '1') {
-            if ($Force -eq $True) {
-                Write-Output 'Probe Agent Detected. Re-Install Forced.'
-            }
-            else {
-                if ($WhatIfPreference -ne $True) {
-                    Write-Error -Exception [System.OperationCanceledException]"Probe Agent Detected. Re-Install Denied." -ErrorAction Stop
-                }
-                else {
-                    Write-Error -Exception [System.OperationCanceledException]"What If: Probe Agent Detected. Re-Install Denied." -ErrorAction Stop
-                }
-            }
-        }
+        Assert-CWAANotProbeAgent -ServiceInfo $Settings -ActionName 'Re-Install' -Force:$Force
         if ($Null -eq $Settings) {
             Write-Debug "Unable to retrieve current Agent Settings. Testing for Backup Settings."
             Try {

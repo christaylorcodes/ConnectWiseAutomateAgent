@@ -1,4 +1,4 @@
----
+﻿---
 external help file: ConnectWiseAutomateAgent-help.xml
 Module Name: ConnectWiseAutomateAgent
 online version: https://github.com/christaylorcodes/ConnectWiseAutomateAgent
@@ -13,8 +13,7 @@ Encodes a string using TripleDES encryption compatible with Automate operations.
 ## SYNTAX
 
 ```
-ConvertTo-CWAASecurity [-InputString] <String> [[-Key] <Object>] [-ProgressAction <ActionPreference>]
- [<CommonParameters>]
+ConvertTo-CWAASecurity [-InputString] <String> [[-Key] <Object>] [<CommonParameters>]
 ```
 
 ## DESCRIPTION
@@ -51,7 +50,7 @@ Aliases:
 Required: True
 Position: 1
 Default value: None
-Accept pipeline input: False
+Accept pipeline input: True (ByValue)
 Accept wildcard characters: False
 ```
 
@@ -66,21 +65,6 @@ Aliases:
 
 Required: False
 Position: 2
-Default value: None
-Accept pipeline input: False
-Accept wildcard characters: False
-```
-
-### -ProgressAction
-{{ Fill ProgressAction Description }}
-
-```yaml
-Type: ActionPreference
-Parameter Sets: (All)
-Aliases: proga
-
-Required: False
-Position: Named
 Default value: None
 Accept pipeline input: False
 Accept wildcard characters: False

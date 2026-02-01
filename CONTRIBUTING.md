@@ -45,6 +45,9 @@ Import-Module .\ConnectWiseAutomateAgent\ConnectWiseAutomateAgent.psd1 -Force
 
 # Run the test suite
 Invoke-Pester Tests\ConnectWiseAutomateAgent.Tests.ps1 -Output Detailed
+
+# Enable pre-commit hooks (runs PSScriptAnalyzer + tests before each commit)
+git config core.hooksPath .githooks
 ```
 
 ## Coding Conventions

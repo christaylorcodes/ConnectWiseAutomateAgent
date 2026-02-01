@@ -22,6 +22,9 @@ function Test-CWAAPort {
     .EXAMPLE
         Test-CWAAPort -Quiet
         Returns $True if the TrayPort is available, $False otherwise.
+    .EXAMPLE
+        Get-CWAAInfo | Test-CWAAPort
+        Pipes the installed agent's Server and TrayPort into Test-CWAAPort via pipeline.
     .NOTES
         Author: Chris Taylor
         Alias: Test-LTPorts

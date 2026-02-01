@@ -21,6 +21,12 @@ function Update-CWAA {
         The target agent version to update to.
         Example: 120.240
         If omitted, the version advertised by the server will be used.
+    .PARAMETER SkipCertificateCheck
+        Bypasses SSL/TLS certificate validation for server connections.
+        Use in lab or test environments with self-signed certificates.
+    .PARAMETER ShowProgress
+        Displays a Write-Progress bar showing update progress. Off by default
+        to avoid interference with unattended execution (RMM tools, GPO scripts).
     .EXAMPLE
         Update-CWAA -Version 120.240
         Updates the agent to the specific version requested.
@@ -39,7 +45,8 @@ function Update-CWAA {
         [parameter(Position = 0)]
         [AllowNull()]
         [string]$Version,
-        [switch]$SkipCertificateCheck
+        [switch]$SkipCertificateCheck,
+        [switch]$ShowProgress
     )
 
     Begin {
@@ -63,6 +70,9 @@ function Update-CWAA {
         }
 
         # Resolve the first reachable server and its advertised version
+        $progressId = 3
+        $progressActivity = 'Updating ConnectWise Automate Agent'
+        if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Resolving server address' -PercentComplete 14 }
         if (-not $Server) { return }
         $serverResult = Resolve-CWAAServer -Server $Server
         if ($serverResult) {
@@ -75,7 +85,7 @@ function Update-CWAA {
             if ($Version -match '[1-9][0-9]{2}\.[0-9]{1,3}') {
                 $updater = "$GoodServer/Labtech/Updates/LabtechUpdate_$Version.zip"
             }
-            Elseif ([System.Version]$serverVersion -ge [System.Version]'105.001') {
+            Elseif ([System.Version]$serverVersion -ge [System.Version]$Script:CWAAVersionUpdateMinimum) {
                 $Version = $serverVersion
                 Write-Verbose "Using detected version ($Version) from server: $GoodServer."
                 $updater = "$GoodServer/Labtech/Updates/LabtechUpdate_$Version.zip"
@@ -94,6 +104,7 @@ function Update-CWAA {
             }
 
             # Remove stale updater directory using depth-first removal
+            if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Cleaning previous update files' -PercentComplete 28 }
             Remove-CWAAFolderRecursive -Path $updaterPath
 
             Try {
@@ -115,6 +126,7 @@ function Update-CWAA {
                 }
                 else {
                     if ($PSCmdlet.ShouldProcess($updater, 'DownloadFile')) {
+                        if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Downloading update package' -PercentComplete 42 }
                         Write-Debug "Downloading LabtechUpdate.exe from $updater"
                         $Script:LTServiceNetWebClient.DownloadFile($updater, "$updaterPath\LabtechUpdate.exe")
                         if (-not (Test-CWAADownloadIntegrity -FilePath "$updaterPath\LabtechUpdate.exe" -FileName 'LabtechUpdate.exe')) {
@@ -141,6 +153,7 @@ function Update-CWAA {
     }
 
     End {
+        try {
         $detectedVersion = $Settings | Select-Object -Expand 'Version' -EA 0
         if ($Null -eq $detectedVersion) {
             Write-Error "No existing installation was found." -ErrorAction Stop
@@ -159,6 +172,7 @@ function Update-CWAA {
             Return
         }
 
+        if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Stopping services' -PercentComplete 57 }
         Try {
             Stop-CWAA
         }
@@ -170,6 +184,7 @@ function Update-CWAA {
 
         Write-Output "Updating Agent with the following information: Server $GoodServer, Version $Version"
         Try {
+            if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Extracting update' -PercentComplete 71 }
             if ($PSCmdlet.ShouldProcess("LabtechUpdate.exe $extractArguments", 'Extracting update files')) {
                 if (Test-Path "$updaterPath\LabtechUpdate.exe") {
                     Write-Verbose 'Launching LabtechUpdate Self-Extractor.'
@@ -187,6 +202,7 @@ function Update-CWAA {
                 }
             }
 
+            if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Applying update' -PercentComplete 85 }
             if ($PSCmdlet.ShouldProcess("Update.exe $updaterArguments", 'Launching Updater')) {
                 if (Test-Path "$updaterPath\Update.exe") {
                     Write-Verbose 'Launching Labtech Updater'
@@ -205,6 +221,7 @@ function Update-CWAA {
             Write-CWAAEventLog -EventId 1032 -EntryType Error -Message "Agent update process failed. Error: $($_.Exception.Message)"
         }
 
+        if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Restarting services' -PercentComplete 100 }
         Try {
             Start-CWAA
         }
@@ -215,6 +232,10 @@ function Update-CWAA {
         }
 
         Write-CWAAEventLog -EventId 1030 -EntryType Information -Message "Agent updated successfully to version $Version."
-        Write-Debug "Exiting $($myInvocation.InvocationName)"
+        }
+        finally {
+            if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Completed }
+            Write-Debug "Exiting $($myInvocation.InvocationName)"
+        }
     }
 }

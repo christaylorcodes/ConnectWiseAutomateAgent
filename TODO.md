@@ -147,11 +147,15 @@ These tasks address security concerns and improve code quality.
   - Windows Event Log integration via `Write-CWAAEventLog`
   - Organized event ID ranges: 1000s install, 2000s service, 3000s config, 4000s health
 
-- [ ] **Add pipeline support**
-  - [ ] Review all ValueFromPipeline attributes
-  - [ ] Test pipeline scenarios
-  - [ ] Document pipeline usage in examples
-  - **Why**: PowerShell users expect good pipeline support
+- [x] **Add pipeline support** (Completed 2026-02-01)
+  - [x] Audited all 30 functions for ValueFromPipeline/ValueFromPipelineByPropertyName correctness
+  - [x] Fixed Begin/Process placement: moved ServerPassword escaping to Process in Install-CWAA, removed misleading pipeline attr from Uninstall-CWAA Backup switch
+  - [x] Added ValueFromPipeline to Set-CWAALogLevel Level parameter
+  - [x] Added ValueFromPipelineByPropertyName to Register-CWAAHealthCheckTask Server and LocationID
+  - [x] Added pipeline .EXAMPLE blocks to 7 functions (Test-CWAAHealth, Test-CWAAPort, Install-CWAA, Redo-CWAA, Uninstall-CWAA, Set-CWAALogLevel, Register-CWAAHealthCheckTask)
+  - [x] Added 6 new pipeline tests (Invoke-CWAACommand array, Set-CWAALogLevel, Test-CWAAServerConnectivity, Test-CWAAHealth, Test-CWAAPort property-based)
+  - [x] Added 4 new examples to Examples/PipelineUsage.ps1 (examples 13-16)
+  - [x] 417 tests pass, PSScriptAnalyzer clean, single-file build and docs regenerated
 
 ## Priority 4: Developer Experience
 
@@ -299,6 +303,16 @@ Track completed items here for historical reference.
 - [x] **Added documentation structure tests** — 11 new Pester tests validating folder layout, function doc coverage, MAML help, and build script config (403 total tests, up from 392)
 - [x] **Full verification** — 403 tests pass, PSScriptAnalyzer clean
 
+### Pipeline Support (2026-02-01)
+
+- [x] **Pipeline attribute audit** — reviewed all 30 functions, 14 have pipeline attributes, 16 are read-only/no-param (not applicable)
+- [x] **Fixed Begin/Process issues** — moved `$ServerPassword` escaping from Begin to Process in `Install-CWAA`, removed misleading `ValueFromPipelineByPropertyName` from `Uninstall-CWAA` `$Backup` switch
+- [x] **New pipeline attributes** — `Set-CWAALogLevel` Level (`ValueFromPipeline`), `Register-CWAAHealthCheckTask` Server/LocationID (`ValueFromPipelineByPropertyName`)
+- [x] **Pipeline examples in help** — 7 functions received new `.EXAMPLE` blocks showing pipeline usage
+- [x] **Pipeline tests** — 6 new tests covering value pipeline, array pipeline, and property-based pipeline patterns (417 total tests, up from 403 + 8 structure-related)
+- [x] **Updated PipelineUsage.ps1** — 4 new examples (13-16): Test-CWAAServerConnectivity, Test-CWAAPort, Set-CWAALogLevel, Register-CWAAHealthCheckTask
+- [x] **Full verification** — 417 tests pass, PSScriptAnalyzer clean, single-file build (4684 lines, 244.5 KB), docs regenerated
+
 ---
 
 ## How to Use This TODO List
@@ -330,5 +344,5 @@ When working on this codebase:
 
 ---
 
-**Last Updated**: 2026-01-31 (Phase 5)
+**Last Updated**: 2026-02-01 (Pipeline Support)
 **Module Version**: 1.0.0-alpha001

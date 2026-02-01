@@ -1,4 +1,4 @@
----
+﻿---
 external help file: ConnectWiseAutomateAgent-help.xml
 Module Name: ConnectWiseAutomateAgent
 online version: https://github.com/christaylorcodes/ConnectWiseAutomateAgent
@@ -13,8 +13,8 @@ Manually updates the ConnectWise Automate Agent to a specified version.
 ## SYNTAX
 
 ```
-Update-CWAA [[-Version] <String>] [-SkipCertificateCheck] [-ProgressAction <ActionPreference>] [-WhatIf]
- [-Confirm] [<CommonParameters>]
+Update-CWAA [[-Version] <String>] [-SkipCertificateCheck] [-ShowProgress] [-WhatIf] [-Confirm]
+ [<CommonParameters>]
 ```
 
 ## DESCRIPTION
@@ -57,23 +57,26 @@ Updates the agent to the current version advertised by the server.
 
 ## PARAMETERS
 
-### -ProgressAction
-{{ Fill ProgressAction Description }}
+### -ShowProgress
+Displays a Write-Progress bar showing update progress.
+Off by default
+to avoid interference with unattended execution (RMM tools, GPO scripts).
 
 ```yaml
-Type: ActionPreference
+Type: SwitchParameter
 Parameter Sets: (All)
-Aliases: proga
+Aliases:
 
 Required: False
 Position: Named
-Default value: None
+Default value: False
 Accept pipeline input: False
 Accept wildcard characters: False
 ```
 
 ### -SkipCertificateCheck
-{{ Fill SkipCertificateCheck Description }}
+Bypasses SSL/TLS certificate validation for server connections.
+Use in lab or test environments with self-signed certificates.
 
 ```yaml
 Type: SwitchParameter

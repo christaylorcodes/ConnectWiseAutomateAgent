@@ -37,6 +37,9 @@ function Register-CWAAHealthCheckTask {
     .EXAMPLE
         Register-CWAAHealthCheckTask -InstallerToken 'token' -IntervalHours 12 -TaskName 'MyHealthCheck'
         Creates a custom-named task running every 12 hours.
+    .EXAMPLE
+        Get-CWAAInfo | Register-CWAAHealthCheckTask -InstallerToken 'token'
+        Uses Server and LocationID from the installed agent via pipeline to register a health check task.
     .NOTES
         Author: Chris Taylor
         Alias: Register-LTHealthCheckTask
@@ -50,9 +53,11 @@ function Register-CWAAHealthCheckTask {
         [ValidatePattern('(?s:^[0-9a-z]+$)')]
         [string]$InstallerToken,
 
+        [Parameter(ValueFromPipelineByPropertyName = $True)]
         [ValidatePattern('^[a-zA-Z0-9\.\-\:\/]+$')]
-        [string]$Server,
+        [string[]]$Server,
 
+        [Parameter(ValueFromPipelineByPropertyName = $True)]
         [int]$LocationID,
 
         [ValidatePattern('^[\w\-\. ]+$')]
@@ -101,7 +106,10 @@ function Register-CWAAHealthCheckTask {
             # Build the PowerShell command for the scheduled task action
             # Use Install mode if Server and LocationID are provided, otherwise Checkup mode
             if ($Server -and $LocationID) {
-                $repairCommand = "Import-Module ConnectWiseAutomateAgent; Repair-CWAA -Server '$Server' -LocationID $LocationID -InstallerToken '$InstallerToken'"
+                # Build a proper PowerShell array literal for the Server argument.
+                # Handles both single-server and multi-server arrays from Get-CWAAInfo pipeline.
+                $serverArgument = ($Server | ForEach-Object { "'$_'" }) -join ','
+                $repairCommand = "Import-Module ConnectWiseAutomateAgent; Repair-CWAA -Server $serverArgument -LocationID $LocationID -InstallerToken '$InstallerToken'"
             }
             else {
                 $repairCommand = "Import-Module ConnectWiseAutomateAgent; Repair-CWAA -InstallerToken '$InstallerToken'"
