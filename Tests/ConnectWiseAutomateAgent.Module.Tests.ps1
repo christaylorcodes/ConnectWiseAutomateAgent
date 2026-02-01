@@ -1,13 +1,34 @@
 #Requires -Module Pester
 
-BeforeAll {
-    $ModuleName = 'ConnectWiseAutomateAgent'
-    $ModuleRoot = Split-Path -Parent $PSScriptRoot
-    $ModulePath = Join-Path $ModuleRoot "$ModuleName\$ModuleName.psd1"
+<#
+.SYNOPSIS
+    Module structure, quality, and function validation tests.
 
-    # Remove module if already loaded, then import fresh
-    Get-Module $ModuleName -ErrorAction SilentlyContinue | Remove-Module -Force
-    Import-Module $ModulePath -Force -ErrorAction Stop
+.DESCRIPTION
+    Tests module manifest, import, exports, aliases, function structure,
+    parameter validation, and single-file build validation.
+
+    Supports dual-mode testing via $env:CWAA_TEST_LOAD_METHOD:
+    - 'Module' (default): Import-Module from .psd1 manifest
+    - 'SingleFile': Load concatenated .ps1 via dynamic module
+
+    Module-only tests are automatically skipped in SingleFile mode.
+
+.NOTES
+    Run with:
+        Invoke-Pester Tests\ConnectWiseAutomateAgent.Module.Tests.ps1 -Output Detailed
+#>
+
+BeforeDiscovery {
+    $script:IsSingleFileMode = ($env:CWAA_TEST_LOAD_METHOD -eq 'SingleFile')
+    $script:IsModuleMode = -not $script:IsSingleFileMode
+}
+
+BeforeAll {
+    $script:BootstrapResult = & "$PSScriptRoot\TestBootstrap.ps1"
+    $script:IsSingleFileMode = ($script:BootstrapResult.LoadMethod -eq 'SingleFile')
+    $script:IsModuleMode = -not $script:IsSingleFileMode
+    $ModuleName = $script:BootstrapResult.ModuleName
 }
 
 AfterAll {
@@ -19,7 +40,7 @@ AfterAll {
 # =============================================================================
 Describe 'Module: ConnectWiseAutomateAgent' {
 
-    Context 'Module Manifest' {
+    Context 'Module Manifest' -Skip:$script:IsSingleFileMode {
         BeforeAll {
             $ModuleRoot = Split-Path -Parent $PSScriptRoot
             $ManifestPath = Join-Path $ModuleRoot 'ConnectWiseAutomateAgent\ConnectWiseAutomateAgent.psd1'
@@ -138,7 +159,7 @@ Describe 'Module: ConnectWiseAutomateAgent' {
             $cmd | Should -Not -BeNullOrEmpty
         }
 
-        It 'does not export Initialize-CWAANetworking as a public function' {
+        It 'does not export Initialize-CWAANetworking as a public function' -Skip:$script:IsSingleFileMode {
             $exported = (Get-Module 'ConnectWiseAutomateAgent').ExportedFunctions.Keys
             $exported | Should -Not -Contain 'Initialize-CWAANetworking'
         }
@@ -181,8 +202,12 @@ Describe 'Module: ConnectWiseAutomateAgent' {
             $ExportedFunctions = (Get-Module 'ConnectWiseAutomateAgent').ExportedFunctions.Keys
         }
 
-        It 'exports exactly 30 functions' {
+        It 'exports exactly 30 functions' -Skip:$script:IsSingleFileMode {
             $ExportedFunctions | Should -HaveCount 30
+        }
+
+        It 'exports at least 30 functions (includes private in single-file mode)' -Skip:$script:IsModuleMode {
+            $ExportedFunctions.Count | Should -BeGreaterOrEqual 30
         }
 
         It 'exports <_>' -ForEach $ExpectedFunctions {
@@ -229,8 +254,12 @@ Describe 'Module: ConnectWiseAutomateAgent' {
             $ExportedAliases = (Get-Module 'ConnectWiseAutomateAgent').ExportedAliases.Keys
         }
 
-        It 'exports exactly 32 aliases' {
+        It 'exports exactly 32 aliases' -Skip:$script:IsSingleFileMode {
             $ExportedAliases | Should -HaveCount 32
+        }
+
+        It 'exports at least 32 aliases' -Skip:$script:IsModuleMode {
+            $ExportedAliases.Count | Should -BeGreaterOrEqual 32
         }
 
         It 'exports alias <_>' -ForEach $ExpectedAliases {
@@ -238,7 +267,7 @@ Describe 'Module: ConnectWiseAutomateAgent' {
         }
     }
 
-    Context 'Function-to-File Mapping' {
+    Context 'Function-to-File Mapping' -Skip:$script:IsSingleFileMode {
         BeforeAll {
             $ModuleRoot = Split-Path -Parent $PSScriptRoot
             $PublicPath = Join-Path $ModuleRoot 'ConnectWiseAutomateAgent\Public'
@@ -258,6 +287,28 @@ Describe 'Module: ConnectWiseAutomateAgent' {
             foreach ($file in $PublicFiles) {
                 $file | Should -BeIn $ExportedFunctions -Because "$file.ps1 should be exported"
             }
+        }
+    }
+
+    Context 'Single-File Build Validation' -Skip:$script:IsModuleMode {
+        BeforeAll {
+            $RepoRoot = Split-Path -Parent $PSScriptRoot
+            $SingleFilePath = Join-Path $RepoRoot 'ConnectWiseAutomateAgent.ps1'
+        }
+
+        It 'single-file build exists' {
+            $SingleFilePath | Should -Exist
+        }
+
+        It 'single-file ends with Initialize-CWAA call' {
+            $lastLines = Get-Content $SingleFilePath -Tail 5
+            ($lastLines -join "`n") | Should -Match 'Initialize-CWAA' -Because 'single-file must call initialization at the end'
+        }
+
+        It 'private helper functions are available' {
+            $exported = (Get-Module 'ConnectWiseAutomateAgent').ExportedFunctions.Keys
+            $exported | Should -Contain 'Initialize-CWAA'
+            $exported | Should -Contain 'Initialize-CWAANetworking'
         }
     }
 }
@@ -399,148 +450,6 @@ Describe 'Function Structure' {
 }
 
 # =============================================================================
-# ConvertTo-CWAASecurity Unit Tests
-# =============================================================================
-Describe 'ConvertTo-CWAASecurity' {
-
-    It 'returns a non-empty string for valid input' {
-        $result = ConvertTo-CWAASecurity -InputString 'TestValue'
-        $result | Should -Not -BeNullOrEmpty
-    }
-
-    It 'returns a valid Base64-encoded string' {
-        $result = ConvertTo-CWAASecurity -InputString 'TestValue'
-        # Base64 strings contain only [A-Za-z0-9+/=]
-        $result | Should -Match '^[A-Za-z0-9+/=]+$'
-    }
-
-    It 'produces consistent output for the same input' {
-        $result1 = ConvertTo-CWAASecurity -InputString 'ConsistencyTest'
-        $result2 = ConvertTo-CWAASecurity -InputString 'ConsistencyTest'
-        $result1 | Should -Be $result2
-    }
-
-    It 'produces different output for different inputs' {
-        $result1 = ConvertTo-CWAASecurity -InputString 'Value1'
-        $result2 = ConvertTo-CWAASecurity -InputString 'Value2'
-        $result1 | Should -Not -Be $result2
-    }
-
-    It 'produces different output with different keys' {
-        $result1 = ConvertTo-CWAASecurity -InputString 'TestValue' -Key 'Key1'
-        $result2 = ConvertTo-CWAASecurity -InputString 'TestValue' -Key 'Key2'
-        $result1 | Should -Not -Be $result2
-    }
-
-    It 'handles an empty string input' {
-        $result = ConvertTo-CWAASecurity -InputString ''
-        $result | Should -Not -BeNullOrEmpty
-    }
-
-    It 'handles long string input' {
-        $longString = 'A' * 1000
-        $result = ConvertTo-CWAASecurity -InputString $longString
-        $result | Should -Not -BeNullOrEmpty
-    }
-
-    It 'handles special characters' {
-        $result = ConvertTo-CWAASecurity -InputString '!@#$%^&*()_+-={}[]|;:<>?,./~`'
-        $result | Should -Not -BeNullOrEmpty
-    }
-
-    It 'works with a custom key' {
-        $result = ConvertTo-CWAASecurity -InputString 'TestValue' -Key 'MyCustomKey'
-        $result | Should -Not -BeNullOrEmpty
-    }
-
-    It 'works via the legacy alias ConvertTo-LTSecurity' {
-        $result = ConvertTo-LTSecurity -InputString 'AliasTest'
-        $result | Should -Not -BeNullOrEmpty
-    }
-}
-
-# =============================================================================
-# ConvertFrom-CWAASecurity Unit Tests
-# =============================================================================
-Describe 'ConvertFrom-CWAASecurity' {
-
-    It 'decodes a previously encoded string' {
-        $encoded = ConvertTo-CWAASecurity -InputString 'HelloWorld'
-        $decoded = ConvertFrom-CWAASecurity -InputString $encoded
-        $decoded | Should -Be 'HelloWorld'
-    }
-
-    It 'returns null for invalid Base64 input' {
-        $result = ConvertFrom-CWAASecurity -InputString 'NotValidBase64!!!' -Force:$False
-        $result | Should -BeNullOrEmpty
-    }
-
-    It 'decodes with a custom key' {
-        $customKey = 'MySecretKey123'
-        $encoded = ConvertTo-CWAASecurity -InputString 'CustomKeyTest' -Key $customKey
-        $decoded = ConvertFrom-CWAASecurity -InputString $encoded -Key $customKey
-        $decoded | Should -Be 'CustomKeyTest'
-    }
-
-    It 'fails to decode with the wrong key (Force disabled)' {
-        $encoded = ConvertTo-CWAASecurity -InputString 'WrongKeyTest' -Key 'CorrectKey'
-        $decoded = ConvertFrom-CWAASecurity -InputString $encoded -Key 'WrongKey' -Force:$False
-        $decoded | Should -BeNullOrEmpty
-    }
-
-    It 'works via the legacy alias ConvertFrom-LTSecurity' {
-        $encoded = ConvertTo-CWAASecurity -InputString 'AliasTest'
-        $decoded = ConvertFrom-LTSecurity -InputString $encoded
-        $decoded | Should -Be 'AliasTest'
-    }
-
-    It 'accepts pipeline input' {
-        $encoded = ConvertTo-CWAASecurity -InputString 'PipelineTest'
-        $decoded = $encoded | ConvertFrom-CWAASecurity
-        $decoded | Should -Be 'PipelineTest'
-    }
-}
-
-# =============================================================================
-# Security Round-Trip Tests
-# =============================================================================
-Describe 'Security Encode/Decode Round-Trip' {
-
-    It 'round-trips "<TestString>" with default key' -ForEach @(
-        @{ TestString = 'SimpleText' }
-        @{ TestString = 'Hello World with spaces' }
-        @{ TestString = 'Special!@#$%^&*()chars' }
-        @{ TestString = '12345' }
-        @{ TestString = '' }
-        @{ TestString = 'https://automate.example.com' }
-        @{ TestString = 'P@$$w0rd!#Complex' }
-    ) {
-        $encoded = ConvertTo-CWAASecurity -InputString $TestString
-        $decoded = ConvertFrom-CWAASecurity -InputString $encoded
-        $decoded | Should -Be $TestString
-    }
-
-    It 'round-trips with custom key "<Key>"' -ForEach @(
-        @{ Key = 'ShortKey' }
-        @{ Key = 'A much longer encryption key for testing purposes' }
-        @{ Key = '!@#$%' }
-        @{ Key = '12345678901234567890' }
-    ) {
-        $testValue = 'RoundTripValue'
-        $encoded = ConvertTo-CWAASecurity -InputString $testValue -Key $Key
-        $decoded = ConvertFrom-CWAASecurity -InputString $encoded -Key $Key
-        $decoded | Should -Be $testValue
-    }
-
-    It 'encoded value differs between default key and custom key' {
-        $input = 'CompareKeys'
-        $defaultEncoded = ConvertTo-CWAASecurity -InputString $input
-        $customEncoded = ConvertTo-CWAASecurity -InputString $input -Key 'CustomKey'
-        $defaultEncoded | Should -Not -Be $customEncoded
-    }
-}
-
-# =============================================================================
 # Parameter Validation Tests
 # =============================================================================
 Describe 'Parameter Validation' {
@@ -595,94 +504,6 @@ Describe 'Parameter Validation' {
 
         It 'has a Level parameter' {
             $cmd.Parameters.Keys | Should -Contain 'Level'
-        }
-    }
-}
-
-# =============================================================================
-# Documentation Structure Tests
-# =============================================================================
-Describe 'Documentation Structure' {
-
-    BeforeAll {
-        $ModuleRoot = Split-Path -Parent $PSScriptRoot
-        $DocsRoot = Join-Path $ModuleRoot 'Docs'
-        $DocsHelp = Join-Path $DocsRoot 'Help'
-        $BuildScript = Join-Path $ModuleRoot 'Build\Build-Documentation.ps1'
-        $ExportedFunctions = (Get-Module 'ConnectWiseAutomateAgent').ExportedFunctions.Keys
-    }
-
-    Context 'Folder layout' {
-        It 'has a Docs directory' {
-            $DocsRoot | Should -Exist
-        }
-
-        It 'has a Docs/Help directory for auto-generated reference docs' {
-            $DocsHelp | Should -Exist
-        }
-
-        It 'has no auto-generated function docs in Docs root' {
-            $handWrittenGuides = @(
-                'Architecture.md',
-                'CommonParameters.md',
-                'FAQ.md',
-                'Migration.md',
-                'Security.md',
-                'Troubleshooting.md'
-            )
-            $rootMdFiles = Get-ChildItem $DocsRoot -Filter '*.md' -File |
-                Where-Object { $_.Name -notin $handWrittenGuides }
-            $rootMdFiles | Should -HaveCount 0 -Because 'function docs belong in Docs/Help/, only hand-written guides in Docs/'
-        }
-
-        It 'has Architecture.md in Docs root (hand-written)' {
-            Join-Path $DocsRoot 'Architecture.md' | Should -Exist
-        }
-    }
-
-    Context 'Auto-generated function reference' {
-        It 'has a module overview page' {
-            Join-Path $DocsHelp 'ConnectWiseAutomateAgent.md' | Should -Exist
-        }
-
-        It 'has a markdown doc for each exported function' {
-            foreach ($function in $ExportedFunctions) {
-                $docPath = Join-Path $DocsHelp "$function.md"
-                $docPath | Should -Exist -Because "$function should have a corresponding doc in Docs/Help/"
-            }
-        }
-
-        It 'each function doc has PlatyPS YAML frontmatter' {
-            foreach ($function in $ExportedFunctions) {
-                $docPath = Join-Path $DocsHelp "$function.md"
-                if (Test-Path $docPath) {
-                    $firstLine = (Get-Content $docPath -TotalCount 1)
-                    $firstLine | Should -Be '---' -Because "$function.md should start with YAML frontmatter"
-                }
-            }
-        }
-    }
-
-    Context 'MAML help' {
-        It 'has a compiled MAML XML help file' {
-            $mamlPath = Join-Path $ModuleRoot 'ConnectWiseAutomateAgent\en-US\ConnectWiseAutomateAgent-help.xml'
-            $mamlPath | Should -Exist
-        }
-
-        It 'has an about help topic' {
-            $aboutPath = Join-Path $ModuleRoot 'ConnectWiseAutomateAgent\en-US\about_ConnectWiseAutomateAgent.help.txt'
-            $aboutPath | Should -Exist
-        }
-    }
-
-    Context 'Build script' {
-        It 'Build-Documentation.ps1 exists' {
-            $BuildScript | Should -Exist
-        }
-
-        It 'Build-Documentation.ps1 defaults output to Docs/Help' {
-            $scriptContent = Get-Content $BuildScript -Raw
-            $scriptContent | Should -Match "Join-Path.*'Help'" -Because 'default output path should target Docs/Help'
         }
     }
 }

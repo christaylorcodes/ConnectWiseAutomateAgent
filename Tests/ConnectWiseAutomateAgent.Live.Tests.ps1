@@ -33,12 +33,7 @@
 #>
 
 BeforeAll {
-    $ModuleName = 'ConnectWiseAutomateAgent'
-    $ModuleRoot = Split-Path -Parent $PSScriptRoot
-    $ModulePath = Join-Path $ModuleRoot "$ModuleName\$ModuleName.psd1"
-
-    Get-Module $ModuleName -ErrorAction SilentlyContinue | Remove-Module -Force
-    Import-Module $ModulePath -Force -ErrorAction Stop
+    $script:BootstrapResult = & "$PSScriptRoot\TestBootstrap.ps1"
 
     # ---- State variables ----
     $script:AgentInstalled = $false

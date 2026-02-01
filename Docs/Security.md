@@ -133,6 +133,58 @@ Install-CWAA -Server 'automate.example.com' -LocationID 1 -ServerPassword 'Legac
 
 ---
 
+## Version Locking
+
+### Why It Matters
+
+This module runs with administrator privileges on managed endpoints. Scripts that always pull the latest version (`Update-Module`, `Install-Module` without `-RequiredVersion`, or downloading from the `main` branch) are vulnerable to:
+
+- **Supply-chain compromise** — if the PowerShell Gallery package or GitHub repository were compromised, every endpoint running a "latest" script would execute the malicious code on its next run.
+- **Breaking changes** — a major version update could change behavior in ways that break existing deployment workflows.
+- **Unreproducible deployments** — without a pinned version, two endpoints running the same script a day apart could get different module versions, making troubleshooting difficult.
+
+### Recommended Practice
+
+Pin every production script to a specific version you have tested:
+
+**PowerShell Gallery:**
+
+```powershell
+# Install a specific version
+Install-Module ConnectWiseAutomateAgent -RequiredVersion '1.0.0' -Force -Scope AllUsers
+
+# Import a specific version (when multiple versions are installed side by side)
+Import-Module ConnectWiseAutomateAgent -RequiredVersion '1.0.0'
+```
+
+**Single-file (restricted networks):**
+
+```powershell
+# Download from a version-locked GitHub Release — the URL is immutable after publication
+$ModuleVersion = '1.0.0'
+$URI = "https://github.com/christaylorcodes/ConnectWiseAutomateAgent/releases/download/v$ModuleVersion/ConnectWiseAutomateAgent.ps1"
+Invoke-RestMethod $URI | Invoke-Expression
+```
+
+### Update Workflow
+
+1. A new module version is released.
+2. Install and test the new version in a lab or pilot environment.
+3. Once validated, update the `$ModuleVersion` variable (or `-RequiredVersion` value) in your deployment scripts.
+4. Roll out the updated scripts to production.
+
+This gives you an explicit approval step between "new version available" and "new version running on all endpoints."
+
+### When Floating Versions Are Acceptable
+
+- **Interactive troubleshooting** — running `Install-Module ConnectWiseAutomateAgent` in a one-off PowerShell session to diagnose an issue.
+- **Development and testing** — working on the module itself or evaluating new features.
+- **Non-production environments** — lab machines where unexpected changes are acceptable.
+
+All [example scripts](../Examples/) in this repository use version-locked patterns by default.
+
+---
+
 ## Vulnerability Awareness
 
 `Install-CWAA` checks the Automate server version during installation. If the server reports a version below **v200.197** (the June 2020 security patch), a warning is emitted:

@@ -32,32 +32,37 @@
 
 # --- Module Loading ----------------------------------------------------------
 
-# SECURITY WARNING: The fallback method below uses Invoke-Expression to load
-# code downloaded from the internet at runtime. This is convenient but carries
-# inherent risk -- a compromised source or man-in-the-middle attack could
-# execute arbitrary code on this machine.
+# SECURITY NOTE: Version locking
 #
-# RECOMMENDED: Use Install-Module from the PowerShell Gallery instead:
-#   Install-Module 'ConnectWiseAutomateAgent' -Scope AllUsers
+# Production scripts should pin to a specific module version. This prevents
+# untested updates from rolling out to endpoints and mitigates supply-chain
+# risk. Update $ModuleVersion deliberately after validating new releases.
 #
-# The Invoke-Expression fallback is provided ONLY for systems where the
-# PowerShell Gallery is unavailable (e.g., PS 2.0, restricted networks).
+# The Invoke-Expression fallback downloads and executes code at runtime.
+# It is provided ONLY for systems where the PowerShell Gallery is unavailable
+# (e.g., PS 2.0, restricted networks). The fallback URL is version-locked to
+# a GitHub Release so the code is immutable after publication.
+#
+# PREFERRED: Use Install-Module from the PowerShell Gallery instead:
+#   Install-Module 'ConnectWiseAutomateAgent' -RequiredVersion '1.0.0'
+
+$Module = 'ConnectWiseAutomateAgent'
+$ModuleVersion = '1.0.0'  # Pin to a tested version — update after validating new releases
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 try {
-    $Module = 'ConnectWiseAutomateAgent'
-    try { Update-Module $Module -ErrorAction Stop }
-    catch { Install-Module $Module -Force -Scope AllUsers -SkipPublisherCheck }
-
-    Get-Module $Module -ListAvailable |
-        Sort-Object Version -Descending |
-        Select-Object -First 1 |
-        Import-Module *>$null
+    $installed = Get-Module $Module -ListAvailable |
+        Where-Object { $_.Version -eq $ModuleVersion }
+    if (-not $installed) {
+        Install-Module $Module -RequiredVersion $ModuleVersion -Force -Scope AllUsers
+    }
+    Import-Module $Module -RequiredVersion $ModuleVersion *>$null
 }
 catch {
     # WARNING: Invoke-Expression executes downloaded code. See security note above.
     # This fallback is ONLY for systems where the PowerShell Gallery is unavailable.
-    $URI = 'https://raw.githubusercontent.com/christaylorcodes/ConnectWiseAutomateAgent/main/ConnectWiseAutomateAgent.ps1'
+    # The URL is pinned to a specific release tag — it will not change after publication.
+    $URI = "https://github.com/christaylorcodes/ConnectWiseAutomateAgent/releases/download/v$ModuleVersion/ConnectWiseAutomateAgent.ps1"
     (New-Object Net.WebClient).DownloadString($URI) | Invoke-Expression
 }
 

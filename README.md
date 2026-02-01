@@ -81,15 +81,38 @@ Install-Module 'ConnectWiseAutomateAgent' -AllowPrerelease
 
 > Having issues with the Gallery? Try this [repair script](https://github.com/christaylorcodes/Initialize-PSGallery).
 
+### Version Locking (Recommended for Production)
+
+For deployment scripts, automated tasks, and anything running unattended on endpoints, pin to a specific version you have tested:
+
+```powershell
+Install-Module 'ConnectWiseAutomateAgent' -RequiredVersion '1.0.0'
+```
+
+This prevents untested updates from rolling out to production machines. Update the version number deliberately after validating new releases in a test environment.
+
+> **Why version lock?** Scripts that always pull the latest version are vulnerable to supply-chain risk -- a compromised update or a breaking change could affect every endpoint at once. Pinning to a tested version gives you control over when updates roll out. See [Security Model — Version Locking](Docs/Security.md#version-locking) for details.
+
 ### Single-File Usage
 
 For older machines or environments without PowerShell Gallery access, a standalone `.ps1` file is available. This is a fallback -- prefer `Install-Module` above whenever possible.
+
+**Version-locked** (from [GitHub Releases](https://github.com/christaylorcodes/ConnectWiseAutomateAgent/releases) -- recommended for production scripts):
+
+```powershell
+# Pin to a specific version for reproducible deployments
+Invoke-RestMethod 'https://github.com/christaylorcodes/ConnectWiseAutomateAgent/releases/download/v1.0.0/ConnectWiseAutomateAgent.ps1' | Invoke-Expression
+```
+
+**Latest** (tracks `main` branch -- use only for interactive testing, not production):
 
 ```powershell
 Invoke-RestMethod 'https://raw.githubusercontent.com/christaylorcodes/ConnectWiseAutomateAgent/main/ConnectWiseAutomateAgent.ps1' | Invoke-Expression
 ```
 
-> **Note:** This downloads and executes code at runtime. Use `Install-Module` when the Gallery is available.
+> **Tip:** Browse all versions on the [Releases](https://github.com/christaylorcodes/ConnectWiseAutomateAgent/releases) page. Replace `v1.0.0` with your desired version tag.
+>
+> **Note:** Both methods download and execute code at runtime. Use `Install-Module` when the Gallery is available. Version-locked URLs are strongly preferred for production because they are immutable after release.
 
 ## Getting Started
 
@@ -155,7 +178,6 @@ Ready-to-use scripts in the [Examples/](Examples/) directory:
 
 | | |
 | --- | --- |
-| [Roadmap](MAP.md) | Where the project has been and where it's going |
 | [Changelog](CHANGELOG.md) | Version history and release notes |
 | [Contributing](CONTRIBUTING.md) | How to report bugs, suggest features, and submit PRs |
 
@@ -167,7 +189,7 @@ If you're an AI assistant helping a user with this module, start here:
 
 | Resource | What it contains |
 | --- | --- |
-| [CLAUDE.md](CLAUDE.md) | Architecture, module loading flow, coding conventions, key system paths, security considerations, and testing requirements |
+| [AGENTS.md](AGENTS.md) | Architecture, build commands, coding conventions, testing workflow, AI contribution workflow, security considerations |
 | [Docs/Help/ConnectWiseAutomateAgent.md](Docs/Help/ConnectWiseAutomateAgent.md) | Complete function reference with links to per-function documentation (parameters, examples, syntax) |
 | [Docs/Help/](Docs/Help/) | Individual function docs -- one file per function (e.g., `Docs/Help/Install-CWAA.md`) |
 | [Examples/](Examples/) | Ready-to-use scripts covering common deployment and troubleshooting scenarios |

@@ -24,14 +24,9 @@ Open an issue describing what you would like to see and why. Include use cases s
 2. **Make your changes** following the coding conventions below.
 3. **Test** your changes:
    ```powershell
-   Import-Module .\ConnectWiseAutomateAgent\ConnectWiseAutomateAgent.psd1 -Force
-   Invoke-Pester Tests\ConnectWiseAutomateAgent.Tests.ps1 -Output Detailed
+   ./Tests/test-local.ps1
    ```
-4. **Rebuild** the single-file distribution:
-   ```powershell
-   powershell -File Build\SingleFileBuild.ps1
-   ```
-5. **Submit** a pull request with a clear description of what you changed and why.
+4. **Submit** a pull request with a clear description of what you changed and why.
 
 ## Development Setup
 
@@ -43,8 +38,11 @@ cd ConnectWiseAutomateAgent
 # Import the module locally
 Import-Module .\ConnectWiseAutomateAgent\ConnectWiseAutomateAgent.psd1 -Force
 
-# Run the test suite
-Invoke-Pester Tests\ConnectWiseAutomateAgent.Tests.ps1 -Output Detailed
+# Run all local checks (build + analyze + test)
+./Tests/test-local.ps1
+
+# Or run tests only (faster, no build)
+./Tests/test-local.ps1 -Quick
 
 # Enable pre-commit hooks (runs PSScriptAnalyzer + tests before each commit)
 git config core.hooksPath .githooks
@@ -52,22 +50,21 @@ git config core.hooksPath .githooks
 
 ## Coding Conventions
 
-- **Naming:** Use the `CWAA` prefix for function names (`Verb-CWAA<Noun>`). Add an `[Alias('Verb-LT<LegacyNoun>')]` for backward compatibility.
-- **Parameters:** Use `[CmdletBinding()]`. Add `SupportsShouldProcess=$True` on destructive operations.
-- **Debug output:** Include `Write-Debug "Starting $($MyInvocation.InvocationName)"` in the Process block and `Write-Debug "Exiting $($MyInvocation.InvocationName)"` in the End block.
-- **Error handling:** Use `Write-Error "Failed to <action> at '<target>'. <troubleshooting hint>. Error: $($_.Exception.Message)"`. Use `$_` in Catch blocks, not `$Error[0]`.
-- **Constants:** Use `$Script:CWAA*` constants for paths and registry keys instead of hardcoded strings.
-- **Help:** Include comment-based help (`.SYNOPSIS`, `.DESCRIPTION`, `.EXAMPLE`, `.NOTES`, `.LINK`) on all public functions.
-- **Variable names:** Prefer verbose, descriptive names (`$automateServerUrl` not `$srvUrl`).
-- **Returns:** Functions return `[PSCustomObject]` for pipeline compatibility.
+See the [Code Conventions](AGENTS.md#code-conventions) section in AGENTS.md for the full quick-reference covering naming, parameters, debug output, error handling, constants, help, variable names, and PSScriptAnalyzer requirements.
+
+The key points:
+
+- Functions use `Verb-CWAA<Noun>` naming with `[Alias('Verb-LT<LegacyNoun>')]` for backward compatibility
+- `[CmdletBinding()]` on everything; `SupportsShouldProcess=$True` on destructive operations
+- Zero PSScriptAnalyzer errors required (settings in `.PSScriptAnalyzerSettings.psd1`)
+- PowerShell files use UTF-8 with BOM, CRLF line endings
 
 ### Adding a New Function
 
-1. Create `Verb-CWAA<Noun>.ps1` in the appropriate `Public/` subdirectory.
-2. Add `[Alias('Verb-LT<LegacyNoun>')]` in the function declaration.
-3. Add to `FunctionsToExport` and `AliasesToExport` in `ConnectWiseAutomateAgent.psd1`.
-4. Rebuild documentation: `Build\Build-Documentation.ps1` (outputs to `Docs/Help/`)
-5. Rebuild single-file: `Build\SingleFileBuild.ps1`
+See [Adding New Functions](AGENTS.md#adding-new-functions) in AGENTS.md for the full checklist. Summary:
+
+1. Create `Verb-CWAA<Noun>.ps1` in the appropriate `Public/` subdirectory
+2. Add the `LT` alias, update the manifest, rebuild docs and single-file
 
 ## Versioning
 

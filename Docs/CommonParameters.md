@@ -173,3 +173,4 @@ Calls `New-CWAABackup` internally, which copies the agent's registry keys to `HK
 | Function | Notes |
 | --- | --- |
 | `Uninstall-CWAA` | Backs up before removing the agent |
+| `Redo-CWAA` | Backs up before uninstall/reinstall cycle |

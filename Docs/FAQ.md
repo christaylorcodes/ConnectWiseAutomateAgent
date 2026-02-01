@@ -28,10 +28,11 @@ Yes. Any tool that can execute a PowerShell script with administrator privileges
 Install-CWAA -Server 'automate.example.com' -InstallerToken 'MyToken' -LocationID 1
 ```
 
-For environments without PowerShell Gallery access, use the single-file version:
+For environments without PowerShell Gallery access, use the version-locked single-file from [GitHub Releases](https://github.com/christaylorcodes/ConnectWiseAutomateAgent/releases):
 
 ```powershell
-Invoke-RestMethod 'https://raw.githubusercontent.com/christaylorcodes/ConnectWiseAutomateAgent/main/ConnectWiseAutomateAgent.ps1' | Invoke-Expression
+# Pin to a specific version — replace v1.0.0 with your tested version
+Invoke-RestMethod 'https://github.com/christaylorcodes/ConnectWiseAutomateAgent/releases/download/v1.0.0/ConnectWiseAutomateAgent.ps1' | Invoke-Expression
 Install-CWAA -Server 'automate.example.com' -InstallerToken 'MyToken' -LocationID 1
 ```
 
@@ -162,13 +163,32 @@ Update-Module ConnectWiseAutomateAgent -AllowPrerelease
 
 ### Can I use this in a CI/CD pipeline?
 
-Yes. The module is published on the PowerShell Gallery and can be installed non-interactively:
+Yes. The module is published on the PowerShell Gallery and can be installed non-interactively. Pin to a specific version for reproducible builds:
 
 ```powershell
-Install-Module ConnectWiseAutomateAgent -Force -Scope AllUsers -AllowPrerelease
+Install-Module ConnectWiseAutomateAgent -RequiredVersion '1.0.0' -Force -Scope AllUsers
 ```
 
 Note that most functions require administrator privileges and a Windows target. Functions that read agent state (`Get-CWAAInfo`, `Test-CWAAHealth`) are most useful in CI/CD for validation steps.
+
+### Should I pin the module to a specific version?
+
+**Yes, for production and deployment scripts.** Pinning to a tested version prevents untested updates from rolling out to endpoints and mitigates supply-chain risk.
+
+```powershell
+# PowerShell Gallery — pin to a specific version
+Install-Module ConnectWiseAutomateAgent -RequiredVersion '1.0.0'
+Import-Module ConnectWiseAutomateAgent -RequiredVersion '1.0.0'
+
+# Single-file — use a version-locked GitHub Release URL
+Invoke-RestMethod 'https://github.com/christaylorcodes/ConnectWiseAutomateAgent/releases/download/v1.0.0/ConnectWiseAutomateAgent.ps1' | Invoke-Expression
+```
+
+Update the version number deliberately after validating new releases in a test environment. All example scripts in this repository use version-locked patterns by default.
+
+**When floating versions are acceptable:** Interactive troubleshooting, development, and one-off diagnostics where you always want the latest features. In these cases, `Install-Module ConnectWiseAutomateAgent` (without `-RequiredVersion`) is fine.
+
+See [Security Model — Version Locking](Security.md#version-locking) for the full rationale.
 
 ### What is the `-Force` parameter doing?
 
