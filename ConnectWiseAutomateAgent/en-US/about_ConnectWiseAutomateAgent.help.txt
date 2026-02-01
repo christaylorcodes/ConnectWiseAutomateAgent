@@ -1,0 +1,64 @@
+TOPIC
+    about_ConnectWiseAutomateAgent
+
+SHORT DESCRIPTION
+    PowerShell module for managing the ConnectWise Automate (formerly LabTech)
+    Windows agent.
+
+LONG DESCRIPTION
+    The ConnectWiseAutomateAgent module provides cmdlets for installing,
+    configuring, troubleshooting, and managing the ConnectWise Automate agent
+    on Windows systems.
+
+    This module is primarily used by Managed Service Providers (MSPs) who use
+    ConnectWise Automate as their Remote Monitoring and Management (RMM)
+    platform.
+
+DUAL NAMING CONVENTION
+    All functions use the CWAA prefix (e.g., Install-CWAA) and also declare
+    backward-compatible aliases using the legacy LabTech naming convention
+    (e.g., Install-LTService). Both names work identically.
+
+    Current Name            Legacy Alias
+    ------------            ------------
+    Install-CWAA            Install-LTService
+    Uninstall-CWAA          Uninstall-LTService
+    Get-CWAAInfo            Get-LTServiceInfo
+    Restart-CWAA            Restart-LTService
+
+GETTING STARTED
+    # Import the module
+    Import-Module ConnectWiseAutomateAgent
+
+    # View agent configuration
+    Get-CWAAInfo
+
+    # Check agent service status
+    Get-CWAAInfo | Select-Object -Property ID, 'Server Address', LastSuccessStatus
+
+    # Install agent on a new machine
+    Install-CWAA -Server https://automate.domain.com -InstallerToken 'token' -LocationID 42
+
+    # Test connectivity to the Automate server
+    Test-CWAAPort -Server https://automate.domain.com
+
+SYSTEM REQUIREMENTS
+    - Windows operating system
+    - PowerShell 3.0 or later (2.0 with limitations)
+    - Administrator privileges for most operations
+    - Network access to the ConnectWise Automate server (ports 70, 80, 443, 8002)
+
+KEY LOCATIONS
+    Registry:   HKLM:\SOFTWARE\LabTech\Service
+    Files:      C:\Windows\LTSVC
+    Services:   LTService (main), LTSvcMon (monitor), LabVNC (remote control)
+    Temp:       C:\Windows\Temp\LabTech\Installer
+    TrayPort:   42000-42009 (local agent communication)
+
+SEE ALSO
+    Get-CWAAInfo
+    Install-CWAA
+    Uninstall-CWAA
+    Update-CWAA
+    Test-CWAAPort
+    https://github.com/christaylorcodes/ConnectWiseAutomateAgent

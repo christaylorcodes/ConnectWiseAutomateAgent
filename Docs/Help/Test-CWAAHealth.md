@@ -1,0 +1,130 @@
+---
+external help file: ConnectWiseAutomateAgent-help.xml
+Module Name: ConnectWiseAutomateAgent
+online version: https://github.com/christaylorcodes/ConnectWiseAutomateAgent
+schema: 2.0.0
+---
+
+# Test-CWAAHealth
+
+## SYNOPSIS
+Performs a read-only health assessment of the ConnectWise Automate agent.
+
+## SYNTAX
+
+```
+Test-CWAAHealth [[-Server] <String>] [-TestServerConnectivity] [-ProgressAction <ActionPreference>]
+ [<CommonParameters>]
+```
+
+## DESCRIPTION
+Checks the overall health of the installed Automate agent without taking any
+remediation action.
+Returns a status object with details about the agent's
+installation state, service status, last check-in times, and server connectivity.
+
+This function never modifies the agent, services, or registry.
+It is safe to call
+at any time for monitoring or diagnostic purposes.
+
+Health assessment criteria:
+- Agent is installed (LTService exists)
+- Services are running (LTService and LTSvcMon)
+- Agent has checked in recently (LastSuccessStatus or HeartbeatLastSent within threshold)
+- Server is reachable (optional, tested when Server param is provided or auto-discovered)
+
+The Healthy property is True only when the agent is installed, services are running,
+and LastContact is not null.
+
+## EXAMPLES
+
+### EXAMPLE 1
+```
+Test-CWAAHealth
+```
+
+Returns a health status object for the installed agent.
+
+### EXAMPLE 2
+```
+Test-CWAAHealth -Server 'https://automate.domain.com' -TestServerConnectivity
+```
+
+Checks agent health, validates the server address matches, and tests server connectivity.
+
+### EXAMPLE 3
+```
+if ((Test-CWAAHealth).Healthy) { Write-Output 'Agent is healthy' }
+```
+
+Uses the Healthy boolean for conditional logic.
+
+## PARAMETERS
+
+### -ProgressAction
+{{ Fill ProgressAction Description }}
+
+```yaml
+Type: ActionPreference
+Parameter Sets: (All)
+Aliases: proga
+
+Required: False
+Position: Named
+Default value: None
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### -Server
+An Automate server URL to validate against the installed agent's configured server.
+If provided, the ServerMatch property indicates whether the installed agent points
+to this server.
+If omitted, ServerMatch is null.
+
+```yaml
+Type: String
+Parameter Sets: (All)
+Aliases:
+
+Required: False
+Position: 1
+Default value: None
+Accept pipeline input: True (ByPropertyName)
+Accept wildcard characters: False
+```
+
+### -TestServerConnectivity
+When specified, tests whether the agent's server is reachable via the agent.aspx
+endpoint.
+Adds a brief network call.
+The ServerReachable property is null when
+this switch is not used.
+
+```yaml
+Type: SwitchParameter
+Parameter Sets: (All)
+Aliases:
+
+Required: False
+Position: Named
+Default value: False
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### CommonParameters
+This cmdlet supports the common parameters: -Debug, -ErrorAction, -ErrorVariable, -InformationAction, -InformationVariable, -OutVariable, -OutBuffer, -PipelineVariable, -Verbose, -WarningAction, and -WarningVariable. For more information, see [about_CommonParameters](http://go.microsoft.com/fwlink/?LinkID=113216).
+
+## INPUTS
+
+## OUTPUTS
+
+## NOTES
+Author: Chris Taylor
+Alias: Test-LTHealth
+
+## RELATED LINKS
+
+[https://github.com/christaylorcodes/ConnectWiseAutomateAgent](https://github.com/christaylorcodes/ConnectWiseAutomateAgent)
+

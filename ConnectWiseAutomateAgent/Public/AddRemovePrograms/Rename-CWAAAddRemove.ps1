@@ -1,4 +1,27 @@
 function Rename-CWAAAddRemove {
+    <#
+    .SYNOPSIS
+        Renames the Automate agent entry in the Add/Remove Programs list.
+    .DESCRIPTION
+        Changes the DisplayName (and optionally Publisher) registry values for the Automate agent
+        uninstall keys, which controls how the agent appears in the Windows Add/Remove Programs
+        (Programs and Features) list.
+    .PARAMETER Name
+        The display name for the Automate agent as shown in the list of installed software.
+    .PARAMETER PublisherName
+        The publisher name for the Automate agent as shown in the list of installed software.
+    .EXAMPLE
+        Rename-CWAAAddRemove -Name 'My Remote Agent'
+        Renames the Automate agent display name to 'My Remote Agent'.
+    .EXAMPLE
+        Rename-CWAAAddRemove -Name 'My Remote Agent' -PublisherName 'My Company'
+        Renames both the display name and publisher name in Add/Remove Programs.
+    .NOTES
+        Author: Chris Taylor
+        Alias: Rename-LTAddRemove
+    .LINK
+        https://github.com/christaylorcodes/ConnectWiseAutomateAgent
+    #>
     [CmdletBinding(SupportsShouldProcess = $True)]
     [Alias('Rename-LTAddRemove')]
     Param(
@@ -11,16 +34,11 @@ function Rename-CWAAAddRemove {
     )
 
     Begin {
-        $RegRoots = ('HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\{58A3001D-B675-4D67-A5A1-0FA9F08CF7CA}',
-            'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{58A3001D-B675-4D67-A5A1-0FA9F08CF7CA}',
-            'HKLM:\SOFTWARE\Classes\Installer\Products\C4D064F3712D4B64086B5BDE05DBC75F',
-            'HKLM:\SOFTWARE\Classes\Installer\Products\D1003A85576B76D45A1AF09A0FC87FAC')
-        $PublisherRegRoots = ('HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\{58A3001D-B675-4D67-A5A1-0FA9F08CF7CA}',
-            'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{58A3001D-B675-4D67-A5A1-0FA9F08CF7CA}',
-            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\{3F460D4C-D217-46B4-80B6-B5ED50BD7CF5}',
-            'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{3F460D4C-D217-46B4-80B6-B5ED50BD7CF5}')
-        $RegNameFound = 0;
-        $RegPublisherFound = 0;
+        Write-Debug "Starting $($MyInvocation.InvocationName)"
+        $RegRoots = @($Script:CWAAUninstallKeys[0], $Script:CWAAUninstallKeys[1]) + $Script:CWAAInstallerProductKeys
+        $PublisherRegRoots = $Script:CWAAUninstallKeys
+        $RegNameFound = 0
+        $RegPublisherFound = 0
     }
 
     Process {
@@ -33,23 +51,23 @@ function Rename-CWAAAddRemove {
                         $RegNameFound++
                     }
                 }
-                Elseif (Get-ItemProperty $RegRoot -Name HiddenProductName -ErrorAction SilentlyContinue) {
-                    if ($PSCmdlet.ShouldProcess("$($RegRoot)\ HiddenProductName=$($Name)", 'Set Registry Value')) {
-                        Write-Verbose "Setting $($RegRoot)\ HiddenProductName=$($Name)"
+                elseif (Get-ItemProperty $RegRoot -Name HiddenProductName -ErrorAction SilentlyContinue) {
+                    if ($PSCmdlet.ShouldProcess("$($RegRoot)\HiddenProductName=$($Name)", 'Set Registry Value')) {
+                        Write-Verbose "Setting $($RegRoot)\HiddenProductName=$($Name)"
                         Set-ItemProperty $RegRoot -Name HiddenProductName -Value $Name -Confirm:$False
                         $RegNameFound++
                     }
                 }
             }
         }
-
         Catch {
-            Write-Error "ERROR: Line $(LINENUM): There was an error setting the registry key value. $($Error[0])" -ErrorAction Stop
+            Write-CWAAEventLog -EventId 3062 -EntryType Error -Message "Failed to rename agent in Add/Remove Programs. Error: $($_.Exception.Message)"
+            Write-Error "There was an error setting the DisplayName registry value. $($_)" -ErrorAction Stop
         }
 
         if (($PublisherName)) {
             Try {
-                Foreach ($RegRoot in $PublisherRegRoots) {
+                foreach ($RegRoot in $PublisherRegRoots) {
                     if (Get-ItemProperty $RegRoot -Name Publisher -ErrorAction SilentlyContinue) {
                         if ($PSCmdlet.ShouldProcess("$($RegRoot)\Publisher=$($PublisherName)", 'Set Registry Value')) {
                             Write-Verbose "Setting $($RegRoot)\Publisher=$($PublisherName)"
@@ -59,32 +77,38 @@ function Rename-CWAAAddRemove {
                     }
                 }
             }
-
             Catch {
-                Write-Error "ERROR: Line $(LINENUM): There was an error setting the registry key value. $($Error[0])" -ErrorAction Stop
+                Write-CWAAEventLog -EventId 3062 -EntryType Error -Message "Failed to set agent publisher name. Error: $($_.Exception.Message)"
+                Write-Error "There was an error setting the Publisher registry value. $($_)" -ErrorAction Stop
+            }
+        }
+
+        # Output success/warning (replaces if($?) pattern formerly in End block).
+        # Guarded by $WhatIfPreference because SupportsShouldProcess is enabled and
+        # these messages would be misleading during a -WhatIf dry run.
+        if ($WhatIfPreference -ne $True) {
+            if ($RegNameFound -gt 0) {
+                Write-Output "Automate agent is now listed as $($Name) in Add/Remove Programs."
+                Write-CWAAEventLog -EventId 3060 -EntryType Information -Message "Agent display name changed to '$Name' in Add/Remove Programs."
+            }
+            else {
+                Write-Warning "Automate agent was not found in installed software and the Name was not changed."
+                Write-CWAAEventLog -EventId 3061 -EntryType Warning -Message "Agent not found in installed software. Display name not changed."
+            }
+            if (($PublisherName)) {
+                if ($RegPublisherFound -gt 0) {
+                    Write-Output "The Publisher is now listed as $($PublisherName)."
+                    Write-CWAAEventLog -EventId 3060 -EntryType Information -Message "Agent publisher changed to '$PublisherName' in Add/Remove Programs."
+                }
+                else {
+                    Write-Warning "Automate agent was not found in installed software and the Publisher was not changed."
+                    Write-CWAAEventLog -EventId 3061 -EntryType Warning -Message "Agent not found in installed software. Publisher name not changed."
+                }
             }
         }
     }
 
     End {
-        if ($WhatIfPreference -ne $True) {
-            if ($?) {
-                if ($RegNameFound -gt 0) {
-                    Write-Output "LabTech is now listed as $($Name) in Add/Remove Programs."
-                }
-                else {
-                    Write-Warning "WARNING: Line $(LINENUM): LabTech was not found in installed software and the Name was not changed."
-                }
-                if (($PublisherName)) {
-                    if ($RegPublisherFound -gt 0) {
-                        Write-Output "The Publisher is now listed as $($PublisherName)."
-                    }
-                    else {
-                        Write-Warning "WARNING: Line $(LINENUM): LabTech was not found in installed software and the Publisher was not changed."
-                    }
-                }
-            }
-            else { $Error[0] }
-        }
+        Write-Debug "Exiting $($MyInvocation.InvocationName)"
     }
 }

@@ -1,0 +1,122 @@
+# CI / Publish workflow for ConnectWiseAutomateAgent
+#
+# Philosophy:
+#   Full testing (Pester, PSScriptAnalyzer) is done locally before pushing.
+#   This workflow is intentionally lightweight — it smoke-tests the module,
+#   builds the single-file artifact, and publishes to PSGallery.
+#
+# Branch strategy:
+#   develop push  → smoke test → build → publish prerelease to PSGallery
+#   main push     → smoke test → build → publish stable to PSGallery
+#   pull requests → smoke test → build (no publish)
+#
+# Publish gating:
+#   - Prerelease publish requires a Prerelease tag in the manifest (e.g., 'alpha001')
+#   - Stable publish requires the Prerelease tag to be removed from the manifest
+#   - Both publish jobs use the PSGallery environment for optional protection rules
+#
+# Required secrets:
+#   PSGALLERY_API_KEY — NuGet API key for the PowerShell Gallery
+
+name: CI / Publish
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  smoke-test:
+    name: Smoke Test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate module manifest
+        shell: pwsh
+        run: |
+          $manifest = Test-ModuleManifest -Path ConnectWiseAutomateAgent\ConnectWiseAutomateAgent.psd1 -ErrorAction Stop
+          Write-Host "Module: $($manifest.Name) v$($manifest.Version)"
+          $prerelease = $manifest.PrivateData.PSData.Prerelease
+          if ($prerelease) { Write-Host "Prerelease: $prerelease" }
+
+      - name: Verify module imports and exports
+        shell: pwsh
+        run: |
+          Import-Module .\ConnectWiseAutomateAgent\ConnectWiseAutomateAgent.psd1 -Force -ErrorAction Stop
+          $functions = (Get-Module ConnectWiseAutomateAgent).ExportedFunctions.Keys
+          $aliases   = (Get-Module ConnectWiseAutomateAgent).ExportedAliases.Keys
+          Write-Host "Exported $($functions.Count) functions, $($aliases.Count) aliases"
+          if ($functions.Count -lt 25) { throw "Expected at least 25 exported functions, got $($functions.Count)" }
+          if ($aliases.Count -lt 27)   { throw "Expected at least 27 exported aliases, got $($aliases.Count)" }
+
+  build:
+    name: Build
+    needs: smoke-test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build single-file distribution
+        shell: pwsh
+        run: .\Build\SingleFileBuild.ps1
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ConnectWiseAutomateAgent-SingleFile
+          path: ConnectWiseAutomateAgent.ps1
+
+  publish-prerelease:
+    name: Publish Prerelease
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    needs: build
+    runs-on: windows-latest
+    environment: PSGallery
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify prerelease tag is set
+        shell: pwsh
+        run: |
+          $manifest = Import-PowerShellDataFile ConnectWiseAutomateAgent\ConnectWiseAutomateAgent.psd1
+          $prerelease = $manifest.PrivateData.PSData.Prerelease
+          if (-not $prerelease) {
+            Write-Error "Prerelease tag is not set in the manifest. Skipping prerelease publish."
+            exit 1
+          }
+          Write-Host "Prerelease tag: $prerelease"
+          Write-Host "Full version: $($manifest.ModuleVersion)-$prerelease"
+
+      - name: Publish to PSGallery (prerelease)
+        shell: pwsh
+        env:
+          NUGET_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
+        run: .\Build\Publish-CWAAModule.ps1 -NuGetApiKey $env:NUGET_API_KEY
+
+  publish-stable:
+    name: Publish Stable
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: build
+    runs-on: windows-latest
+    environment: PSGallery
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify no prerelease tag
+        shell: pwsh
+        run: |
+          $manifest = Import-PowerShellDataFile ConnectWiseAutomateAgent\ConnectWiseAutomateAgent.psd1
+          $prerelease = $manifest.PrivateData.PSData.Prerelease
+          if ($prerelease) {
+            Write-Error "Prerelease tag '$prerelease' is still set in the manifest. Remove it before publishing a stable release."
+            exit 1
+          }
+          Write-Host "Version: $($manifest.ModuleVersion) (stable)"
+
+      - name: Publish to PSGallery (stable)
+        shell: pwsh
+        env:
+          NUGET_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
+        run: .\Build\Publish-CWAAModule.ps1 -NuGetApiKey $env:NUGET_API_KEY

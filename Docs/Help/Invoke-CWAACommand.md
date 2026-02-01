@@ -1,0 +1,124 @@
+---
+external help file: ConnectWiseAutomateAgent-help.xml
+Module Name: ConnectWiseAutomateAgent
+online version: https://github.com/christaylorcodes/ConnectWiseAutomateAgent
+schema: 2.0.0
+---
+
+# Invoke-CWAACommand
+
+## SYNOPSIS
+Sends a service command to the ConnectWise Automate agent.
+
+## SYNTAX
+
+```
+Invoke-CWAACommand [-Command] <String[]> [-ProgressAction <ActionPreference>] [-WhatIf] [-Confirm]
+ [<CommonParameters>]
+```
+
+## DESCRIPTION
+Sends a control command to the LTService Windows service using sc.exe.
+The agent supports a set of predefined commands (mapped to numeric IDs 128-145)
+that trigger actions such as sending inventory, updating schedules, or killing processes.
+
+## EXAMPLES
+
+### EXAMPLE 1
+```
+Invoke-CWAACommand -Command 'Send Inventory'
+```
+
+Sends the 'Send Inventory' command to the agent service.
+
+### EXAMPLE 2
+```
+'Send Status', 'Send Apps' | Invoke-CWAACommand
+```
+
+Sends multiple commands to the agent service via pipeline.
+
+## PARAMETERS
+
+### -Command
+One or more commands to send to the agent service.
+Valid values include
+'Update Schedule', 'Send Inventory', 'Send Drives', 'Send Processes',
+'Send Spyware List', 'Send Apps', 'Send Events', 'Send Printers',
+'Send Status', 'Send Screen', 'Send Services', 'Analyze Network',
+'Write Last Contact Date', 'Kill VNC', 'Kill Trays', 'Send Patch Reboot',
+'Run App Care Update', and 'Start App Care Daytime Patching'.
+
+```yaml
+Type: String[]
+Parameter Sets: (All)
+Aliases:
+
+Required: True
+Position: 2
+Default value: None
+Accept pipeline input: True (ByValue)
+Accept wildcard characters: False
+```
+
+### -ProgressAction
+{{ Fill ProgressAction Description }}
+
+```yaml
+Type: ActionPreference
+Parameter Sets: (All)
+Aliases: proga
+
+Required: False
+Position: Named
+Default value: None
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### -Confirm
+Prompts you for confirmation before running the cmdlet.
+
+```yaml
+Type: SwitchParameter
+Parameter Sets: (All)
+Aliases: cf
+
+Required: False
+Position: Named
+Default value: None
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### -WhatIf
+Shows what would happen if the cmdlet runs.
+The cmdlet is not run.
+
+```yaml
+Type: SwitchParameter
+Parameter Sets: (All)
+Aliases: wi
+
+Required: False
+Position: Named
+Default value: None
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### CommonParameters
+This cmdlet supports the common parameters: -Debug, -ErrorAction, -ErrorVariable, -InformationAction, -InformationVariable, -OutVariable, -OutBuffer, -PipelineVariable, -Verbose, -WarningAction, and -WarningVariable. For more information, see [about_CommonParameters](http://go.microsoft.com/fwlink/?LinkID=113216).
+
+## INPUTS
+
+## OUTPUTS
+
+## NOTES
+Author: Chris Taylor
+Alias: Invoke-LTServiceCommand
+
+## RELATED LINKS
+
+[https://github.com/christaylorcodes/ConnectWiseAutomateAgent](https://github.com/christaylorcodes/ConnectWiseAutomateAgent)
+

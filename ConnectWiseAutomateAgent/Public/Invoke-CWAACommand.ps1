@@ -1,64 +1,105 @@
 function Invoke-CWAACommand {
-    [CmdletBinding(SupportsShouldProcess=$True)]
+    <#
+    .SYNOPSIS
+        Sends a service command to the ConnectWise Automate agent.
+    .DESCRIPTION
+        Sends a control command to the LTService Windows service using sc.exe.
+        The agent supports a set of predefined commands (mapped to numeric IDs 128-145)
+        that trigger actions such as sending inventory, updating schedules, or killing processes.
+    .PARAMETER Command
+        One or more commands to send to the agent service. Valid values include
+        'Update Schedule', 'Send Inventory', 'Send Drives', 'Send Processes',
+        'Send Spyware List', 'Send Apps', 'Send Events', 'Send Printers',
+        'Send Status', 'Send Screen', 'Send Services', 'Analyze Network',
+        'Write Last Contact Date', 'Kill VNC', 'Kill Trays', 'Send Patch Reboot',
+        'Run App Care Update', and 'Start App Care Daytime Patching'.
+    .EXAMPLE
+        Invoke-CWAACommand -Command 'Send Inventory'
+        Sends the 'Send Inventory' command to the agent service.
+    .EXAMPLE
+        'Send Status', 'Send Apps' | Invoke-CWAACommand
+        Sends multiple commands to the agent service via pipeline.
+    .NOTES
+        Author: Chris Taylor
+        Alias: Invoke-LTServiceCommand
+    .LINK
+        https://github.com/christaylorcodes/ConnectWiseAutomateAgent
+    #>
+    [CmdletBinding(SupportsShouldProcess = $True)]
     [Alias('Invoke-LTServiceCommand')]
     Param(
-        [Parameter(Mandatory=$True, Position=1, ValueFromPipeline=$True)]
-        [ValidateSet("Update Schedule",
-                        "Send Inventory",
-                        "Send Drives",
-                        "Send Processes",
-                        "Send Spyware List",
-                        "Send Apps",
-                        "Send Events",
-                        "Send Printers",
-                        "Send Status",
-                        "Send Screen",
-                        "Send Services",
-                        "Analyze Network",
-                        "Write Last Contact Date",
-                        "Kill VNC",
-                        "Kill Trays",
-                        "Send Patch Reboot",
-                        "Run App Care Update",
-                        "Start App Care Daytime Patching")][string[]]$Command
+        [Parameter(Mandatory = $True, Position = 1, ValueFromPipeline = $True)]
+        [ValidateSet(
+            "Update Schedule",
+            "Send Inventory",
+            "Send Drives",
+            "Send Processes",
+            "Send Spyware List",
+            "Send Apps",
+            "Send Events",
+            "Send Printers",
+            "Send Status",
+            "Send Screen",
+            "Send Services",
+            "Analyze Network",
+            "Write Last Contact Date",
+            "Kill VNC",
+            "Kill Trays",
+            "Send Patch Reboot",
+            "Run App Care Update",
+            "Start App Care Daytime Patching"
+        )]
+        [string[]]$Command
     )
 
     Begin {
-        $Service = Get-Service 'LTService'
+        Write-Debug "Starting $($MyInvocation.InvocationName)"
+        $Service = Get-Service 'LTService' -ErrorAction SilentlyContinue
     }
 
     Process {
-        if(-not ($Service)){Write-Warning "WARNING: Line $(LINENUM): Service 'LTService' was not found. Cannot send service command"; return}
-        if($Service.Status -ne 'Running'){Write-Warning "WARNING: Line $(LINENUM): Service 'LTService' is not running. Cannot send service command"; return}
-        Foreach ($Cmd in $Command){
-            $CommandID=$Null
-            Try{
-                switch($Cmd){
-                    'Update Schedule' {$CommandID = 128}
-                    'Send Inventory' {$CommandID = 129}
-                    'Send Drives' {$CommandID = 130}
-                    'Send Processes' {$CommandID = 131}
-                    'Send Spyware List'{$CommandID = 132}
-                    'Send Apps' {$CommandID = 133}
-                    'Send Events' {$CommandID = 134}
-                    'Send Printers' {$CommandID = 135}
-                    'Send Status' {$CommandID = 136}
-                    'Send Screen' {$CommandID = 137}
-                    'Send Services' {$CommandID = 138}
-                    'Analyze Network' {$CommandID = 139}
-                    'Write Last Contact Date' {$CommandID = 140}
-                    'Kill VNC' {$CommandID = 141}
-                    'Kill Trays' {$CommandID = 142}
-                    'Send Patch Reboot' {$CommandID = 143}
-                    'Run App Care Update' {$CommandID = 144}
-                    'Start App Care Daytime Patching' {$CommandID = 145}
-                    default {"Invalid entry"}
+        if (-not $Service) {
+            Write-Warning "Service 'LTService' was not found. Cannot send service command."
+            return
+        }
+        if ($Service.Status -ne 'Running') {
+            Write-Warning "Service 'LTService' is not running. Cannot send service command."
+            return
+        }
+
+        foreach ($Cmd in $Command) {
+            $CommandID = $Null
+            Try {
+                switch ($Cmd) {
+                    'Update Schedule'                  { $CommandID = 128 }
+                    'Send Inventory'                   { $CommandID = 129 }
+                    'Send Drives'                      { $CommandID = 130 }
+                    'Send Processes'                    { $CommandID = 131 }
+                    'Send Spyware List'                { $CommandID = 132 }
+                    'Send Apps'                        { $CommandID = 133 }
+                    'Send Events'                      { $CommandID = 134 }
+                    'Send Printers'                    { $CommandID = 135 }
+                    'Send Status'                      { $CommandID = 136 }
+                    'Send Screen'                      { $CommandID = 137 }
+                    'Send Services'                    { $CommandID = 138 }
+                    'Analyze Network'                  { $CommandID = 139 }
+                    'Write Last Contact Date'          { $CommandID = 140 }
+                    'Kill VNC'                         { $CommandID = 141 }
+                    'Kill Trays'                       { $CommandID = 142 }
+                    'Send Patch Reboot'                { $CommandID = 143 }
+                    'Run App Care Update'              { $CommandID = 144 }
+                    'Start App Care Daytime Patching'  { $CommandID = 145 }
+                    default { Write-Debug "Unrecognized command: '$Cmd'" }
                 }
-                if($PSCmdlet.ShouldProcess("LTService", "Send Service Command '$($Cmd)' ($($CommandID))")){
-                    if($Null -ne $CommandID){
-                        Write-Debug "Line $(LINENUM): Sending service command '$($Cmd)' ($($CommandID)) to 'LTService'"
+
+                if ($PSCmdlet.ShouldProcess("LTService", "Send Service Command '$($Cmd)' ($($CommandID))")) {
+                    if ($Null -ne $CommandID) {
+                        Write-Debug "Sending service command '$($Cmd)' ($($CommandID)) to 'LTService'"
                         Try {
-                            $Null=& "$env:windir\system32\sc.exe" control LTService $($CommandID) 2>''
+                            $Null = & "$env:windir\system32\sc.exe" control LTService $($CommandID) 2>''
+                            if ($LASTEXITCODE -ne 0) {
+                                Write-Warning "sc.exe control returned exit code $LASTEXITCODE for command '$Cmd' ($CommandID)."
+                            }
                             Write-Output "Sent Command '$($Cmd)' to 'LTService'"
                         }
                         Catch {
@@ -67,13 +108,13 @@ function Invoke-CWAACommand {
                     }
                 }
             }
-
-            Catch{
-                Write-Warning ("WARNING: Line $(LINENUM)",$_.Exception)
+            Catch {
+                Write-Warning "Failed to process command '$Cmd'. $($_.Exception.Message)"
             }
         }
     }
 
-    End{}
-
+    End {
+        Write-Debug "Exiting $($MyInvocation.InvocationName)"
+    }
 }

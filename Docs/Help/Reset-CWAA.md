@@ -1,0 +1,194 @@
+---
+external help file: ConnectWiseAutomateAgent-help.xml
+Module Name: ConnectWiseAutomateAgent
+online version: https://github.com/christaylorcodes/ConnectWiseAutomateAgent
+schema: 2.0.0
+---
+
+# Reset-CWAA
+
+## SYNOPSIS
+Removes local agent identity settings to force re-registration.
+
+## SYNTAX
+
+```
+Reset-CWAA [-ID] [-Location] [-MAC] [-Force] [-NoWait] [-ProgressAction <ActionPreference>] [-WhatIf]
+ [-Confirm] [<CommonParameters>]
+```
+
+## DESCRIPTION
+Removes some of the agent's local settings: ID, MAC, and/or LocationID.
+The function
+stops the services, removes the specified registry values, then restarts the services.
+Resetting all three values forces the agent to check in as a new agent.
+If MAC filtering
+is enabled on the server, the agent should check back in with the same ID.
+
+This function is useful for resolving duplicate agent entries.
+If no switches are
+specified, all three values (ID, Location, MAC) are reset.
+
+Probe agents are protected from reset unless the -Force switch is used.
+
+## EXAMPLES
+
+### EXAMPLE 1
+```
+Reset-CWAA
+```
+
+Resets the ID, MAC, and LocationID on the agent, then waits for re-registration.
+
+### EXAMPLE 2
+```
+Reset-CWAA -ID
+```
+
+Resets only the AgentID of the agent.
+
+### EXAMPLE 3
+```
+Reset-CWAA -Force -NoWait
+```
+
+Resets all values on a probe agent without waiting for re-registration.
+
+## PARAMETERS
+
+### -Force
+Forces the reset operation on an agent detected as a probe.
+
+```yaml
+Type: SwitchParameter
+Parameter Sets: (All)
+Aliases:
+
+Required: False
+Position: Named
+Default value: False
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### -ID
+Resets the AgentID of the computer.
+
+```yaml
+Type: SwitchParameter
+Parameter Sets: (All)
+Aliases:
+
+Required: False
+Position: Named
+Default value: False
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### -Location
+Resets the LocationID of the computer.
+
+```yaml
+Type: SwitchParameter
+Parameter Sets: (All)
+Aliases:
+
+Required: False
+Position: Named
+Default value: False
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### -MAC
+Resets the MAC address of the computer.
+
+```yaml
+Type: SwitchParameter
+Parameter Sets: (All)
+Aliases:
+
+Required: False
+Position: Named
+Default value: False
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### -NoWait
+Skips the post-reset health check that waits for the agent to re-register.
+
+```yaml
+Type: SwitchParameter
+Parameter Sets: (All)
+Aliases:
+
+Required: False
+Position: Named
+Default value: False
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### -ProgressAction
+{{ Fill ProgressAction Description }}
+
+```yaml
+Type: ActionPreference
+Parameter Sets: (All)
+Aliases: proga
+
+Required: False
+Position: Named
+Default value: None
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### -Confirm
+Prompts you for confirmation before running the cmdlet.
+
+```yaml
+Type: SwitchParameter
+Parameter Sets: (All)
+Aliases: cf
+
+Required: False
+Position: Named
+Default value: None
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### -WhatIf
+Shows what would happen if the cmdlet runs.
+The cmdlet is not run.
+
+```yaml
+Type: SwitchParameter
+Parameter Sets: (All)
+Aliases: wi
+
+Required: False
+Position: Named
+Default value: None
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### CommonParameters
+This cmdlet supports the common parameters: -Debug, -ErrorAction, -ErrorVariable, -InformationAction, -InformationVariable, -OutVariable, -OutBuffer, -PipelineVariable, -Verbose, -WarningAction, and -WarningVariable. For more information, see [about_CommonParameters](http://go.microsoft.com/fwlink/?LinkID=113216).
+
+## INPUTS
+
+## OUTPUTS
+
+## NOTES
+Author: Chris Taylor
+Alias: Reset-LTService
+
+## RELATED LINKS
+
+[https://github.com/christaylorcodes/ConnectWiseAutomateAgent](https://github.com/christaylorcodes/ConnectWiseAutomateAgent)
+

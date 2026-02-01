@@ -1,0 +1,132 @@
+---
+external help file: ConnectWiseAutomateAgent-help.xml
+Module Name: ConnectWiseAutomateAgent
+online version: https://github.com/christaylorcodes/ConnectWiseAutomateAgent
+schema: 2.0.0
+---
+
+# Set-CWAALogLevel
+
+## SYNOPSIS
+Sets the logging level for the ConnectWise Automate Agent.
+
+## SYNTAX
+
+```
+Set-CWAALogLevel [[-Level] <Object>] [-ProgressAction <ActionPreference>] [-WhatIf] [-Confirm]
+ [<CommonParameters>]
+```
+
+## DESCRIPTION
+Configures the agent's logging verbosity by updating the registry and restarting the
+agent services.
+Supports Normal (standard) and Verbose (detailed diagnostic) levels.
+
+The function stops the agent service, writes the new logging level to the registry at
+HKLM:\SOFTWARE\LabTech\Service\Settings under the "Debuging" value, then restarts the
+agent service.
+After applying the change, it outputs the current logging level.
+
+## EXAMPLES
+
+### EXAMPLE 1
+```
+Set-CWAALogLevel -Level Verbose
+```
+
+Enables verbose diagnostic logging on the agent.
+
+### EXAMPLE 2
+```
+Set-CWAALogLevel -Level Normal
+```
+
+Returns the agent to standard logging.
+
+### EXAMPLE 3
+```
+Set-CWAALogLevel -Level Verbose -WhatIf
+```
+
+Shows what changes would be made without applying them.
+
+## PARAMETERS
+
+### -Level
+The desired logging level.
+Valid values are 'Normal' (default) and 'Verbose'.
+Normal sets registry value 1; Verbose sets registry value 1000.
+
+```yaml
+Type: Object
+Parameter Sets: (All)
+Aliases:
+
+Required: False
+Position: 1
+Default value: Normal
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### -ProgressAction
+{{ Fill ProgressAction Description }}
+
+```yaml
+Type: ActionPreference
+Parameter Sets: (All)
+Aliases: proga
+
+Required: False
+Position: Named
+Default value: None
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### -Confirm
+Prompts you for confirmation before running the cmdlet.
+
+```yaml
+Type: SwitchParameter
+Parameter Sets: (All)
+Aliases: cf
+
+Required: False
+Position: Named
+Default value: None
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### -WhatIf
+Shows what would happen if the cmdlet runs.
+The cmdlet is not run.
+
+```yaml
+Type: SwitchParameter
+Parameter Sets: (All)
+Aliases: wi
+
+Required: False
+Position: Named
+Default value: None
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### CommonParameters
+This cmdlet supports the common parameters: -Debug, -ErrorAction, -ErrorVariable, -InformationAction, -InformationVariable, -OutVariable, -OutBuffer, -PipelineVariable, -Verbose, -WarningAction, and -WarningVariable. For more information, see [about_CommonParameters](http://go.microsoft.com/fwlink/?LinkID=113216).
+
+## INPUTS
+
+## OUTPUTS
+
+## NOTES
+Author: Chris Taylor
+Alias: Set-LTLogging
+
+## RELATED LINKS
+
+[https://github.com/christaylorcodes/ConnectWiseAutomateAgent](https://github.com/christaylorcodes/ConnectWiseAutomateAgent)
+

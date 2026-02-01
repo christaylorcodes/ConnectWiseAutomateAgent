@@ -1,0 +1,143 @@
+function Test-CWAAServerConnectivity {
+    <#
+    .SYNOPSIS
+        Tests connectivity to a ConnectWise Automate server's agent endpoint.
+    .DESCRIPTION
+        Verifies that an Automate server is online and responding by querying the
+        agent.aspx endpoint. Validates that the response matches the expected version
+        format (pipe-delimited string ending with a version number).
+
+        If no server is provided, the function attempts to discover it from the
+        installed agent configuration or backup settings.
+
+        Returns a result object per server with availability status and version info,
+        or a simple boolean in Quiet mode.
+    .PARAMETER Server
+        One or more ConnectWise Automate server URLs (e.g., https://automate.domain.com).
+        If not provided, the function uses Get-CWAAInfo or Get-CWAAInfoBackup to discover it.
+    .PARAMETER Quiet
+        Returns $True if all servers are reachable, $False otherwise.
+    .EXAMPLE
+        Test-CWAAServerConnectivity -Server 'https://automate.domain.com'
+        Tests connectivity and returns a result object with Server, Available, Version, and ErrorMessage.
+    .EXAMPLE
+        Test-CWAAServerConnectivity -Quiet
+        Returns $True if the discovered server is reachable, $False otherwise.
+    .EXAMPLE
+        Get-CWAAInfo | Test-CWAAServerConnectivity
+        Tests connectivity to the server configured on the installed agent via pipeline.
+    .NOTES
+        Author: Chris Taylor
+        Alias: Test-LTServerConnectivity
+    .LINK
+        https://github.com/christaylorcodes/ConnectWiseAutomateAgent
+    #>
+    [CmdletBinding()]
+    [Alias('Test-LTServerConnectivity')]
+    Param(
+        [Parameter(ValueFromPipelineByPropertyName = $True, ValueFromPipeline = $True)]
+        [string[]]$Server,
+
+        [switch]$Quiet
+    )
+
+    Begin {
+        Write-Debug "Starting $($MyInvocation.InvocationName)"
+
+        # Enable TLS 1.2 for the web request without full Initialize-CWAANetworking
+        [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+
+        # Expected response pattern from agent.aspx: pipe-delimited string ending with version
+        $agentResponsePattern = '\|\|\|\|\|\|\d+\.\d+'
+        $versionExtractPattern = '(\d+\.\d+)\s*$'
+
+        $allAvailable = $True
+    }
+
+    Process {
+        if (-not $Server) {
+            Write-Verbose 'No Server provided - checking installed agent configuration.'
+            $Server = Get-CWAAInfo -EA 0 -Verbose:$False -WhatIf:$False -Confirm:$False -Debug:$False |
+                Select-Object -Expand 'Server' -EA 0
+            if (-not $Server) {
+                Write-Verbose 'No Server found in agent config. Checking backup settings.'
+                $Server = Get-CWAAInfoBackup -EA 0 -Verbose:$False |
+                    Select-Object -Expand 'Server' -EA 0
+            }
+            if (-not $Server) {
+                Write-Error "No server could be determined. Provide a -Server parameter or ensure the agent is installed."
+                return
+            }
+        }
+
+        foreach ($serverEntry in $Server) {
+            # Normalize: ensure the URL has a scheme
+            $serverUrl = $serverEntry.Trim()
+            if ($serverUrl -notmatch '^https?://') {
+                $serverUrl = "https://$serverUrl"
+            }
+
+            # Validate server address format
+            $cleanAddress = $serverUrl -replace 'https?://', ''
+            if ($cleanAddress -notmatch $Script:CWAAServerValidationRegex) {
+                Write-Warning "Server address '$serverEntry' is not valid or not formatted correctly. Example: https://automate.domain.com"
+                $allAvailable = $False
+                if (-not $Quiet) {
+                    [PSCustomObject]@{
+                        Server       = $serverEntry
+                        Available    = $False
+                        Version      = $Null
+                        ErrorMessage = 'Invalid server address format'
+                    }
+                }
+                continue
+            }
+
+            $endpointUrl = "$serverUrl/LabTech/agent.aspx"
+            $available = $False
+            $version = $Null
+            $errorMessage = $Null
+
+            Try {
+                Write-Verbose "Testing connectivity to $endpointUrl"
+                $response = Invoke-RestMethod -Uri $endpointUrl -TimeoutSec 10 -ErrorAction Stop
+
+                if ($response -match $agentResponsePattern) {
+                    $available = $True
+                    if ($response -match $versionExtractPattern) {
+                        $version = $Matches[1]
+                    }
+                    Write-Verbose "Server '$serverEntry' is available (version $version)."
+                }
+                else {
+                    $errorMessage = 'Server responded but with unexpected format'
+                    Write-Verbose "Server '$serverEntry' responded but response did not match expected agent pattern."
+                }
+            }
+            Catch {
+                $errorMessage = $_.Exception.Message
+                Write-Verbose "Server '$serverEntry' is not available: $errorMessage"
+            }
+
+            if (-not $available) {
+                $allAvailable = $False
+            }
+
+            if (-not $Quiet) {
+                [PSCustomObject]@{
+                    Server       = $serverEntry
+                    Available    = $available
+                    Version      = $version
+                    ErrorMessage = $errorMessage
+                }
+            }
+        }
+    }
+
+    End {
+        Write-Debug "Exiting $($MyInvocation.InvocationName)"
+        if ($Quiet) {
+            return $allAvailable
+        }
+    }
+}

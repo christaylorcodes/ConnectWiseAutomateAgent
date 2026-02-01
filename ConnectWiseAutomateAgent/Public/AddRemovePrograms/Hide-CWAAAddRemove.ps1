@@ -1,47 +1,63 @@
 function Hide-CWAAAddRemove {
+    <#
+    .SYNOPSIS
+        Hides the Automate agent from the Add/Remove Programs list.
+    .DESCRIPTION
+        Sets the SystemComponent registry value to 1 on Automate agent uninstall keys,
+        which hides the agent from the Windows Add/Remove Programs (Programs and Features) list.
+        Also cleans up any leftover HiddenProductName registry values from older hiding methods.
+    .EXAMPLE
+        Hide-CWAAAddRemove
+        Hides the Automate agent entry from Add/Remove Programs.
+    .EXAMPLE
+        Hide-CWAAAddRemove -WhatIf
+        Shows what registry changes would be made without applying them.
+    .NOTES
+        Author: Chris Taylor
+        Alias: Hide-LTAddRemove
+    .LINK
+        https://github.com/christaylorcodes/ConnectWiseAutomateAgent
+    #>
     [CmdletBinding(SupportsShouldProcess = $True)]
     [Alias('Hide-LTAddRemove')]
     Param()
 
     Begin {
-        Write-Debug "Starting $($myInvocation.InvocationName) at line $(LINENUM)"
-        $RegRoots = ('HKLM:\SOFTWARE\Classes\Installer\Products\C4D064F3712D4B64086B5BDE05DBC75F',
-            'HKLM:\SOFTWARE\Classes\Installer\Products\D1003A85576B76D45A1AF09A0FC87FAC')
-        $PublisherRegRoots = ('HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\{58A3001D-B675-4D67-A5A1-0FA9F08CF7CA}',
-            'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{58A3001D-B675-4D67-A5A1-0FA9F08CF7CA}',
-            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\{3F460D4C-D217-46B4-80B6-B5ED50BD7CF5}',
-            'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{3F460D4C-D217-46B4-80B6-B5ED50BD7CF5}')
+        Write-Debug "Starting $($MyInvocation.InvocationName)"
+        $RegRoots = $Script:CWAAInstallerProductKeys
+        $PublisherRegRoots = $Script:CWAAUninstallKeys
         $RegEntriesFound = 0
         $RegEntriesChanged = 0
     }
 
     Process {
-
         Try {
-            Foreach ($RegRoot in $RegRoots) {
+            foreach ($RegRoot in $RegRoots) {
                 if (Test-Path $RegRoot) {
                     if (Get-ItemProperty $RegRoot -Name HiddenProductName -ErrorAction SilentlyContinue) {
                         if (!(Get-ItemProperty $RegRoot -Name ProductName -ErrorAction SilentlyContinue)) {
-                            Write-Verbose 'LabTech found with HiddenProductName value.'
+                            Write-Verbose 'Automate agent found with HiddenProductName value.'
                             Try {
                                 Rename-ItemProperty $RegRoot -Name HiddenProductName -NewName ProductName
                             }
                             Catch {
-                                Write-Error "ERROR: Line $(LINENUM): There was an error renaming the registry value. $($Error[0])" -ErrorAction Stop
+                                Write-Error "There was an error renaming the registry value. $($_)" -ErrorAction Stop
                             }
                         }
                         else {
-                            Write-Verbose 'LabTech found with unused HiddenProductName value.'
+                            Write-Verbose 'Automate agent found with unused HiddenProductName value.'
                             Try {
                                 Remove-ItemProperty $RegRoot -Name HiddenProductName -EA 0 -Confirm:$False -WhatIf:$False -Force
                             }
-                            Catch {}
+                            Catch {
+                                Write-Debug "Failed to remove unused HiddenProductName from '$RegRoot': $($_)"
+                            }
                         }
                     }
                 }
             }
 
-            Foreach ($RegRoot in $PublisherRegRoots) {
+            foreach ($RegRoot in $PublisherRegRoots) {
                 if (Test-Path $RegRoot) {
                     $RegKey = Get-Item $RegRoot -ErrorAction SilentlyContinue
                     if ($RegKey) {
@@ -58,26 +74,24 @@ function Hide-CWAAAddRemove {
                     }
                 }
             }
-        }
 
+            # Output success/warning at end of try block (replaces if($?) pattern in End block)
+            if ($RegEntriesFound -gt 0 -and $RegEntriesChanged -eq $RegEntriesFound) {
+                Write-Output 'Automate agent is hidden from Add/Remove Programs.'
+                Write-CWAAEventLog -EventId 3040 -EntryType Information -Message 'Agent hidden from Add/Remove Programs.'
+            }
+            elseif ($WhatIfPreference -ne $True) {
+                Write-Warning "Automate agent may not be hidden from Add/Remove Programs."
+                Write-CWAAEventLog -EventId 3041 -EntryType Warning -Message 'Agent may not be hidden from Add/Remove Programs.'
+            }
+        }
         Catch {
-            Write-Error "ERROR: Line $(LINENUM): There was an error setting the registry values. $($Error[0])" -ErrorAction Stop
+            Write-CWAAEventLog -EventId 3042 -EntryType Error -Message "Failed to hide agent from Add/Remove Programs. Error: $($_.Exception.Message)"
+            Write-Error "There was an error setting the registry values. $($_)" -ErrorAction Stop
         }
-
     }
 
     End {
-        if ($WhatIfPreference -ne $True) {
-            if ($?) {
-                if ($RegEntriesFound -gt 0 -and $RegEntriesChanged -eq $RegEntriesFound) {
-                    Write-Output 'LabTech is hidden from Add/Remove Programs.'
-                }
-                else {
-                    Write-Warning "WARNING: Line $(LINENUM): LabTech may not be hidden from Add/Remove Programs."
-                }
-            }
-            else { $Error[0] }
-        }
-        Write-Debug "Exiting $($myInvocation.InvocationName) at line $(LINENUM)"
+        Write-Debug "Exiting $($MyInvocation.InvocationName)"
     }
 }

@@ -1,67 +1,109 @@
 function New-CWAABackup {
-    [CmdletBinding()]
+    <#
+    .SYNOPSIS
+        Creates a complete backup of the ConnectWise Automate agent installation.
+    .DESCRIPTION
+        Creates a comprehensive backup of the currently installed ConnectWise Automate agent
+        by copying all files from the agent installation directory and exporting all related
+        registry keys. This backup can be used to restore the agent configuration if needed,
+        or to preserve settings before performing maintenance operations.
+
+        The backup process performs the following operations:
+        1. Locates the agent installation directory (typically C:\Windows\LTSVC)
+        2. Creates a Backup subdirectory within the agent installation path
+        3. Copies all files from the installation directory to the Backup folder
+        4. Exports registry keys from HKLM\SOFTWARE\LabTech to a .reg file
+        5. Modifies the exported registry data to use the LabTechBackup key name
+        6. Imports the modified registry data to HKLM\SOFTWARE\LabTechBackup
+    .EXAMPLE
+        New-CWAABackup
+        Creates a complete backup of the agent installation files and registry settings.
+    .EXAMPLE
+        New-CWAABackup -WhatIf
+        Shows what the backup operation would do without actually creating the backup.
+    .NOTES
+        Author: Chris Taylor
+        Alias: New-LTServiceBackup
+    .LINK
+        https://github.com/christaylorcodes/ConnectWiseAutomateAgent
+    #>
+    [CmdletBinding(SupportsShouldProcess = $True)]
     [Alias('New-LTServiceBackup')]
     Param ()
 
     Begin {
-        Clear-Variable LTPath, BackupPath, Keys, Path, Result, Reg, RegPath -EA 0 -WhatIf:$False -Confirm:$False #Clearing Variables for use
-        Write-Debug "Starting $($myInvocation.InvocationName) at line $(LINENUM)"
+        Write-Debug "Starting $($MyInvocation.InvocationName)"
 
-        $LTPath = "$(Get-CWAAInfo -EA 0 -Verbose:$False -WhatIf:$False -Confirm:$False -Debug:$False|Select-Object -Expand BasePath -EA 0)"
-        if (-not ($LTPath)) {
-            Write-Error "ERROR: Line $(LINENUM): Unable to find LTSvc folder path." -ErrorAction Stop
+        $agentPath = "$(Get-CWAAInfo -EA 0 -Verbose:$False -WhatIf:$False -Confirm:$False -Debug:$False | Select-Object -Expand BasePath -EA 0)"
+        if (-not $agentPath) {
+            Write-Error "Unable to find LTSvc folder path." -ErrorAction Stop
         }
-        $BackupPath = "$($LTPath)Backup"
+        $BackupPath = Join-Path $agentPath 'Backup'
         $Keys = 'HKLM\SOFTWARE\LabTech'
         $RegPath = "$BackupPath\LTBackup.reg"
 
         Write-Verbose 'Checking for registry keys.'
-        if ((Test-Path ($Keys -replace '^(H[^\\]*)', '$1:')) -eq $False) {
-            Write-Error "ERROR: Line $(LINENUM): Unable to find registry information on LTSvc. Make sure the agent is installed." -ErrorAction Stop
+        if (-not (Test-Path ($Keys -replace '^(H[^\\]*)', '$1:'))) {
+            Write-Error "Unable to find registry information on LTSvc. Make sure the agent is installed." -ErrorAction Stop
         }
-        if ($(Test-Path -Path $LTPath -PathType Container) -eq $False) {
-            Write-Error "ERROR: Line $(LINENUM): Unable to find LTSvc folder path $LTPath" -ErrorAction Stop
-        }
-        New-Item $BackupPath -type directory -ErrorAction SilentlyContinue | Out-Null
-        if ($(Test-Path -Path $BackupPath -PathType Container) -eq $False) {
-            Write-Error "ERROR: Line $(LINENUM): Unable to create backup folder path $BackupPath" -ErrorAction Stop
+        if (-not (Test-Path -Path $agentPath -PathType Container)) {
+            Write-Error "Unable to find LTSvc folder path $agentPath" -ErrorAction Stop
         }
     }
 
     Process {
-        Try {
-            Copy-Item $LTPath $BackupPath -Recurse -Force
+        if ($PSCmdlet.ShouldProcess($BackupPath, 'Create backup directory')) {
+            New-Item $BackupPath -Type Directory -ErrorAction SilentlyContinue | Out-Null
+            if (-not (Test-Path -Path $BackupPath -PathType Container)) {
+                Write-Error "Unable to create backup folder path $BackupPath" -ErrorAction Stop
+            }
         }
 
-        Catch {
-            Write-Error "ERROR: Line $(LINENUM): There was a problem backing up the LTSvc Folder. $($Error[0])"
+        if ($PSCmdlet.ShouldProcess($agentPath, 'Copy agent files to backup')) {
+            Try {
+                # Copy each top-level item individually, excluding the Backup directory
+                # itself to prevent recursive copy loop (Backup is inside the agent path)
+                Get-ChildItem $agentPath -Exclude 'Backup' | Copy-Item -Destination $BackupPath -Recurse -Force
+            }
+            Catch {
+                Write-Error "There was a problem backing up the LTSvc folder. $_"
+                Write-CWAAEventLog -EventId 3012 -EntryType Error -Message "Agent backup failed (file copy). Error: $($_.Exception.Message)"
+            }
         }
 
-        Try {
-            Write-Debug "Line $(LINENUM): Exporting Registry Data"
-            $Null = & "$env:windir\system32\reg.exe" export "$Keys" "$RegPath" /y 2>''
-            Write-Debug "Line $(LINENUM): Loading and modifying registry key name"
-            $Reg = Get-Content $RegPath
-            $Reg = $Reg -replace [Regex]::Escape('[HKEY_LOCAL_MACHINE\SOFTWARE\LabTech'), '[HKEY_LOCAL_MACHINE\SOFTWARE\LabTechBackup'
-            Write-Debug "Line $(LINENUM): Writing output information"
-            $Reg | Out-File $RegPath
-            Write-Debug "Line $(LINENUM): Importing Registry data to Backup Path"
-            $Null = & "$env:windir\system32\reg.exe" import "$RegPath" 2>''
-            $True | Out-Null #Protection to prevent exit status error
+        if ($PSCmdlet.ShouldProcess($Keys, 'Export and backup registry keys')) {
+            Try {
+                Write-Debug 'Exporting registry data'
+                $Null = & "$env:windir\system32\reg.exe" export "$Keys" "$RegPath" /y 2>''
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Warning "reg.exe export returned exit code $LASTEXITCODE. Registry backup may be incomplete."
+                }
+
+                Write-Debug 'Loading and modifying registry key name'
+                $Reg = Get-Content $RegPath
+                $Reg = $Reg -replace [Regex]::Escape('[HKEY_LOCAL_MACHINE\SOFTWARE\LabTech'), '[HKEY_LOCAL_MACHINE\SOFTWARE\LabTechBackup'
+
+                Write-Debug 'Writing modified registry data'
+                $Reg | Out-File $RegPath
+
+                Write-Debug 'Importing registry data to backup path'
+                $Null = & "$env:windir\system32\reg.exe" import "$RegPath" 2>''
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Warning "reg.exe import returned exit code $LASTEXITCODE. Registry backup restoration may have failed."
+                }
+                $True | Out-Null
+            }
+            Catch {
+                Write-Error "There was a problem backing up the LTSvc registry keys. $_"
+                Write-CWAAEventLog -EventId 3012 -EntryType Error -Message "Agent backup failed (registry export). Error: $($_.Exception.Message)"
+            }
         }
 
-        Catch {
-            Write-Error "ERROR: Line $(LINENUM): There was a problem backing up the LTSvc Registry keys. $($Error[0])"
-        }
+        Write-Output 'The Automate agent backup has been created.'
+        Write-CWAAEventLog -EventId 3010 -EntryType Information -Message "Agent backup created at $BackupPath."
     }
 
     End {
-        if ($?) {
-            Write-Output 'The LabTech Backup has been created.'
-        }
-        else {
-            Write-Error "ERROR: Line $(LINENUM): There was a problem completing the LTSvc Backup. $($Error[0])"
-        }
-        Write-Debug "Exiting $($myInvocation.InvocationName) at line $(LINENUM)"
+        Write-Debug "Exiting $($MyInvocation.InvocationName)"
     }
 }

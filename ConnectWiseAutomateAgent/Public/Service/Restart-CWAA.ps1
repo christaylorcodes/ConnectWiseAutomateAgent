@@ -1,45 +1,65 @@
 function Restart-CWAA {
+    <#
+    .SYNOPSIS
+        Restarts the ConnectWise Automate agent services.
+    .DESCRIPTION
+        Verifies that the Automate agent services (LTService, LTSvcMon) are present, then
+        calls Stop-CWAA followed by Start-CWAA to perform a full service restart.
+    .EXAMPLE
+        Restart-CWAA
+        Restarts the ConnectWise Automate agent services.
+    .EXAMPLE
+        Restart-CWAA -WhatIf
+        Shows what would happen without actually restarting the services.
+    .NOTES
+        Author: Chris Taylor
+        Alias: Restart-LTService
+    .LINK
+        https://github.com/christaylorcodes/ConnectWiseAutomateAgent
+    #>
     [CmdletBinding(SupportsShouldProcess = $True)]
     [Alias('Restart-LTService')]
     Param()
 
     Begin {
-        Write-Debug "Starting $($myInvocation.InvocationName) at line $(LINENUM)"
+        Write-Debug "Starting $($MyInvocation.InvocationName)"
     }
 
     Process {
         if (-not (Get-Service 'LTService', 'LTSvcMon' -ErrorAction SilentlyContinue)) {
             if ($WhatIfPreference -ne $True) {
-                Write-Error "ERROR: Line $(LINENUM): Services NOT Found $($Error[0])"
-                return
+                Write-Error "Services NOT Found."
             }
             else {
-                Write-Error "What-If: Line $(LINENUM): Stopping: Services NOT Found"
+                Write-Error "What If: Services NOT Found."
+            }
+            return
+        }
+        if ($PSCmdlet.ShouldProcess('LTService, LTSvcMon', 'Restart Service')) {
+            Try {
+                Stop-CWAA
+            }
+            Catch {
+                Write-Error "There was an error stopping the services. $_"
+                Write-CWAAEventLog -EventId 2022 -EntryType Error -Message "Agent restart failed during stop phase. Error: $($_.Exception.Message)"
                 return
             }
-        }
-        Try {
-            Stop-CWAA
-        }
-        Catch {
-            Write-Error "ERROR: Line $(LINENUM): There was an error stopping the services. $($Error[0])"
-            return
-        }
 
-        Try {
-            Start-CWAA
-        }
-        Catch {
-            Write-Error "ERROR: Line $(LINENUM): There was an error starting the services. $($Error[0])"
-            return
+            Try {
+                Start-CWAA
+            }
+            Catch {
+                Write-Error "There was an error starting the services. $_"
+                Write-CWAAEventLog -EventId 2022 -EntryType Error -Message "Agent restart failed during start phase. Error: $($_.Exception.Message)"
+                return
+            }
+
+            Write-Output 'Services restarted successfully.'
+            Write-CWAAEventLog -EventId 2020 -EntryType Information -Message 'Agent services restarted successfully.'
         }
     }
 
     End {
-        if ($WhatIfPreference -ne $True) {
-            if ($?) { Write-Output 'Services Restarted successfully.' }
-            else { $Error[0] }
-        }
-        Write-Debug "Exiting $($myInvocation.InvocationName) at line $(LINENUM)"
+        Write-Debug "Exiting $($MyInvocation.InvocationName)"
     }
 }

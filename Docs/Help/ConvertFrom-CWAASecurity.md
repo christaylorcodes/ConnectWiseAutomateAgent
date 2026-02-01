@@ -1,0 +1,121 @@
+---
+external help file: ConnectWiseAutomateAgent-help.xml
+Module Name: ConnectWiseAutomateAgent
+online version: https://github.com/christaylorcodes/ConnectWiseAutomateAgent
+schema: 2.0.0
+---
+
+# ConvertFrom-CWAASecurity
+
+## SYNOPSIS
+Decodes a Base64-encoded string using TripleDES decryption.
+
+## SYNTAX
+
+```
+ConvertFrom-CWAASecurity [-InputString] <String[]> [-Key <String[]>] [-Force]
+ [-ProgressAction <ActionPreference>] [<CommonParameters>]
+```
+
+## DESCRIPTION
+This function decodes the provided string using the specified or default key.
+It uses TripleDES with an MD5-derived key and a fixed initialization vector.
+If decoding fails with the provided key and Force is enabled, alternate key
+values are attempted automatically.
+
+## EXAMPLES
+
+### EXAMPLE 1
+```
+ConvertFrom-CWAASecurity -InputString 'EncodedValue'
+```
+
+Decodes the string using the default key.
+
+### EXAMPLE 2
+```
+ConvertFrom-CWAASecurity -InputString 'EncodedValue' -Key 'MyCustomKey'
+```
+
+Decodes the string using a custom key.
+
+## PARAMETERS
+
+### -Force
+Forces the function to try alternate key values if decoding fails using
+the provided key.
+Enabled by default.
+
+```yaml
+Type: SwitchParameter
+Parameter Sets: (All)
+Aliases:
+
+Required: False
+Position: Named
+Default value: True
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### -InputString
+The Base64-encoded string to be decoded.
+
+```yaml
+Type: String[]
+Parameter Sets: (All)
+Aliases:
+
+Required: True
+Position: 2
+Default value: None
+Accept pipeline input: True (ByPropertyName, ByValue)
+Accept wildcard characters: False
+```
+
+### -Key
+The key used for decoding.
+If not provided, default values will be tried.
+
+```yaml
+Type: String[]
+Parameter Sets: (All)
+Aliases:
+
+Required: False
+Position: Named
+Default value: None
+Accept pipeline input: True (ByPropertyName)
+Accept wildcard characters: False
+```
+
+### -ProgressAction
+{{ Fill ProgressAction Description }}
+
+```yaml
+Type: ActionPreference
+Parameter Sets: (All)
+Aliases: proga
+
+Required: False
+Position: Named
+Default value: None
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### CommonParameters
+This cmdlet supports the common parameters: -Debug, -ErrorAction, -ErrorVariable, -InformationAction, -InformationVariable, -OutVariable, -OutBuffer, -PipelineVariable, -Verbose, -WarningAction, and -WarningVariable. For more information, see [about_CommonParameters](http://go.microsoft.com/fwlink/?LinkID=113216).
+
+## INPUTS
+
+## OUTPUTS
+
+## NOTES
+Author: Chris Taylor
+Alias: ConvertFrom-LTSecurity
+
+## RELATED LINKS
+
+[https://github.com/christaylorcodes/ConnectWiseAutomateAgent](https://github.com/christaylorcodes/ConnectWiseAutomateAgent)
+
