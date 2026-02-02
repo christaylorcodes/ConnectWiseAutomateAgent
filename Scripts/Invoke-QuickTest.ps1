@@ -66,7 +66,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 $TestsPath = Join-Path $ProjectRoot 'Tests'
-$SourcePath = Join-Path $ProjectRoot 'ConnectWiseAutomateAgent'
+$SourcePath = Join-Path $ProjectRoot 'source'
 
 # --- Short name mapping for test files ---
 

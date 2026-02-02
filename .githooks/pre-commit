@@ -16,7 +16,7 @@ foreach ($moduleName in @('PSScriptAnalyzer', 'Pester')) {
 }
 
 Write-Host '--- Pre-commit: Running PSScriptAnalyzer ---' -ForegroundColor Cyan
-$analyzerResults = Invoke-ScriptAnalyzer -Path ConnectWiseAutomateAgent -Recurse -Severity Error,Warning -Settings .PSScriptAnalyzerSettings.psd1
+$analyzerResults = Invoke-ScriptAnalyzer -Path source -Recurse -Severity Error,Warning -Settings .PSScriptAnalyzerSettings.psd1
 if ($analyzerResults) {
     Write-Host 'PSScriptAnalyzer found issues:' -ForegroundColor Red
     $analyzerResults | Format-Table RuleName, Severity, ScriptName, Line, Message -AutoSize

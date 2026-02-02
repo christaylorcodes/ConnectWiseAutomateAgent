@@ -10,8 +10,13 @@ Scratch\.ps1
 # Claude Code
 .claude/
 
+# Build output
+output/
+/ConnectWiseAutomateAgent.ps1
+
 # Build artifacts
 *.log
+*.nupkg
 
 # OS-generated files
 Thumbs.db

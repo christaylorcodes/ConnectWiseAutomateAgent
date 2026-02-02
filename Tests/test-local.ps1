@@ -47,11 +47,11 @@ $currentStep = 0
 # 1. BUILD
 if (-not $SkipBuild) {
     $currentStep++
-    Write-Host "[$currentStep/$stepCount] Building single-file distribution..." -ForegroundColor Yellow
-    $buildScript = Join-Path $ProjectRoot 'Build\SingleFileBuild.ps1'
+    Write-Host "[$currentStep/$stepCount] Building module (Sampler/ModuleBuilder)..." -ForegroundColor Yellow
+    $buildScript = Join-Path $ProjectRoot 'build.ps1'
 
     if (Test-Path $buildScript) {
-        & powershell -NoProfile -NonInteractive -File $buildScript
+        & $buildScript -Tasks build
         if ($LASTEXITCODE -ne 0) {
             Write-Host "BUILD FAILED" -ForegroundColor Red
             exit 1
@@ -69,7 +69,7 @@ if (-not $SkipAnalyze) {
     Write-Host "[$currentStep/$stepCount] Running PSScriptAnalyzer..." -ForegroundColor Yellow
     Import-Module PSScriptAnalyzer -ErrorAction Stop
 
-    $sourcePath = Join-Path $ProjectRoot 'ConnectWiseAutomateAgent'
+    $sourcePath = Join-Path $ProjectRoot 'source'
     $settingsFile = Join-Path $ProjectRoot '.PSScriptAnalyzerSettings.psd1'
 
     $analyzeParams = @{

@@ -25,38 +25,8 @@
     PowerShellVersion = '3.0'
 
     # Functions to export from this module
-    FunctionsToExport = @(
-        'Hide-CWAAAddRemove',
-        'Rename-CWAAAddRemove',
-        'Show-CWAAAddRemove',
-        'Install-CWAA',
-        'Redo-CWAA',
-        'Uninstall-CWAA',
-        'Update-CWAA',
-        'Get-CWAAError',
-        'Get-CWAALogLevel',
-        'Get-CWAAProbeError',
-        'Set-CWAALogLevel',
-        'Get-CWAAProxy',
-        'Set-CWAAProxy',
-        'Restart-CWAA',
-        'Start-CWAA',
-        'Stop-CWAA',
-        'Get-CWAAInfo',
-        'Get-CWAAInfoBackup',
-        'Get-CWAASettings',
-        'New-CWAABackup',
-        'Reset-CWAA',
-        'ConvertFrom-CWAASecurity',
-        'ConvertTo-CWAASecurity',
-        'Invoke-CWAACommand',
-        'Test-CWAAPort',
-        'Test-CWAAServerConnectivity',
-        'Test-CWAAHealth',
-        'Repair-CWAA',
-        'Register-CWAAHealthCheckTask',
-        'Unregister-CWAAHealthCheckTask'
-    )
+    # Wildcard for development; ModuleBuilder writes explicit list at build time
+    FunctionsToExport = @('*')
 
     # Cmdlets to export from this module
     CmdletsToExport   = @()
@@ -65,40 +35,8 @@
     VariablesToExport  = @()
 
     # Aliases to export from this module
-    AliasesToExport   = @(
-        'Hide-LTAddRemove',
-        'Rename-LTAddRemove',
-        'Show-LTAddRemove',
-        'Install-LTService',
-        'Redo-LTService',
-        'Reinstall-CWAA',
-        'Reinstall-LTService',
-        'Uninstall-LTService',
-        'Update-LTService',
-        'Get-LTErrors',
-        'Get-LTLogging',
-        'Get-LTProbeErrors',
-        'Set-LTLogging',
-        'Get-LTProxy',
-        'Set-LTProxy',
-        'Restart-LTService',
-        'Start-LTService',
-        'Stop-LTService',
-        'Get-LTServiceInfo',
-        'Get-LTServiceInfoBackup',
-        'Get-LTServiceSettings',
-        'New-LTServiceBackup',
-        'Reset-LTService',
-        'ConvertFrom-LTSecurity',
-        'ConvertTo-LTSecurity',
-        'Invoke-LTServiceCommand',
-        'Test-LTPorts',
-        'Test-LTServerConnectivity',
-        'Test-LTHealth',
-        'Repair-LTService',
-        'Register-LTHealthCheckTask',
-        'Unregister-LTHealthCheckTask'
-    )
+    # Wildcard for development; ModuleBuilder discovers [Alias()] attributes at build time
+    AliasesToExport   = @('*')
 
     # Private data to pass to the module specified in RootModule/ModuleToProcess
     PrivateData       = @{
@@ -126,6 +64,6 @@
     }
 
     # HelpInfo URI of this module
-    HelpInfoURI       = 'https://raw.githubusercontent.com/christaylorcodes/ConnectWiseAutomateAgent/main/ConnectWiseAutomateAgent/en-US/ConnectWiseAutomateAgent-help.xml'
+    HelpInfoURI       = 'https://raw.githubusercontent.com/christaylorcodes/ConnectWiseAutomateAgent/main/source/en-US/ConnectWiseAutomateAgent-help.xml'
 
 }

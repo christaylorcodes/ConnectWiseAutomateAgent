@@ -24,7 +24,7 @@ Open an issue describing what you would like to see and why. Include use cases s
 2. **Make your changes** following the coding conventions below.
 3. **Test** your changes:
    ```powershell
-   ./Tests/test-local.ps1
+   ./build.ps1 -Tasks test
    ```
 4. **Submit** a pull request with a clear description of what you changed and why.
 
@@ -35,14 +35,17 @@ Open an issue describing what you would like to see and why. Include use cases s
 git clone https://github.com/christaylorcodes/ConnectWiseAutomateAgent.git
 cd ConnectWiseAutomateAgent
 
-# Import the module locally
-Import-Module .\ConnectWiseAutomateAgent\ConnectWiseAutomateAgent.psd1 -Force
+# First time: resolve build dependencies (Sampler, ModuleBuilder, InvokeBuild, etc.)
+./build.ps1 -ResolveDependency -Tasks noop
 
-# Run all local checks (build + analyze + test)
-./Tests/test-local.ps1
+# Build the module (output goes to output/)
+./build.ps1 -Tasks build
 
-# Or run tests only (faster, no build)
-./Tests/test-local.ps1 -Quick
+# Run all checks (build + analyze + test)
+./build.ps1 -Tasks test
+
+# Import from source for quick dev iteration (no build required)
+Import-Module .\source\ConnectWiseAutomateAgent.psd1 -Force
 
 # Enable pre-commit hooks (runs PSScriptAnalyzer + tests before each commit)
 git config core.hooksPath .githooks
@@ -63,8 +66,9 @@ The key points:
 
 See [Adding New Functions](AGENTS.md#adding-new-functions) in AGENTS.md for the full checklist. Summary:
 
-1. Create `Verb-CWAA<Noun>.ps1` in the appropriate `Public/` subdirectory
-2. Add the `LT` alias, update the manifest, rebuild docs and single-file
+1. Create `Verb-CWAA<Noun>.ps1` in the appropriate `source/Public/` subdirectory
+2. Add the `LT` alias -- ModuleBuilder auto-discovers functions and aliases from `source/Public/`, so no manifest edits are needed for export lists
+3. Rebuild: `./build.ps1 -Tasks build`
 
 ## Versioning
 
@@ -87,7 +91,7 @@ Prerelease versions use the format `MAJOR.MINOR.PATCH-TAG` where TAG follows thi
 3. `rc001`, `rc002`, ... — release candidate, final validation
 4. *(no tag)* — stable release
 
-The prerelease tag is set in `ConnectWiseAutomateAgent.psd1` under `PrivateData.PSData.Prerelease`. Remove the tag entirely for a stable release.
+The prerelease tag is set in `source/ConnectWiseAutomateAgent.psd1` under `PrivateData.PSData.Prerelease`. Remove the tag entirely for a stable release.
 
 ### Changelog
 

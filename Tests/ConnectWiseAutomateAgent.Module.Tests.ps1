@@ -43,7 +43,7 @@ Describe 'Module: ConnectWiseAutomateAgent' {
     Context 'Module Manifest' -Skip:$script:IsSingleFileMode {
         BeforeAll {
             $ModuleRoot = Split-Path -Parent $PSScriptRoot
-            $ManifestPath = Join-Path $ModuleRoot 'ConnectWiseAutomateAgent\ConnectWiseAutomateAgent.psd1'
+            $ManifestPath = Join-Path $ModuleRoot 'source\ConnectWiseAutomateAgent.psd1'
             $Manifest = Test-ModuleManifest -Path $ManifestPath -ErrorAction Stop
         }
 
@@ -270,7 +270,7 @@ Describe 'Module: ConnectWiseAutomateAgent' {
     Context 'Function-to-File Mapping' -Skip:$script:IsSingleFileMode {
         BeforeAll {
             $ModuleRoot = Split-Path -Parent $PSScriptRoot
-            $PublicPath = Join-Path $ModuleRoot 'ConnectWiseAutomateAgent\Public'
+            $PublicPath = Join-Path $ModuleRoot 'source\Public'
             $PublicFiles = Get-ChildItem -Path $PublicPath -Filter '*.ps1' -Recurse |
                 Select-Object -ExpandProperty BaseName
         }
@@ -293,7 +293,7 @@ Describe 'Module: ConnectWiseAutomateAgent' {
     Context 'Single-File Build Validation' -Skip:$script:IsModuleMode {
         BeforeAll {
             $RepoRoot = Split-Path -Parent $PSScriptRoot
-            $SingleFilePath = Join-Path $RepoRoot 'ConnectWiseAutomateAgent.ps1'
+            $SingleFilePath = Join-Path $RepoRoot 'output\ConnectWiseAutomateAgent.ps1'
         }
 
         It 'single-file build exists' {

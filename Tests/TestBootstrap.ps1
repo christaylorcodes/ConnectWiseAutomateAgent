@@ -32,8 +32,8 @@ param()
 
 $ModuleName = 'ConnectWiseAutomateAgent'
 $RepoRoot = Split-Path -Parent $PSScriptRoot
-$ModulePsd1 = Join-Path $RepoRoot "$ModuleName\$ModuleName.psd1"
-$SingleFilePath = Join-Path $RepoRoot "$ModuleName.ps1"
+$ModulePsd1 = Join-Path $RepoRoot "source\$ModuleName.psd1"
+$SingleFilePath = Join-Path $RepoRoot "output\$ModuleName.ps1"
 
 $LoadMethod = if ($env:CWAA_TEST_LOAD_METHOD -eq 'SingleFile') { 'SingleFile' } else { 'Module' }
 
@@ -44,7 +44,7 @@ if ($LoadMethod -eq 'SingleFile') {
     # SingleFile mode: load concatenated .ps1 into a dynamic module.
     # This validates the build output while preserving InModuleScope compatibility.
     if (-not (Test-Path $SingleFilePath)) {
-        throw "Single-file build not found at '$SingleFilePath'. Run Build\SingleFileBuild.ps1 first."
+        throw "Single-file build not found at '$SingleFilePath'. Run './build.ps1 -Tasks build' first."
     }
 
     $singleFileContent = Get-Content $SingleFilePath -Raw -ErrorAction Stop

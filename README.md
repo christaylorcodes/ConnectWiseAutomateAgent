@@ -10,7 +10,7 @@
 
 <div align="center">
 
-[![CI / Publish](https://github.com/christaylorcodes/ConnectWiseAutomateAgent/actions/workflows/ci-publish.yml/badge.svg)](https://github.com/christaylorcodes/ConnectWiseAutomateAgent/actions/workflows/ci-publish.yml)
+[![CI / Publish](https://github.com/christaylorcodes/ConnectWiseAutomateAgent/actions/workflows/ci.yml/badge.svg)](https://github.com/christaylorcodes/ConnectWiseAutomateAgent/actions/workflows/ci.yml)
 [![Codacy Badge](https://api.codacy.com/project/badge/Grade/8aa3633cda3d41d5baa5e9f595b8124f)](https://www.codacy.com/gh/christaylorcodes/ConnectWiseAutomateAgent/dashboard?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=christaylorcodes/ConnectWiseAutomateAgent&amp;utm_campaign=Badge_Grade)
 [![Gallery](https://img.shields.io/powershellgallery/v/ConnectWiseAutomateAgent?label=PS%20Gallery&logo=powershell&logoColor=white)](https://www.powershellgallery.com/packages/ConnectWiseAutomateAgent)
 [![Donate](https://img.shields.io/badge/$-donate-ff69b4.svg?maxAge=2592000&amp;style=flat)](https://paypal.me/ChrisTaylorCodes)
@@ -152,13 +152,24 @@ _Hand-written documentation covering architecture and concepts._
 
 ### Function Reference (Auto-Generated)
 
-_Generated from source code comment-based help via [PlatyPS](https://github.com/PowerShell/platyPS). Regenerate with `Build\Build-Documentation.ps1`._
+_Generated from source code comment-based help via [PlatyPS](https://github.com/PowerShell/platyPS). Regenerate with `./build.ps1 -Tasks build`._
 
 | Resource | Description |
 | --- | --- |
 | [Function Reference](Docs/Help/ConnectWiseAutomateAgent.md) | All 30 functions organized by category with descriptions |
 | [Individual Function Docs](Docs/Help/) | One file per function -- parameters, examples, and syntax |
 | `Get-Help <function>` | In-session help compiled from the same source (MAML XML) |
+
+### Tutorials & Blog Posts
+
+In-depth tutorials on [christaylor.codes](https://christaylor.codes):
+
+| Tutorial | Description |
+| --- | --- |
+| [Introducing ConnectWiseAutomateAgent](https://christaylor.codes/powershell/rmm/2024/02/12/introducing-connectwise-automate-agent.html) | Module overview, key features, and getting started |
+| [Mass Agent Deployment](https://christaylor.codes/powershell/deployment/2024/02/26/mass-agent-deployment-connectwise-automate.html) | Deploying agents across hundreds of endpoints with parallel execution |
+| [Troubleshooting Automate Agents](https://christaylor.codes/powershell/troubleshooting/2024/03/04/troubleshooting-connectwise-automate-agents-powershell.html) | Diagnostic techniques and common issue resolution |
+| [10 Real-World Use Cases](https://christaylor.codes/powershell/automation/2024/03/11/ten-use-cases-connectwise-automate-agent.html) | Practical automation scenarios for MSP operations |
 
 ### Examples
 

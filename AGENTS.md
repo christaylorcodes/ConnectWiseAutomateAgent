@@ -13,7 +13,7 @@
 **ConnectWiseAutomateAgent** is a PowerShell module for managing the ConnectWise Automate (formerly LabTech) Windows agent. Used by MSPs to install, configure, troubleshoot, and manage the Automate agent on Windows systems.
 
 - **Language**: PowerShell 3.0+ (2.0 with limitations)
-- **Build System**: Custom scripts (`Build/SingleFileBuild.ps1`)
+- **Build System**: Sampler/ModuleBuilder/InvokeBuild (`./build.ps1`)
 - **Test Framework**: Pester 5.6+
 - **Linter**: PSScriptAnalyzer
 - **License**: MIT
@@ -22,14 +22,20 @@
 ## Quick Start
 
 ```powershell
-# Import module for local testing
-Import-Module .\ConnectWiseAutomateAgent\ConnectWiseAutomateAgent.psd1 -Force
+# First time setup (resolve build dependencies)
+./build.ps1 -ResolveDependency -Tasks noop
 
-# Run all tests (excluding live integration tests)
-Invoke-Pester Tests\ -ExcludeTag 'Live'
+# Import source module for local testing
+Import-Module .\source\ConnectWiseAutomateAgent.psd1 -Force
+
+# Build the module (output goes to output/)
+./build.ps1 -Tasks build
+
+# Run all tests
+./build.ps1 -Tasks test
 
 # Run PSScriptAnalyzer
-Invoke-ScriptAnalyzer -Path ConnectWiseAutomateAgent -Recurse -Severity Error,Warning
+Invoke-ScriptAnalyzer -Path source -Recurse -Severity Error,Warning
 
 # Local pre-push validation (build + analyze + test)
 ./Tests/test-local.ps1
@@ -41,7 +47,12 @@ Invoke-ScriptAnalyzer -Path ConnectWiseAutomateAgent -Recurse -Severity Error,Wa
 
 ```text
 ConnectWiseAutomateAgent/
-  ConnectWiseAutomateAgent/
+  build.ps1                           # Build entry point (Invoke-Build)
+  build.yaml                          # Sampler build configuration
+  RequiredModules.psd1                # Build dependency manifest
+  Resolve-Dependency.ps1              # Bootstrap script for build deps
+  .build/                             # Build task definitions
+  source/
     ConnectWiseAutomateAgent.psd1     # Module manifest
     ConnectWiseAutomateAgent.psm1     # Root module (auto-loads subdirectories)
     en-US/                            # Localized help (MAML XML)
@@ -54,11 +65,7 @@ ConnectWiseAutomateAgent/
       Proxy/                          # Proxy configuration
       Service/                        # Service control, health checks
       Settings/                       # Agent configuration and backup
-  Build/
-    SingleFileBuild.ps1               # Concatenate module into single .ps1
-    Build-Documentation.ps1           # PlatyPS markdown + MAML generation
-    Publish-CWAAModule.ps1            # PSGallery publishing
-    Extract-ChangelogEntry.ps1        # Changelog parser for CI releases
+  output/                             # Build output (gitignored)
   Tests/
     *.Tests.ps1                       # 11 test suites (Module, Mocked.*, Docs, Security, CrossVersion, Live)
     Helpers/                          # Shared mock helpers
@@ -70,12 +77,11 @@ ConnectWiseAutomateAgent/
   Docs/                               # Hand-written guides
     Help/                             # Auto-generated function reference (PlatyPS)
   Examples/                           # Ready-to-use deployment scripts
-  Output/                             # Build output (gitignored)
 ```
 
 ### Module Loading (Two-Phase)
 
-**Phase 1 (module import -- fast, no side effects):** `ConnectWiseAutomateAgent.psm1` dot-sources every `.ps1` from `Public/` and `Private/` recursively, emits a 32-bit warning if running under WOW64 in module mode, then calls `Initialize-CWAA`. This creates centralized constants (`$Script:CWAA*`), empty state objects (`$Script:LTServiceKeys`, `$Script:LTProxy`), the PS version guard, and the WOW64 32-to-64-bit relaunch (single-file mode only). No network objects are created and no registry reads occur.
+**Phase 1 (module import -- fast, no side effects):** `ConnectWiseAutomateAgent.psm1` dot-sources every `.ps1` from `Public/` and `Private/` recursively (in source mode; ModuleBuilder merges them during build), emits a 32-bit warning if running under WOW64 in module mode, then calls `Initialize-CWAA`. This creates centralized constants (`$Script:CWAA*`), empty state objects (`$Script:LTServiceKeys`, `$Script:LTProxy`), the PS version guard, and the WOW64 32-to-64-bit relaunch (single-file mode only). No network objects are created and no registry reads occur.
 
 **Phase 2 (on-demand -- first networking call):** `Initialize-CWAANetworking` (private) is called in the `Begin` block of networking functions (`Install-CWAA`, `Uninstall-CWAA`, `Update-CWAA`, `Set-CWAAProxy`). On first call it performs SSL certificate validation bypass, TLS protocol enablement, creates `$Script:LTWebProxy` and `$Script:LTServiceNetWebClient`, and runs `Get-CWAAProxy` to discover proxy settings from the installed agent. The `$Script:CWAANetworkInitialized` flag ensures this runs only once per session.
 
@@ -83,16 +89,19 @@ ConnectWiseAutomateAgent/
 
 Every function uses the `CWAA` prefix (e.g., `Install-CWAA`) but also declares an `LT` alias (e.g., `Install-LTService`) for backward compatibility with the legacy LabTech naming. Aliases are declared both in function `[Alias()]` attributes and in the manifest's `AliasesToExport`.
 
-### Build Scripts
+### Build Pipeline
 
-- `Build/SingleFileBuild.ps1` -- concatenates all `.ps1` files from the module directory into `ConnectWiseAutomateAgent.ps1` at the repo root, appending `Initialize-CWAA` at the end. This flat file is the distribution artifact for direct-invoke scenarios.
-- `Build/Build-Documentation.ps1` -- PlatyPS markdown + MAML generation. Outputs to `Docs/Help/`.
-- `Build/Publish-CWAAModule.ps1` -- publishes to PowerShell Gallery.
-- `Build/Extract-ChangelogEntry.ps1` -- extracts version-specific release notes from CHANGELOG.md for GitHub Releases.
+The build uses [Sampler](https://github.com/gaelcolas/Sampler) with ModuleBuilder and Invoke-Build. Configuration lives in `build.yaml`.
+
+- `./build.ps1 -ResolveDependency -Tasks noop` -- first-time setup; installs build dependencies listed in `RequiredModules.psd1`.
+- `./build.ps1 -Tasks build` -- compiles the module from `source/` into `output/`. ModuleBuilder merges Public/Private functions into a single `.psm1` and auto-populates `FunctionsToExport` and `AliasesToExport` in the manifest.
+- `./build.ps1 -Tasks test` -- runs Pester tests against the built module in `output/`.
+- `./build.ps1 -Tasks publish` -- publishes to PowerShell Gallery.
+- Build tasks are defined in `.build/` and referenced from `build.yaml`.
 
 ### CI/CD
 
-CI is intentionally lightweight (smoke test, build, publish). Full testing is local. See the header comments in `.github/workflows/ci-publish.yml` for branch strategy and gating rules.
+CI is intentionally lightweight (smoke test, build, publish). Full testing is local. See the header comments in `.github/workflows/ci.yml` for branch strategy and gating rules.
 
 ### Common Patterns
 
@@ -121,7 +130,7 @@ For the full contributing guide covering development setup, coding standards, an
 
 ### Documentation and Commits
 
-Source of truth for docs is comment-based help in `.ps1` files. Run `Build\Build-Documentation.ps1 -UpdateExisting` after changes.
+Source of truth for docs is comment-based help in `.ps1` files under `source/`. Rebuild documentation after changes using the build pipeline.
 
 **Known pitfall:** Lines starting with `.WORD` (e.g., `.NET`) in comment-based help are parsed as help keywords. Keep such terms mid-line.
 
@@ -129,17 +138,14 @@ For git commit style and the full contributing guide, see [CONTRIBUTING.md](CONT
 
 ## Adding New Functions
 
-1. Create `Verb-CWAA<Noun>.ps1` in the appropriate `Public/` subdirectory
+1. Create `Verb-CWAA<Noun>.ps1` in the appropriate `source/Public/` subdirectory
 2. Add `[Alias('Verb-LT<LegacyNoun>')]` in the function declaration
-3. Add to `FunctionsToExport` and `AliasesToExport` in `ConnectWiseAutomateAgent.psd1`
-4. Rebuild documentation: `Build\Build-Documentation.ps1`
-5. Rebuild single-file: `Build\SingleFileBuild.ps1`
+3. Build the module: `./build.ps1 -Tasks build` -- ModuleBuilder auto-populates `FunctionsToExport` and `AliasesToExport` in the manifest (no manual manifest update needed)
 
 When modifying existing functions:
 
 - Maintain the `LT` alias
-- Rebuild documentation: `Build\Build-Documentation.ps1 -UpdateExisting`
-- Rebuild single-file after changes
+- Rebuild: `./build.ps1 -Tasks build`
 - Consider 32-bit/64-bit WOW64 behavior for registry/file operations
 
 ## Testing
@@ -166,7 +172,7 @@ See `Get-Help .\Tests\test-local.ps1` for flags: `-SkipBuild`, `-SkipTests`, `-S
 ### Key Rules
 
 - No code is complete without passing tests. A function without a test is unfinished work.
-- PSScriptAnalyzer zero errors required. Always use `-IncludeAnalyzer` during development.
+- PSScriptAnalyzer zero errors required. Run against `source/`. Always use `-IncludeAnalyzer` during development.
 - Dual-mode testing details: `Get-Help .\Tests\Invoke-AllTests.ps1`
 - Test bootstrap and load methods: `Get-Help .\Tests\TestBootstrap.ps1`
 
@@ -184,7 +190,7 @@ gh issue edit <number> --add-label ai-in-progress --remove-label ai-ready
 1. Claim the issue (above), create branch: `git checkout -b feature/<number>-short-description`
 2. Read the full issue body and acceptance criteria
 3. Implement, add tests, iterate with `Invoke-QuickTest.ps1 -IncludeAnalyzer -OutputFormat Structured`
-4. Run `./Tests/test-local.ps1` -- build + analyze + test must all pass
+4. Run `./build.ps1 -Tasks build` then `./Tests/test-local.ps1` -- build + analyze + test must all pass
 5. Commit referencing the issue: `Add feature X (fixes #123)`
 6. Push, open PR, update label: `gh issue edit <number> --add-label ai-review --remove-label ai-in-progress`
 

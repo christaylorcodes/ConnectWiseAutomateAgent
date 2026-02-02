@@ -103,14 +103,14 @@ $moduleExitCode = Invoke-PesterInProcess -Mode 'Module' -Label 'Mode 1/2: Module
 # Rebuild single-file before SingleFile mode
 # ============================================
 if (-not $SkipBuild) {
-    Write-Host "`n  Rebuilding single-file distribution..." -ForegroundColor Gray
-    $buildScript = Join-Path $RepoRoot 'Build\SingleFileBuild.ps1'
+    Write-Host "`n  Rebuilding module (Sampler/ModuleBuilder)..." -ForegroundColor Gray
+    $buildScript = Join-Path $RepoRoot 'build.ps1'
     if (Test-Path $buildScript) {
-        & powershell -NoProfile -NonInteractive -File $buildScript
+        & $buildScript -Tasks build
         if ($LASTEXITCODE -ne 0) {
-            Write-Host "  WARNING: Single-file build exited with code $LASTEXITCODE" -ForegroundColor Red
+            Write-Host "  WARNING: Build exited with code $LASTEXITCODE" -ForegroundColor Red
         } else {
-            Write-Host "  Single-file build completed." -ForegroundColor Green
+            Write-Host "  Build completed." -ForegroundColor Green
         }
     } else {
         Write-Host "  WARNING: Build script not found at '$buildScript'" -ForegroundColor Red

@@ -24,7 +24,7 @@
 - [ ] Tests cover new/changed behavior
 - [ ] PSScriptAnalyzer reports zero errors
 - [ ] Documentation updated (if applicable)
-- [ ] Single-file rebuilt (`Build\SingleFileBuild.ps1`)
+- [ ] Module built (`./build.ps1 -Tasks build`)
 
 ## AI Contribution
 

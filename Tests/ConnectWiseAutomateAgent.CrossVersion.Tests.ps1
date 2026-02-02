@@ -50,14 +50,14 @@ BeforeDiscovery {
 
     # Check if single-file build exists (needed for SingleFile contexts)
     $repoRoot = Split-Path -Parent $PSScriptRoot
-    $script:SingleFileExists = Test-Path (Join-Path $repoRoot 'ConnectWiseAutomateAgent.ps1')
+    $script:SingleFileExists = Test-Path (Join-Path $repoRoot 'output\ConnectWiseAutomateAgent.ps1')
 }
 
 BeforeAll {
     $ModuleName = 'ConnectWiseAutomateAgent'
     $ModuleRoot = Split-Path -Parent $PSScriptRoot
-    $script:ModulePsd1 = Join-Path $ModuleRoot "$ModuleName\$ModuleName.psd1"
-    $script:SingleFilePath = Join-Path $ModuleRoot "$ModuleName.ps1"
+    $script:ModulePsd1 = Join-Path $ModuleRoot "source\$ModuleName.psd1"
+    $script:SingleFilePath = Join-Path $ModuleRoot "output\$ModuleName.ps1"
 
     # Helper: Run a verification script in a child process and parse JSON output.
     # Defined inside BeforeAll so Pester 5 scoping makes it available to test blocks.
@@ -457,6 +457,6 @@ Describe 'Version Coverage' {
     }
 
     It 'single-file build exists for SingleFile tests' {
-        $script:SingleFilePath | Should -Exist -Because 'Run Build\SingleFileBuild.ps1 to create the single-file distribution'
+        $script:SingleFilePath | Should -Exist -Because 'Run ./build.ps1 -Tasks build to create the single-file distribution'
     }
 }
