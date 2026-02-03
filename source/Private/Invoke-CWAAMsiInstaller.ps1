@@ -42,28 +42,27 @@ function Invoke-CWAAMsiInstaller {
         }
 
         $installAttempt = 0
+        $serviceInstalled = $False
         Do {
             if ($installAttempt -gt 0) {
                 Write-Warning "Service Failed to Install. Retrying in $RetryDelaySeconds seconds." -WarningAction 'Continue'
                 $Null = Wait-CWAACondition -Condition {
-                    $serviceCount = ('LTService') | Get-Service -EA 0 | Measure-Object | Select-Object -Expand Count
-                    $serviceCount -eq 1
+                    [bool](Get-Service 'LTService' -EA 0)
                 } -TimeoutSeconds $RetryDelaySeconds -IntervalSeconds 5 -Activity 'Waiting for service availability before retry'
             }
             $installAttempt++
 
-            $runningServiceCount = ('LTService') | Get-Service -EA 0 | Measure-Object | Select-Object -Expand Count
-            if ($runningServiceCount -eq 0) {
+            if (-not (Get-Service 'LTService' -EA 0)) {
                 $redactedArguments = $InstallerArguments -replace 'SERVERPASS="[^"]*"', 'SERVERPASS="REDACTED"'
                 Write-Verbose "Launching Installation Process: msiexec.exe $redactedArguments"
                 Start-Process -Wait -FilePath "${env:windir}\system32\msiexec.exe" -ArgumentList $InstallerArguments -WorkingDirectory $env:TEMP
                 Start-Sleep 5
             }
 
-            $runningServiceCount = ('LTService') | Get-Service -EA 0 | Measure-Object | Select-Object -Expand Count
-        } Until ($installAttempt -ge $MaxAttempts -or $runningServiceCount -eq 1)
+            $serviceInstalled = [bool](Get-Service 'LTService' -EA 0)
+        } Until ($installAttempt -ge $MaxAttempts -or $serviceInstalled)
 
-        if ($runningServiceCount -eq 0) {
+        if (-not $serviceInstalled) {
             Write-Error "LTService was not installed. Installation failed after $MaxAttempts attempts."
             return $false
         }

@@ -62,7 +62,7 @@ catch {
     # WARNING: Invoke-Expression executes downloaded code. See security note above.
     # This fallback is ONLY for systems where the PowerShell Gallery is unavailable.
     # The URL is pinned to a specific release tag — it will not change after publication.
-    $URI = "https://github.com/christaylorcodes/ConnectWiseAutomateAgent/releases/download/v$ModuleVersion/ConnectWiseAutomateAgent.ps1"
+    $URI = "https://github.com/christaylorcodes/ConnectWiseAutomateAgent/releases/download/v$ModuleVersion/ConnectWiseAutomateAgent.psm1"
     (New-Object Net.WebClient).DownloadString($URI) | Invoke-Expression
 }
 

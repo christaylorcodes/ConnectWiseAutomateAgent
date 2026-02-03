@@ -6,26 +6,25 @@
     Loads the module using one of two methods based on the CWAA_TEST_LOAD_METHOD
     environment variable:
 
-    - Module (default): Import-Module ConnectWiseAutomateAgent.psd1
-      Standard PSGallery loading path.
+    - Module (default): Import-Module from source/ConnectWiseAutomateAgent.psd1
+      Development source — dot-sources individual .ps1 files at import time.
 
-    - SingleFile: Load ConnectWiseAutomateAgent.ps1 into a dynamic module via New-Module.
-      Tests the concatenated single-file build used by systems without gallery access.
-      The dynamic module wrapper preserves InModuleScope and Get-Module compatibility.
+    - BuiltModule: Import-Module from the compiled output built by ModuleBuilder.
+      Tests the artifact that ships to PSGallery and GitHub Releases.
 
     Call this from BeforeAll in each test file. For discovery-time flags (Context -Skip),
     check $env:CWAA_TEST_LOAD_METHOD directly in BeforeDiscovery instead.
 
 .EXAMPLE
     BeforeDiscovery {
-        $script:IsSingleFileMode = ($env:CWAA_TEST_LOAD_METHOD -eq 'SingleFile')
+        $script:IsBuiltModuleMode = ($env:CWAA_TEST_LOAD_METHOD -eq 'BuiltModule')
     }
     BeforeAll {
         $script:BootstrapResult = & "$PSScriptRoot\TestBootstrap.ps1"
     }
 
 .OUTPUTS
-    Hashtable with keys: LoadMethod, ModuleName, ModulePath, SingleFilePath, IsLoaded
+    Hashtable with keys: LoadMethod, ModuleName, ModulePath, BuiltModulePath, IsLoaded
 #>
 [CmdletBinding()]
 param()
@@ -33,41 +32,38 @@ param()
 $ModuleName = 'ConnectWiseAutomateAgent'
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $ModulePsd1 = Join-Path $RepoRoot "source\$ModuleName.psd1"
-$SingleFilePath = Join-Path $RepoRoot "output\$ModuleName.ps1"
 
-$LoadMethod = if ($env:CWAA_TEST_LOAD_METHOD -eq 'SingleFile') { 'SingleFile' } else { 'Module' }
+# Find the built module manifest (latest version directory under output/)
+$BuiltModulePsd1 = Get-ChildItem -Path (Join-Path $RepoRoot "output\$ModuleName\*\$ModuleName.psd1") -ErrorAction SilentlyContinue |
+    Sort-Object { [version](Split-Path (Split-Path $_.FullName -Parent) -Leaf) } -Descending |
+    Select-Object -First 1
 
-# Remove any existing module (standard or dynamic)
+$LoadMethod = if ($env:CWAA_TEST_LOAD_METHOD -eq 'BuiltModule') { 'BuiltModule' } else { 'Module' }
+
+# Remove any existing module
 Get-Module $ModuleName -ErrorAction SilentlyContinue | Remove-Module -Force
 
-if ($LoadMethod -eq 'SingleFile') {
-    # SingleFile mode: load concatenated .ps1 into a dynamic module.
-    # This validates the build output while preserving InModuleScope compatibility.
-    if (-not (Test-Path $SingleFilePath)) {
-        throw "Single-file build not found at '$SingleFilePath'. Run './build.ps1 -Tasks build' first."
+if ($LoadMethod -eq 'BuiltModule') {
+    # BuiltModule mode: Import-Module from the compiled output.
+    # This validates the ModuleBuilder-compiled .psm1 and manifest with explicit exports.
+    if (-not $BuiltModulePsd1) {
+        throw "Built module not found in 'output/$ModuleName/'. Run './build.ps1 -Tasks build' first."
     }
 
-    $singleFileContent = Get-Content $SingleFilePath -Raw -ErrorAction Stop
+    Import-Module $BuiltModulePsd1.FullName -Force -ErrorAction Stop
 
-    # Append Export-ModuleMember so [Alias()] attributes on functions are exported.
-    # Without this, dynamic modules don't export aliases from function attributes.
-    $singleFileContent += "`nExport-ModuleMember -Function * -Alias *"
-
-    New-Module -Name $ModuleName -ScriptBlock ([ScriptBlock]::Create($singleFileContent)) |
-        Import-Module -Force -ErrorAction Stop
-
-    Write-Verbose "TestBootstrap: Loaded single-file into dynamic module '$ModuleName'"
+    Write-Verbose "TestBootstrap: Imported built module from '$($BuiltModulePsd1.FullName)'"
 
     return @{
-        LoadMethod     = 'SingleFile'
-        ModuleName     = $ModuleName
-        ModulePath     = $SingleFilePath
-        SingleFilePath = $SingleFilePath
-        IsLoaded       = $true
+        LoadMethod      = 'BuiltModule'
+        ModuleName      = $ModuleName
+        ModulePath      = $BuiltModulePsd1.FullName
+        BuiltModulePath = $BuiltModulePsd1.FullName
+        IsLoaded        = $true
     }
 }
 else {
-    # Module mode: standard Import-Module from manifest
+    # Module mode: standard Import-Module from source manifest
     if (-not (Test-Path $ModulePsd1)) {
         throw "Module manifest not found at '$ModulePsd1'."
     }
@@ -77,10 +73,10 @@ else {
     Write-Verbose "TestBootstrap: Imported module '$ModuleName' from manifest"
 
     return @{
-        LoadMethod     = 'Module'
-        ModuleName     = $ModuleName
-        ModulePath     = $ModulePsd1
-        SingleFilePath = $SingleFilePath
-        IsLoaded       = $true
+        LoadMethod      = 'Module'
+        ModuleName      = $ModuleName
+        ModulePath      = $ModulePsd1
+        BuiltModulePath = if ($BuiltModulePsd1) { $BuiltModulePsd1.FullName } else { $null }
+        IsLoaded        = $true
     }
 }

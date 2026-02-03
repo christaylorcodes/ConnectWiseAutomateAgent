@@ -28,11 +28,11 @@ Yes. Any tool that can execute a PowerShell script with administrator privileges
 Install-CWAA -Server 'automate.example.com' -InstallerToken 'MyToken' -LocationID 1
 ```
 
-For environments without PowerShell Gallery access, use the version-locked single-file from [GitHub Releases](https://github.com/christaylorcodes/ConnectWiseAutomateAgent/releases):
+For environments without PowerShell Gallery access, use the version-locked `.psm1` from [GitHub Releases](https://github.com/christaylorcodes/ConnectWiseAutomateAgent/releases):
 
 ```powershell
 # Pin to a specific version — replace v1.0.0 with your tested version
-Invoke-RestMethod 'https://github.com/christaylorcodes/ConnectWiseAutomateAgent/releases/download/v1.0.0/ConnectWiseAutomateAgent.ps1' | Invoke-Expression
+Invoke-RestMethod 'https://github.com/christaylorcodes/ConnectWiseAutomateAgent/releases/download/v1.0.0/ConnectWiseAutomateAgent.psm1' | Invoke-Expression
 Install-CWAA -Server 'automate.example.com' -InstallerToken 'MyToken' -LocationID 1
 ```
 
@@ -40,7 +40,7 @@ Install-CWAA -Server 'automate.example.com' -InstallerToken 'MyToken' -LocationI
 
 | Version | Support Level |
 | --- | --- |
-| PowerShell 2.0 | Limited (no module manifest support, use single-file mode) |
+| PowerShell 2.0 | Limited (no module manifest support, use direct download .psm1) |
 | PowerShell 3.0 - 5.1 | Full support |
 | PowerShell 7+ | Full support |
 
@@ -80,7 +80,7 @@ This creates a task that checks agent health every 60 minutes and applies escala
 Yes. The Automate agent is a 32-bit application, but its registry keys are accessible from both 32-bit and 64-bit PowerShell (with different paths due to WOW64 redirection). The module handles this automatically:
 
 - **Module mode:** Emits a warning if imported in 32-bit PowerShell on a 64-bit OS. Re-import in 64-bit PowerShell.
-- **Single-file mode:** Automatically relaunches under 64-bit PowerShell.
+- **Direct download mode (.psm1):** Automatically relaunches under 64-bit PowerShell.
 
 Always use 64-bit PowerShell when possible. See [Troubleshooting](Troubleshooting.md#wow64--32-bit-vs-64-bit-mismatches) for details.
 
@@ -140,12 +140,12 @@ Other useful commands: `'Send Inventory'`, `'Send Drives'`, `'Send Procs'`. See 
 
 ## Module Usage
 
-### What does the single-file version do differently?
+### What does the direct download (.psm1) version do differently?
 
 Functionally identical — all the same functions are available. The difference is packaging:
 
 - **Module (Install-Module):** Installed to the module path, imported with `Import-Module`, supports `Get-Help`, auto-updates via `Update-Module`.
-- **Single-file (.ps1):** All functions concatenated into one file, loaded via `Invoke-Expression`. Used when the PowerShell Gallery is unavailable. `Initialize-CWAA` is appended at the end of the file.
+- **Direct download (.psm1):** The compiled module file loaded via `Invoke-Expression`. Used when the PowerShell Gallery is unavailable. Available from [GitHub Releases](https://github.com/christaylorcodes/ConnectWiseAutomateAgent/releases).
 
 Prefer `Install-Module` whenever possible.
 
@@ -180,8 +180,8 @@ Note that most functions require administrator privileges and a Windows target. 
 Install-Module ConnectWiseAutomateAgent -RequiredVersion '1.0.0'
 Import-Module ConnectWiseAutomateAgent -RequiredVersion '1.0.0'
 
-# Single-file — use a version-locked GitHub Release URL
-Invoke-RestMethod 'https://github.com/christaylorcodes/ConnectWiseAutomateAgent/releases/download/v1.0.0/ConnectWiseAutomateAgent.ps1' | Invoke-Expression
+# Direct download — use a version-locked GitHub Release URL
+Invoke-RestMethod 'https://github.com/christaylorcodes/ConnectWiseAutomateAgent/releases/download/v1.0.0/ConnectWiseAutomateAgent.psm1' | Invoke-Expression
 ```
 
 Update the version number deliberately after validating new releases in a test environment. All example scripts in this repository use version-locked patterns by default.

@@ -54,7 +54,7 @@
 #   - Windows PowerShell 3.0 or later
 #   - SYSTEM context (GPO scheduled tasks run as SYSTEM)
 #   - Network access to the Automate server and PowerShell Gallery (or the
-#     single-file fallback URL)
+#     direct download fallback URL)
 #
 # Security considerations:
 #   - Store this script on a secured NETLOGON or SYSVOL share with restricted
@@ -80,7 +80,7 @@ Param(
 
     [int]$HealthCheckIntervalHours = 6,
 
-    [string]$TaskName = 'CWAAHealthCheck'
+    [string]$TaskName = 'AAutomate'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -141,11 +141,11 @@ try {
     Write-Log "Module '$Module' v$ModuleVersion loaded."
 }
 catch {
-    Write-Log 'PowerShell Gallery unavailable. Falling back to version-locked single-file download.'
+    Write-Log 'PowerShell Gallery unavailable. Falling back to version-locked direct download.'
     # WARNING: Invoke-Expression executes downloaded code. See security note above.
     # This fallback is ONLY for systems where the PowerShell Gallery is unavailable.
     # The URL is pinned to a specific release tag — it will not change after publication.
-    $URI = "https://github.com/christaylorcodes/ConnectWiseAutomateAgent/releases/download/v$ModuleVersion/ConnectWiseAutomateAgent.ps1"
+    $URI = "https://github.com/christaylorcodes/ConnectWiseAutomateAgent/releases/download/v$ModuleVersion/ConnectWiseAutomateAgent.psm1"
     (New-Object Net.WebClient).DownloadString($URI) | Invoke-Expression
 }
 

@@ -4,7 +4,7 @@
     RootModule        = 'ConnectWiseAutomateAgent.psm1'
 
     # Version number of this module.
-    ModuleVersion     = '1.0.0'
+    ModuleVersion     = '0.0.1'
 
     # ID used to uniquely identify this module
     GUID              = '37424fc5-48d4-4d15-8b19-e1c2bf4bab67'
@@ -16,7 +16,7 @@
     CompanyName       = 'Chris Taylor'
 
     # Copyright statement for this module
-    Copyright         = '(c) 2025 Chris Taylor. All rights reserved.'
+    Copyright         = '(c) 2026 Chris Taylor. All rights reserved.'
 
     # Description of the functionality provided by this module
     Description       = 'PowerShell module for working with the ConnectWise Automate Agent.'
@@ -55,9 +55,12 @@
             # A URL to an icon representing this module
             IconUri    = 'https://raw.githubusercontent.com/christaylorcodes/ConnectWiseAutomateAgent/main/Media/connectwise-automate.png'
 
+            # ReleaseNotes populated at build time from CHANGELOG.md
+            ReleaseNotes = ''
+
             # Prerelease tag for PSGallery (ASCII alphanumeric only, no dots/hyphens)
-            # Remove or set to '' for stable releases
-            Prerelease = 'alpha001'
+            # Controlled by GitVersion at build time; leave empty in source
+            Prerelease = ''
 
         }
 

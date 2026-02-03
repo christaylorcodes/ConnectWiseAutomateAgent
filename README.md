@@ -93,26 +93,20 @@ This prevents untested updates from rolling out to production machines. Update t
 
 > **Why version lock?** Scripts that always pull the latest version are vulnerable to supply-chain risk -- a compromised update or a breaking change could affect every endpoint at once. Pinning to a tested version gives you control over when updates roll out. See [Security Model — Version Locking](Docs/Security.md#version-locking) for details.
 
-### Single-File Usage
+### Direct Download Usage
 
-For older machines or environments without PowerShell Gallery access, a standalone `.ps1` file is available. This is a fallback -- prefer `Install-Module` above whenever possible.
+For environments without PowerShell Gallery access, the compiled `.psm1` module file is attached to each [GitHub Release](https://github.com/christaylorcodes/ConnectWiseAutomateAgent/releases). This is a fallback -- prefer `Install-Module` above whenever possible.
 
-**Version-locked** (from [GitHub Releases](https://github.com/christaylorcodes/ConnectWiseAutomateAgent/releases) -- recommended for production scripts):
+**Version-locked** (recommended for production scripts):
 
 ```powershell
 # Pin to a specific version for reproducible deployments
-Invoke-RestMethod 'https://github.com/christaylorcodes/ConnectWiseAutomateAgent/releases/download/v1.0.0/ConnectWiseAutomateAgent.ps1' | Invoke-Expression
-```
-
-**Latest** (tracks `main` branch -- use only for interactive testing, not production):
-
-```powershell
-Invoke-RestMethod 'https://raw.githubusercontent.com/christaylorcodes/ConnectWiseAutomateAgent/main/ConnectWiseAutomateAgent.ps1' | Invoke-Expression
+Invoke-RestMethod 'https://github.com/christaylorcodes/ConnectWiseAutomateAgent/releases/download/v1.0.0/ConnectWiseAutomateAgent.psm1' | Invoke-Expression
 ```
 
 > **Tip:** Browse all versions on the [Releases](https://github.com/christaylorcodes/ConnectWiseAutomateAgent/releases) page. Replace `v1.0.0` with your desired version tag.
 >
-> **Note:** Both methods download and execute code at runtime. Use `Install-Module` when the Gallery is available. Version-locked URLs are strongly preferred for production because they are immutable after release.
+> **Note:** This downloads and executes code at runtime. Use `Install-Module` when the Gallery is available. Version-locked URLs are strongly preferred for production because they are immutable after release.
 
 ## Getting Started
 

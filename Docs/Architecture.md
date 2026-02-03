@@ -11,7 +11,7 @@ flowchart TD
     A[Import-Module ConnectWiseAutomateAgent] --> B[PSM1: Dot-source all .ps1 files<br/>from Public/ and Private/]
     B --> C{Running 32-bit PS<br/>on 64-bit OS?}
     C -->|Yes, module mode| D[Emit WOW64 warning]
-    C -->|Yes, single-file mode| E[Relaunch under 64-bit PowerShell]
+    C -->|Yes, direct download mode| E[Relaunch under 64-bit PowerShell]
     C -->|No| F[Initialize-CWAA]
     D --> F
     F --> G[Create Script constants<br/>CWAARegistryRoot, CWAAInstallPath,<br/>CWAAServiceNames, etc.]

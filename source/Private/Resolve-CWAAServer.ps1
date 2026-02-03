@@ -33,7 +33,7 @@ function Resolve-CWAAServer {
         # Normalize: prepend https:// to bare hostnames/IPs so the loop has consistent URLs
         $normalizedServers = ForEach ($serverUrl in $Server) {
             if ($serverUrl -notmatch 'https?://.+') { "https://$serverUrl" }
-            $serverUrl
+            else { $serverUrl }
         }
 
         ForEach ($serverUrl in $normalizedServers) {

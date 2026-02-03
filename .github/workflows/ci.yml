@@ -1,12 +1,18 @@
 # CI / Publish workflow for ConnectWiseAutomateAgent
 #
-# Uses Sampler/ModuleBuilder/InvokeBuild pipeline.
-# Build process runs on PowerShell 7+; compiled output targets PowerShell 3.0+.
+# Uses Sampler/ModuleBuilder/InvokeBuild pipeline with GitVersion for automatic
+# semantic versioning.
 #
 # Branch strategy:
 #   develop push  → build → test → analyze → publish prerelease → GitHub Release
 #   main push     → build → test → analyze → publish stable → GitHub Release
 #   pull requests → build → test → analyze (no publish, no release)
+#
+# Versioning:
+#   GitVersion calculates the version from git history and branch.
+#   develop → prerelease (e.g., 1.0.0-alpha0001)
+#   main    → stable (e.g., 1.0.0)
+#   Sampler reads GitVersion output automatically during Build_ModuleOutput_ModuleBuilder.
 #
 # Required secrets:
 #   PSGALLERY_API_KEY — NuGet API key for the PowerShell Gallery
@@ -35,6 +41,13 @@ jobs:
       is_prerelease: ${{ steps.version.outputs.is_prerelease }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install GitVersion
+        uses: gittools/actions/gitversion/setup@v1
+        with:
+          versionSpec: '5.x'
 
       - name: Resolve dependencies
         shell: pwsh
@@ -44,11 +57,13 @@ jobs:
         shell: pwsh
         run: ./build.ps1 -Tasks build
 
-      - name: Read version from manifest
+      - name: Read version from built manifest
         id: version
         shell: pwsh
         run: |
-          $manifest = Import-PowerShellDataFile source/ConnectWiseAutomateAgent.psd1
+          $modulePath = Get-ChildItem -Path "output/${{ env.MODULE_NAME }}" -Directory |
+            Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1
+          $manifest = Import-PowerShellDataFile (Join-Path $modulePath.FullName "${{ env.MODULE_NAME }}.psd1")
           $version = $manifest.ModuleVersion
           $prerelease = $manifest.PrivateData.PSData.Prerelease
           $fullVersion = if ($prerelease) { "$version-$prerelease" } else { $version }
@@ -65,12 +80,13 @@ jobs:
           path: output/${{ env.MODULE_NAME }}
           retention-days: 7
 
-      - name: Upload single-file artifact
+      - name: Upload release notes
         uses: actions/upload-artifact@v4
         with:
-          name: single-file
-          path: output/ConnectWiseAutomateAgent.ps1
+          name: release-notes
+          path: output/ReleaseNotes.md
           retention-days: 7
+          if-no-files-found: ignore
 
       - name: Upload required modules
         uses: actions/upload-artifact@v4
@@ -103,6 +119,17 @@ jobs:
         run: |
           $env:PSModulePath = "$(Resolve-Path output/RequiredModules)" + [IO.Path]::PathSeparator + $env:PSModulePath
           ./build.ps1 -Tasks test
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            output/testResults/testResults.xml
+            output/testResults/JaCoCo_coverage.xml
+          retention-days: 7
+          if-no-files-found: ignore
 
   analyze:
     name: PSScriptAnalyzer
@@ -137,26 +164,46 @@ jobs:
     runs-on: windows-latest
     environment: PSGallery
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Verify prerelease tag is set
-        shell: pwsh
-        run: |
-          $manifest = Import-PowerShellDataFile source/ConnectWiseAutomateAgent.psd1
-          $prerelease = $manifest.PrivateData.PSData.Prerelease
-          if (-not $prerelease) {
-            Write-Error "Prerelease tag is not set in the manifest. Skipping prerelease publish."
-            exit 1
-          }
-          Write-Host "Prerelease tag: $prerelease"
-
       - name: Download built module
         uses: actions/download-artifact@v4
         with:
           name: module-build
           path: output/${{ env.MODULE_NAME }}
 
+      - name: Verify prerelease tag is set
+        shell: pwsh
+        run: |
+          $modulePath = Get-ChildItem -Path "output/${{ env.MODULE_NAME }}" -Directory |
+            Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1
+          $manifest = Import-PowerShellDataFile (Join-Path $modulePath.FullName "${{ env.MODULE_NAME }}.psd1")
+          $prerelease = $manifest.PrivateData.PSData.Prerelease
+          if (-not $prerelease) {
+            Write-Error "Prerelease tag is not set in the built manifest. GitVersion should produce a prerelease on develop."
+            exit 1
+          }
+          Write-Host "Prerelease tag: $prerelease"
+
+      - name: Check if version already exists on PSGallery
+        id: gallery-check
+        shell: pwsh
+        run: |
+          $modulePath = Get-ChildItem -Path "output/${{ env.MODULE_NAME }}" -Directory |
+            Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1
+          $manifest = Import-PowerShellDataFile (Join-Path $modulePath.FullName "${{ env.MODULE_NAME }}.psd1")
+          $version = $manifest.ModuleVersion
+          $prerelease = $manifest.PrivateData.PSData.Prerelease
+          $fullVersion = if ($prerelease) { "$version-$prerelease" } else { $version }
+          $existing = Find-Module -Name ${{ env.MODULE_NAME }} -RequiredVersion $fullVersion -AllowPrerelease -ErrorAction SilentlyContinue
+          if ($existing) {
+            Write-Host "Version $fullVersion already exists on PSGallery. Skipping publish."
+            "skip=true" >> $env:GITHUB_OUTPUT
+          } else {
+            Write-Host "Version $fullVersion not found on PSGallery. Proceeding with publish."
+            "skip=false" >> $env:GITHUB_OUTPUT
+          }
+
       - name: Publish to PSGallery (prerelease)
+        if: steps.gallery-check.outputs.skip != 'true'
         shell: pwsh
         env:
           NUGET_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
@@ -172,26 +219,44 @@ jobs:
     runs-on: windows-latest
     environment: PSGallery
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Verify no prerelease tag
-        shell: pwsh
-        run: |
-          $manifest = Import-PowerShellDataFile source/ConnectWiseAutomateAgent.psd1
-          $prerelease = $manifest.PrivateData.PSData.Prerelease
-          if ($prerelease) {
-            Write-Error "Prerelease tag '$prerelease' is still set. Remove it before publishing stable."
-            exit 1
-          }
-          Write-Host "Version: $($manifest.ModuleVersion) (stable)"
-
       - name: Download built module
         uses: actions/download-artifact@v4
         with:
           name: module-build
           path: output/${{ env.MODULE_NAME }}
 
+      - name: Verify no prerelease tag
+        shell: pwsh
+        run: |
+          $modulePath = Get-ChildItem -Path "output/${{ env.MODULE_NAME }}" -Directory |
+            Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1
+          $manifest = Import-PowerShellDataFile (Join-Path $modulePath.FullName "${{ env.MODULE_NAME }}.psd1")
+          $prerelease = $manifest.PrivateData.PSData.Prerelease
+          if ($prerelease) {
+            Write-Error "Prerelease tag '$prerelease' is still set in the built manifest. Expected GitVersion to produce a stable version on main."
+            exit 1
+          }
+          Write-Host "Version: $($manifest.ModuleVersion) (stable)"
+
+      - name: Check if version already exists on PSGallery
+        id: gallery-check
+        shell: pwsh
+        run: |
+          $modulePath = Get-ChildItem -Path "output/${{ env.MODULE_NAME }}" -Directory |
+            Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1
+          $manifest = Import-PowerShellDataFile (Join-Path $modulePath.FullName "${{ env.MODULE_NAME }}.psd1")
+          $version = $manifest.ModuleVersion
+          $existing = Find-Module -Name ${{ env.MODULE_NAME }} -RequiredVersion $version -ErrorAction SilentlyContinue
+          if ($existing) {
+            Write-Host "Version $version already exists on PSGallery. Skipping publish."
+            "skip=true" >> $env:GITHUB_OUTPUT
+          } else {
+            Write-Host "Version $version not found on PSGallery. Proceeding with publish."
+            "skip=false" >> $env:GITHUB_OUTPUT
+          }
+
       - name: Publish to PSGallery (stable)
+        if: steps.gallery-check.outputs.skip != 'true'
         shell: pwsh
         env:
           NUGET_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
@@ -205,7 +270,7 @@ jobs:
   release-prerelease:
     name: GitHub Release (Prerelease)
     if: github.ref == 'refs/heads/develop' && github.event_name == 'push' && !failure() && !cancelled()
-    needs: publish-prerelease
+    needs: [publish-prerelease, build]
     runs-on: windows-latest
     permissions:
       contents: write
@@ -214,16 +279,13 @@ jobs:
         with:
           ref: ${{ github.sha }}
 
-      - name: Read version from manifest
+      - name: Set version from build outputs
         id: version
         shell: pwsh
         run: |
-          $manifest = Import-PowerShellDataFile source/ConnectWiseAutomateAgent.psd1
-          $v = $manifest.ModuleVersion
-          $pre = $manifest.PrivateData.PSData.Prerelease
-          $full = if ($pre) { "$v-$pre" } else { $v }
-          "full_version=$full" >> $env:GITHUB_OUTPUT
-          "tag=v$full" >> $env:GITHUB_OUTPUT
+          $fullVersion = '${{ needs.build.outputs.full_version }}'
+          "full_version=$fullVersion" >> $env:GITHUB_OUTPUT
+          "tag=v$fullVersion" >> $env:GITHUB_OUTPUT
 
       - name: Check if release already exists
         id: check
@@ -240,32 +302,32 @@ jobs:
             "skip=false" >> $env:GITHUB_OUTPUT
           }
 
-      - name: Extract release notes from CHANGELOG
-        if: steps.check.outputs.skip != 'true'
-        shell: pwsh
-        run: |
-          $version = '${{ steps.version.outputs.full_version }}'
-          $lines = Get-Content CHANGELOG.md
-          $pattern = "^## \[$([regex]::Escape($version))\]"
-          $start = -1
-          for ($i = 0; $i -lt $lines.Count; $i++) {
-              if ($lines[$i] -match $pattern) { $start = $i; break }
-          }
-          if ($start -eq -1) {
-              "No changelog entry found for $version" | Out-File release-notes.md
-          } else {
-              $end = $lines.Count
-              for ($i = $start + 1; $i -lt $lines.Count; $i++) {
-                  if ($lines[$i] -match '^## \[') { $end = $i; break }
-              }
-              ($lines[($start+1)..($end-1)] -join "`n").Trim() | Out-File release-notes.md -Encoding UTF8
-          }
-
-      - name: Download single-file artifact
+      - name: Download release notes
         if: steps.check.outputs.skip != 'true'
         uses: actions/download-artifact@v4
         with:
-          name: single-file
+          name: release-notes
+          path: .
+        continue-on-error: true
+
+      - name: Prepare release notes
+        if: steps.check.outputs.skip != 'true'
+        shell: pwsh
+        run: |
+          if (Test-Path 'ReleaseNotes.md') {
+            $content = (Get-Content 'ReleaseNotes.md' -Raw).Trim()
+            if ($content) {
+              $content | Out-File release-notes.md -Encoding UTF8
+              return
+            }
+          }
+          "Prerelease ${{ steps.version.outputs.full_version }}" | Out-File release-notes.md -Encoding UTF8
+
+      - name: Download built module
+        if: steps.check.outputs.skip != 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: module-build
           path: artifact
 
       - name: Create git tag
@@ -281,8 +343,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          $psm1 = Get-ChildItem -Path 'artifact/*/ConnectWiseAutomateAgent.psm1' | Select-Object -First 1
           gh release create '${{ steps.version.outputs.tag }}' `
-            artifact/ConnectWiseAutomateAgent.ps1 `
+            $psm1.FullName `
             --title 'ConnectWiseAutomateAgent ${{ steps.version.outputs.full_version }}' `
             --notes-file release-notes.md `
             --prerelease `
@@ -291,7 +354,7 @@ jobs:
   release-stable:
     name: GitHub Release (Stable)
     if: github.ref == 'refs/heads/main' && github.event_name == 'push' && !failure() && !cancelled()
-    needs: publish-stable
+    needs: [publish-stable, build]
     runs-on: windows-latest
     permissions:
       contents: write
@@ -300,15 +363,13 @@ jobs:
         with:
           ref: ${{ github.sha }}
 
-      - name: Read version from manifest
+      - name: Set version from build outputs
         id: version
         shell: pwsh
         run: |
-          $manifest = Import-PowerShellDataFile source/ConnectWiseAutomateAgent.psd1
-          $v = $manifest.ModuleVersion
-          $full = $v
-          "full_version=$full" >> $env:GITHUB_OUTPUT
-          "tag=v$full" >> $env:GITHUB_OUTPUT
+          $fullVersion = '${{ needs.build.outputs.full_version }}'
+          "full_version=$fullVersion" >> $env:GITHUB_OUTPUT
+          "tag=v$fullVersion" >> $env:GITHUB_OUTPUT
 
       - name: Check if release already exists
         id: check
@@ -325,10 +386,25 @@ jobs:
             "skip=false" >> $env:GITHUB_OUTPUT
           }
 
-      - name: Extract release notes from CHANGELOG
+      - name: Download release notes
+        if: steps.check.outputs.skip != 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: release-notes
+          path: .
+        continue-on-error: true
+
+      - name: Prepare release notes
         if: steps.check.outputs.skip != 'true'
         shell: pwsh
         run: |
+          if (Test-Path 'ReleaseNotes.md') {
+            $content = (Get-Content 'ReleaseNotes.md' -Raw).Trim()
+            if ($content) {
+              $content | Out-File release-notes.md -Encoding UTF8
+              return
+            }
+          }
           $version = '${{ steps.version.outputs.full_version }}'
           $lines = Get-Content CHANGELOG.md
           $pattern = "^## \[$([regex]::Escape($version))\]"
@@ -337,7 +413,7 @@ jobs:
               if ($lines[$i] -match $pattern) { $start = $i; break }
           }
           if ($start -eq -1) {
-              "No changelog entry found for $version" | Out-File release-notes.md
+              "Release $version" | Out-File release-notes.md -Encoding UTF8
           } else {
               $end = $lines.Count
               for ($i = $start + 1; $i -lt $lines.Count; $i++) {
@@ -346,11 +422,11 @@ jobs:
               ($lines[($start+1)..($end-1)] -join "`n").Trim() | Out-File release-notes.md -Encoding UTF8
           }
 
-      - name: Download single-file artifact
+      - name: Download built module
         if: steps.check.outputs.skip != 'true'
         uses: actions/download-artifact@v4
         with:
-          name: single-file
+          name: module-build
           path: artifact
 
       - name: Create git tag
@@ -366,8 +442,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          $psm1 = Get-ChildItem -Path 'artifact/*/ConnectWiseAutomateAgent.psm1' | Select-Object -First 1
           gh release create '${{ steps.version.outputs.tag }}' `
-            artifact/ConnectWiseAutomateAgent.ps1 `
+            $psm1.FullName `
             --title 'ConnectWiseAutomateAgent ${{ steps.version.outputs.full_version }}' `
             --notes-file release-notes.md `
             --verify-tag

@@ -268,7 +268,7 @@ $env:PROCESSOR_ARCHITEW6432  # Non-empty = running 32-bit on 64-bit OS
 ### Module Behavior
 
 - **Module mode:** If imported in 32-bit PowerShell on a 64-bit OS, the module emits a warning. Re-import in 64-bit PowerShell.
-- **Single-file mode:** The script automatically relaunches under the native 64-bit PowerShell host via `Initialize-CWAA`.
+- **Direct download mode (.psm1):** The script automatically relaunches under the native 64-bit PowerShell host via `Initialize-CWAA`.
 
 ### Resolution
 

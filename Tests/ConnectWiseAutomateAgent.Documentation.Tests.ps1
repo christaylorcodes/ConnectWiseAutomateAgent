@@ -32,7 +32,7 @@ Describe 'Documentation Structure' {
         $ModuleRoot = Split-Path -Parent $PSScriptRoot
         $DocsRoot = Join-Path $ModuleRoot 'Docs'
         $DocsHelp = Join-Path $DocsRoot 'Help'
-        # Use the known list of public functions for doc checks. In single-file mode,
+        # Use the known list of public functions for doc checks. In built module mode,
         # ExportedFunctions includes private helpers that don't have docs in Docs/Help/.
         $PublicFunctions = @(
             'Hide-CWAAAddRemove', 'Rename-CWAAAddRemove', 'Show-CWAAAddRemove',

@@ -23,10 +23,11 @@ BuildWorkflow:
   build:
     - Clean
     - Build_ModuleOutput_ModuleBuilder
-    - Build_SingleFile_Distribution
+    - Create_changelog_release_output
 
   test:
     - Pester_Tests_Stop_On_Fail
+    - Pester_if_Code_Coverage_Under_Threshold
 
   publish:
     - publish_module_to_gallery
@@ -69,6 +70,9 @@ Pester:
   OutputFile: output/testResults/testResults.xml
   OutputFormat: NUnitXml
   PassThru: true
+  CodeCoverageThreshold: 0
+  CodeCoverageOutputFile: output/testResults/JaCoCo_coverage.xml
+  CodeCoverageOutputFileEncoding: ascii
 
 ####################################################
 #       PSScriptAnalyzer Configuration            #

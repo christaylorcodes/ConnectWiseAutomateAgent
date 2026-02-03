@@ -157,12 +157,12 @@ Install-Module ConnectWiseAutomateAgent -RequiredVersion '1.0.0' -Force -Scope A
 Import-Module ConnectWiseAutomateAgent -RequiredVersion '1.0.0'
 ```
 
-**Single-file (restricted networks):**
+**Direct download (restricted networks):**
 
 ```powershell
 # Download from a version-locked GitHub Release — the URL is immutable after publication
 $ModuleVersion = '1.0.0'
-$URI = "https://github.com/christaylorcodes/ConnectWiseAutomateAgent/releases/download/v$ModuleVersion/ConnectWiseAutomateAgent.ps1"
+$URI = "https://github.com/christaylorcodes/ConnectWiseAutomateAgent/releases/download/v$ModuleVersion/ConnectWiseAutomateAgent.psm1"
 Invoke-RestMethod $URI | Invoke-Expression
 ```
 

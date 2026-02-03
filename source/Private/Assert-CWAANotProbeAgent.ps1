@@ -51,12 +51,8 @@ function Assert-CWAANotProbeAgent {
                 Write-Output "Probe Agent Detected. $ActionName Forced."
             }
             else {
-                if ($WhatIfPreference -ne $True) {
-                    Write-Error -Exception ([System.OperationCanceledException]"Probe Agent Detected. $ActionName Denied.") -ErrorAction Stop
-                }
-                else {
-                    Write-Error -Exception ([System.OperationCanceledException]"What If: Probe Agent Detected. $ActionName Denied.") -ErrorAction Stop
-                }
+                $prefix = if ($WhatIfPreference) { 'What If: ' } else { '' }
+                Write-Error -Exception ([System.OperationCanceledException]"${prefix}Probe Agent Detected. $ActionName Denied.") -ErrorAction Stop
             }
         }
     }

@@ -6,13 +6,13 @@
 
 .DESCRIPTION
     Tests module manifest, import, exports, aliases, function structure,
-    parameter validation, and single-file build validation.
+    parameter validation, and built module validation.
 
     Supports dual-mode testing via $env:CWAA_TEST_LOAD_METHOD:
-    - 'Module' (default): Import-Module from .psd1 manifest
-    - 'SingleFile': Load concatenated .ps1 via dynamic module
+    - 'Module' (default): Import-Module from source .psd1 manifest
+    - 'BuiltModule': Import-Module from compiled ModuleBuilder output
 
-    Module-only tests are automatically skipped in SingleFile mode.
+    Source-only tests (file mapping) are skipped in BuiltModule mode.
 
 .NOTES
     Run with:
@@ -20,14 +20,14 @@
 #>
 
 BeforeDiscovery {
-    $script:IsSingleFileMode = ($env:CWAA_TEST_LOAD_METHOD -eq 'SingleFile')
-    $script:IsModuleMode = -not $script:IsSingleFileMode
+    $script:IsBuiltModuleMode = ($env:CWAA_TEST_LOAD_METHOD -eq 'BuiltModule')
+    $script:IsModuleMode = -not $script:IsBuiltModuleMode
 }
 
 BeforeAll {
     $script:BootstrapResult = & "$PSScriptRoot\TestBootstrap.ps1"
-    $script:IsSingleFileMode = ($script:BootstrapResult.LoadMethod -eq 'SingleFile')
-    $script:IsModuleMode = -not $script:IsSingleFileMode
+    $script:IsBuiltModuleMode = ($script:BootstrapResult.LoadMethod -eq 'BuiltModule')
+    $script:IsModuleMode = -not $script:IsBuiltModuleMode
     $ModuleName = $script:BootstrapResult.ModuleName
 }
 
@@ -40,7 +40,7 @@ AfterAll {
 # =============================================================================
 Describe 'Module: ConnectWiseAutomateAgent' {
 
-    Context 'Module Manifest' -Skip:$script:IsSingleFileMode {
+    Context 'Module Manifest' -Skip:$script:IsBuiltModuleMode {
         BeforeAll {
             $ModuleRoot = Split-Path -Parent $PSScriptRoot
             $ManifestPath = Join-Path $ModuleRoot 'source\ConnectWiseAutomateAgent.psd1'
@@ -159,7 +159,7 @@ Describe 'Module: ConnectWiseAutomateAgent' {
             $cmd | Should -Not -BeNullOrEmpty
         }
 
-        It 'does not export Initialize-CWAANetworking as a public function' -Skip:$script:IsSingleFileMode {
+        It 'does not export Initialize-CWAANetworking as a public function' -Skip:$script:IsBuiltModuleMode {
             $exported = (Get-Module 'ConnectWiseAutomateAgent').ExportedFunctions.Keys
             $exported | Should -Not -Contain 'Initialize-CWAANetworking'
         }
@@ -202,12 +202,12 @@ Describe 'Module: ConnectWiseAutomateAgent' {
             $ExportedFunctions = (Get-Module 'ConnectWiseAutomateAgent').ExportedFunctions.Keys
         }
 
-        It 'exports exactly 30 functions' -Skip:$script:IsSingleFileMode {
-            $ExportedFunctions | Should -HaveCount 30
+        It 'exports the expected number of functions' -Skip:$script:IsBuiltModuleMode {
+            $ExportedFunctions | Should -HaveCount $ExpectedFunctions.Count
         }
 
-        It 'exports at least 30 functions (includes private in single-file mode)' -Skip:$script:IsModuleMode {
-            $ExportedFunctions.Count | Should -BeGreaterOrEqual 30
+        It 'exports at least the expected number of functions (includes private in built module mode)' -Skip:$script:IsModuleMode {
+            $ExportedFunctions.Count | Should -BeGreaterOrEqual $ExpectedFunctions.Count
         }
 
         It 'exports <_>' -ForEach $ExpectedFunctions {
@@ -254,12 +254,12 @@ Describe 'Module: ConnectWiseAutomateAgent' {
             $ExportedAliases = (Get-Module 'ConnectWiseAutomateAgent').ExportedAliases.Keys
         }
 
-        It 'exports exactly 32 aliases' -Skip:$script:IsSingleFileMode {
-            $ExportedAliases | Should -HaveCount 32
+        It 'exports the expected number of aliases' -Skip:$script:IsBuiltModuleMode {
+            $ExportedAliases | Should -HaveCount $ExpectedAliases.Count
         }
 
-        It 'exports at least 32 aliases' -Skip:$script:IsModuleMode {
-            $ExportedAliases.Count | Should -BeGreaterOrEqual 32
+        It 'exports at least the expected number of aliases' -Skip:$script:IsModuleMode {
+            $ExportedAliases.Count | Should -BeGreaterOrEqual $ExpectedAliases.Count
         }
 
         It 'exports alias <_>' -ForEach $ExpectedAliases {
@@ -267,7 +267,7 @@ Describe 'Module: ConnectWiseAutomateAgent' {
         }
     }
 
-    Context 'Function-to-File Mapping' -Skip:$script:IsSingleFileMode {
+    Context 'Function-to-File Mapping' -Skip:$script:IsBuiltModuleMode {
         BeforeAll {
             $ModuleRoot = Split-Path -Parent $PSScriptRoot
             $PublicPath = Join-Path $ModuleRoot 'source\Public'
@@ -290,25 +290,48 @@ Describe 'Module: ConnectWiseAutomateAgent' {
         }
     }
 
-    Context 'Single-File Build Validation' -Skip:$script:IsModuleMode {
+    Context 'Built Module Validation' -Skip:$script:IsModuleMode {
         BeforeAll {
             $RepoRoot = Split-Path -Parent $PSScriptRoot
-            $SingleFilePath = Join-Path $RepoRoot 'output\ConnectWiseAutomateAgent.ps1'
+            $BuiltPsm1 = Get-ChildItem -Path (Join-Path $RepoRoot 'output\ConnectWiseAutomateAgent\*\ConnectWiseAutomateAgent.psm1') -ErrorAction SilentlyContinue |
+                Select-Object -First 1
+            $BuiltPsd1 = Get-ChildItem -Path (Join-Path $RepoRoot 'output\ConnectWiseAutomateAgent\*\ConnectWiseAutomateAgent.psd1') -ErrorAction SilentlyContinue |
+                Select-Object -First 1
+            $PublicPath = Join-Path $RepoRoot 'source\Public'
+            $ExpectedFunctionCount = @(Get-ChildItem -Path $PublicPath -Filter '*.ps1' -Recurse -File).Count
+            # Alias count: 1 per function + 2 extra for Redo-CWAA (Reinstall-CWAA, Reinstall-LTService)
+            $ExpectedAliasCount = $ExpectedFunctionCount + 2
         }
 
-        It 'single-file build exists' {
-            $SingleFilePath | Should -Exist
+        It 'compiled .psm1 exists in output' {
+            $BuiltPsm1 | Should -Not -BeNullOrEmpty
+            $BuiltPsm1.FullName | Should -Exist
         }
 
-        It 'single-file ends with Initialize-CWAA call' {
-            $lastLines = Get-Content $SingleFilePath -Tail 5
-            ($lastLines -join "`n") | Should -Match 'Initialize-CWAA' -Because 'single-file must call initialization at the end'
+        It 'compiled .psd1 exists in output' {
+            $BuiltPsd1 | Should -Not -BeNullOrEmpty
+            $BuiltPsd1.FullName | Should -Exist
         }
 
-        It 'private helper functions are available' {
-            $exported = (Get-Module 'ConnectWiseAutomateAgent').ExportedFunctions.Keys
-            $exported | Should -Contain 'Initialize-CWAA'
-            $exported | Should -Contain 'Initialize-CWAANetworking'
+        It 'compiled .psm1 ends with Initialize-CWAA call' {
+            $lastLines = Get-Content $BuiltPsm1.FullName -Tail 5
+            ($lastLines -join "`n") | Should -Match 'Initialize-CWAA' -Because 'compiled module must call initialization at the end'
+        }
+
+        It 'built manifest has explicit FunctionsToExport (not wildcards)' {
+            $manifest = Import-PowerShellDataFile $BuiltPsd1.FullName
+            $manifest.FunctionsToExport | Should -Not -Contain '*'
+            $manifest.FunctionsToExport.Count | Should -Be $ExpectedFunctionCount
+        }
+
+        It 'exports the expected number of functions' {
+            $ExportedFunctions = (Get-Module 'ConnectWiseAutomateAgent').ExportedFunctions.Keys
+            $ExportedFunctions | Should -HaveCount $ExpectedFunctionCount
+        }
+
+        It 'exports the expected number of aliases' {
+            $ExportedAliases = (Get-Module 'ConnectWiseAutomateAgent').ExportedAliases.Keys
+            $ExportedAliases | Should -HaveCount $ExpectedAliasCount
         }
     }
 }

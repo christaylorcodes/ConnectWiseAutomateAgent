@@ -12,7 +12,6 @@ Scratch\.ps1
 
 # Build output
 output/
-/ConnectWiseAutomateAgent.ps1
 
 # Build artifacts
 *.log

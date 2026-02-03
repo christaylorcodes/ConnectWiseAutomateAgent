@@ -37,12 +37,8 @@ function Test-CWAAServiceExists {
         }
 
         if ($WriteErrorOnMissing) {
-            if ($WhatIfPreference -ne $True) {
-                Write-Error "Services NOT Found."
-            }
-            else {
-                Write-Error "What If: Services NOT Found."
-            }
+            $prefix = if ($WhatIfPreference) { 'What If: ' } else { '' }
+            Write-Error "${prefix}Services NOT Found."
         }
         return $false
     }

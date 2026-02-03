@@ -40,7 +40,7 @@ function Initialize-CWAA {
     # WOW64 relaunch: When running as 32-bit PowerShell on a 64-bit OS, many registry
     # and file system operations target the wrong hive/path. Re-launch under native
     # 64-bit PowerShell to ensure consistent behavior with the Automate agent services.
-    # Note: This relaunch works correctly in single-file mode (ConnectWiseAutomateAgent.ps1).
+    # Note: This relaunch works correctly in direct download mode (.psm1 via Invoke-Expression).
     # In module mode (Import-Module), the .psm1 emits a warning instead since relaunch
     # cannot re-invoke Import-Module from within a function.
     if ($env:PROCESSOR_ARCHITEW6432 -match '64' -and [IntPtr]::Size -ne 8) {
@@ -85,7 +85,7 @@ function Initialize-CWAA {
         Exit $ExitResult
     }
 
-    # Module-level constants â€” centralized to avoid duplication across functions.
+    # Module-level constants -- centralized to avoid duplication across functions.
     # These are cheap to create with no side effects, so they run at module load.
     $Script:CWAARegistryRoot          = 'HKLM:\SOFTWARE\LabTech\Service'
     $Script:CWAARegistrySettings      = 'HKLM:\SOFTWARE\LabTech\Service\Settings'
@@ -155,13 +155,13 @@ function Initialize-CWAA {
     # All service names including LabVNC — for full service cleanup in Uninstall-CWAA.
     $Script:CWAAAllServiceNames = @('LTService', 'LTSvcMon', 'LabVNC')
 
-    # Service credential storage â€" populated on-demand by Get-CWAAProxy
+    # Service credential storage -- populated on-demand by Get-CWAAProxy
     $Script:LTServiceKeys = [PSCustomObject]@{
         ServerPasswordString = ''
         PasswordString       = ''
     }
 
-    # Proxy configuration â€” populated on-demand by Initialize-CWAANetworking
+    # Proxy configuration -- populated on-demand by Initialize-CWAANetworking
     $Script:LTProxy = [PSCustomObject]@{
         ProxyServerURL = ''
         ProxyUsername   = ''

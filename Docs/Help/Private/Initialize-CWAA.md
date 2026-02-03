@@ -19,7 +19,7 @@ Initialize-CWAA [<CommonParameters>]
 ## DESCRIPTION
 Initialize-CWAA is the Phase 1 initialization function called once at module import time by ConnectWiseAutomateAgent.psm1. It creates all `$Script:CWAA*` constants (registry paths, file paths, service names, validation patterns), initializes empty state objects for credential storage (`$Script:LTServiceKeys`) and proxy configuration (`$Script:LTProxy`), and sets the deferred networking flags to `$False`.
 
-This function also handles the WOW64 relaunch guard: when running as 32-bit PowerShell on a 64-bit OS, it re-launches the script under the native 64-bit PowerShell host. This is critical because the Automate agent's registry keys and file paths differ between 32-bit and 64-bit views. The relaunch works in single-file mode (`ConnectWiseAutomateAgent.ps1`); in module mode the `.psm1` emits a warning instead.
+This function also handles the WOW64 relaunch guard: when running as 32-bit PowerShell on a 64-bit OS, it re-launches the script under the native 64-bit PowerShell host. This is critical because the Automate agent's registry keys and file paths differ between 32-bit and 64-bit views. The relaunch works in direct download mode (`.psm1` via `Invoke-Expression`); in module mode the `.psm1` emits a warning instead.
 
 Phase 2 initialization (networking, SSL, proxy) is handled separately by `Initialize-CWAANetworking`, which runs on-demand at first networking call.
 
@@ -30,7 +30,7 @@ Phase 2 initialization (networking, SSL, proxy) is handled separately by `Initia
 ### Example 1
 ```powershell
 # Called automatically by the module — not typically invoked directly.
-# In single-file mode, Initialize-CWAA is appended at the end of ConnectWiseAutomateAgent.ps1.
+# In direct download mode, Initialize-CWAA is called at the end of the compiled .psm1.
 Initialize-CWAA
 ```
 

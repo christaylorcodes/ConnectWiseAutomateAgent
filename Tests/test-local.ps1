@@ -31,7 +31,7 @@ if ($Quick) {
 
 # Dual mode: delegate to Invoke-AllTests.ps1
 if ($DualMode) {
-    Write-Host "`n[DUAL MODE] Running Module + SingleFile test modes..." -ForegroundColor Yellow
+    Write-Host "`n[DUAL MODE] Running Module + BuiltModule test modes..." -ForegroundColor Yellow
     $allTestsScript = Join-Path $PSScriptRoot 'Invoke-AllTests.ps1'
     & $allTestsScript
     exit $LASTEXITCODE

@@ -81,7 +81,7 @@ ConnectWiseAutomateAgent/
 
 ### Module Loading (Two-Phase)
 
-**Phase 1 (module import -- fast, no side effects):** `ConnectWiseAutomateAgent.psm1` dot-sources every `.ps1` from `Public/` and `Private/` recursively (in source mode; ModuleBuilder merges them during build), emits a 32-bit warning if running under WOW64 in module mode, then calls `Initialize-CWAA`. This creates centralized constants (`$Script:CWAA*`), empty state objects (`$Script:LTServiceKeys`, `$Script:LTProxy`), the PS version guard, and the WOW64 32-to-64-bit relaunch (single-file mode only). No network objects are created and no registry reads occur.
+**Phase 1 (module import -- fast, no side effects):** `ConnectWiseAutomateAgent.psm1` dot-sources every `.ps1` from `Public/` and `Private/` recursively (in source mode; ModuleBuilder merges them during build), emits a 32-bit warning if running under WOW64 in module mode, then calls `Initialize-CWAA`. This creates centralized constants (`$Script:CWAA*`), empty state objects (`$Script:LTServiceKeys`, `$Script:LTProxy`), the PS version guard, and the WOW64 32-to-64-bit relaunch (direct download mode only). No network objects are created and no registry reads occur.
 
 **Phase 2 (on-demand -- first networking call):** `Initialize-CWAANetworking` (private) is called in the `Begin` block of networking functions (`Install-CWAA`, `Uninstall-CWAA`, `Update-CWAA`, `Set-CWAAProxy`). On first call it performs SSL certificate validation bypass, TLS protocol enablement, creates `$Script:LTWebProxy` and `$Script:LTServiceNetWebClient`, and runs `Get-CWAAProxy` to discover proxy settings from the installed agent. The `$Script:CWAANetworkInitialized` flag ensures this runs only once per session.
 
@@ -105,11 +105,15 @@ CI is intentionally lightweight (smoke test, build, publish). Full testing is lo
 
 ### Common Patterns
 
-**WOW64 Handling.** The module detects 32-bit PowerShell on 64-bit OS. In single-file mode, it auto-relaunches under 64-bit PowerShell. In module mode, it emits a warning (cannot relaunch `Import-Module`). Registry and file operations must account for WOW64 redirection.
+**WOW64 Handling.** The module detects 32-bit PowerShell on 64-bit OS. In direct download mode (.psm1 via IEX), it auto-relaunches under 64-bit PowerShell. In module mode, it emits a warning (cannot relaunch `Import-Module`). Registry and file operations must account for WOW64 redirection.
 
 **SSL Callback Persistence.** The SSL certificate validation callback is compiled via `Add-Type` in `Initialize-CWAANetworking`. Because compiled .NET types cannot be unloaded from an AppDomain, the callback persists for the lifetime of the PowerShell process -- even across module re-imports.
 
 **Dual-Mode Testing.** The module ships as both a PSGallery module and a single `.ps1` file. Both loading methods must be tested. See `Get-Help .\Tests\TestBootstrap.ps1` for details on load methods.
+
+**.psm1 Module Scoping.** PowerShell treats `.psm1` files differently from `.ps1` when dot-sourced. Dot-sourcing a `.psm1` applies module-scoping rules that make functions invisible to `Get-Command` and the `Function:` drive -- even in the global scope. This means `. .\Module.psm1` does not make functions callable the way `. .\Script.ps1` does. To execute `.psm1` content without module scoping, read the file as a string and execute via `Invoke-Expression` or `[scriptblock]::Create()`. The cross-version tests use the scriptblock approach for this reason.
+
+**System-Installed Module Interference.** If an older version of the module is installed system-wide (e.g., in `C:\Program Files\WindowsPowerShell\Modules\`), `Get-Command` may return functions from the installed version via auto-discovery instead of functions defined in the current session. This can cause tests to report incorrect function counts matching the old version rather than the current source. Always verify which module version `Get-Command` is resolving from by checking the `.Source` or `.ModuleName` property on returned commands.
 
 ## Code Conventions
 
@@ -164,7 +168,7 @@ Parse the JSON `success` field. If `false`, read `failedTests` and `analyzerErro
 
 ```powershell
 ./Tests/test-local.ps1                # Full: build + analyze + test
-./Tests/test-local.ps1 -DualMode      # Also test SingleFile loading
+./Tests/test-local.ps1 -DualMode      # Also test BuiltModule loading
 ```
 
 See `Get-Help .\Tests\test-local.ps1` for flags: `-SkipBuild`, `-SkipTests`, `-SkipAnalyze`, `-Quick`.

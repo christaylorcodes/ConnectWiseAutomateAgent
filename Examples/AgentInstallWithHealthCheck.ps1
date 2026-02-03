@@ -20,7 +20,7 @@
 #   - Windows PowerShell 3.0 or later
 #   - Administrator privileges (for agent install and scheduled task creation)
 #   - Internet access to the Automate server and PowerShell Gallery (or use
-#     the single-file fallback)
+#     the direct download fallback)
 # ==============================================================================
 
 # --- Configuration -----------------------------------------------------------
@@ -33,7 +33,7 @@ $InstallParameters = @{
 # ^^ This info is sensitive -- take precautions to secure it ^^
 
 $HealthCheckIntervalHours = 6   # How often the health check runs (default: 6)
-$TaskName = 'CWAAHealthCheck'   # Scheduled task name (default: CWAAHealthCheck)
+$TaskName = 'AAutomate'   # Scheduled task name (default: AAutomate)
 
 # --- Module Loading ----------------------------------------------------------
 
@@ -67,7 +67,7 @@ catch {
     # WARNING: Invoke-Expression executes downloaded code. See security note above.
     # This fallback is ONLY for systems where the PowerShell Gallery is unavailable.
     # The URL is pinned to a specific release tag — it will not change after publication.
-    $URI = "https://github.com/christaylorcodes/ConnectWiseAutomateAgent/releases/download/v$ModuleVersion/ConnectWiseAutomateAgent.ps1"
+    $URI = "https://github.com/christaylorcodes/ConnectWiseAutomateAgent/releases/download/v$ModuleVersion/ConnectWiseAutomateAgent.psm1"
     (New-Object Net.WebClient).DownloadString($URI) | Invoke-Expression
 }
 

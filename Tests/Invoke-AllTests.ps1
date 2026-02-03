@@ -4,11 +4,11 @@
 
 .DESCRIPTION
     Executes the entire Pester test suite twice — once in Module mode (standard
-    Import-Module from manifest) and once in SingleFile mode (dynamic module from
-    concatenated build output). Each mode runs in its own pwsh process to prevent
-    .NET state leakage (SSL callbacks, compiled types, etc.).
+    Import-Module from source manifest) and once in BuiltModule mode (Import-Module
+    from the compiled ModuleBuilder output). Each mode runs in its own pwsh process
+    to prevent .NET state leakage (SSL callbacks, compiled types, etc.).
 
-    The single-file build is regenerated automatically before the SingleFile run.
+    The module is rebuilt automatically before the BuiltModule run.
 
 .PARAMETER ExcludeTag
     Pester tags to exclude. Defaults to 'Live'.
@@ -17,7 +17,7 @@
     Path to test files. Defaults to the Tests directory containing this script.
 
 .PARAMETER SkipBuild
-    Skip the single-file rebuild before the SingleFile mode run.
+    Skip the module rebuild before the BuiltModule mode run.
 
 .EXAMPLE
     .\Tests\Invoke-AllTests.ps1
@@ -29,7 +29,7 @@
 
 .EXAMPLE
     .\Tests\Invoke-AllTests.ps1 -SkipBuild
-    Runs both modes without rebuilding the single-file first.
+    Runs both modes without rebuilding the module first.
 
 .NOTES
     Exit code is non-zero if any test fails in either mode.
@@ -95,12 +95,12 @@ Invoke-Pester -Configuration `$config
 }
 
 # ============================================
-# Mode 1: Module (standard Import-Module)
+# Mode 1: Module (standard Import-Module from source)
 # ============================================
-$moduleExitCode = Invoke-PesterInProcess -Mode 'Module' -Label 'Mode 1/2: Module Import'
+$moduleExitCode = Invoke-PesterInProcess -Mode 'Module' -Label 'Mode 1/2: Module Import (Source)'
 
 # ============================================
-# Rebuild single-file before SingleFile mode
+# Rebuild module before BuiltModule mode
 # ============================================
 if (-not $SkipBuild) {
     Write-Host "`n  Rebuilding module (Sampler/ModuleBuilder)..." -ForegroundColor Gray
@@ -118,9 +118,9 @@ if (-not $SkipBuild) {
 }
 
 # ============================================
-# Mode 2: SingleFile (dynamic module from .ps1)
+# Mode 2: BuiltModule (compiled ModuleBuilder output)
 # ============================================
-$singleFileExitCode = Invoke-PesterInProcess -Mode 'SingleFile' -Label 'Mode 2/2: SingleFile (Dynamic Module)'
+$builtModuleExitCode = Invoke-PesterInProcess -Mode 'BuiltModule' -Label 'Mode 2/2: Built Module (Compiled Output)'
 
 # ============================================
 # Summary
@@ -130,16 +130,16 @@ Write-Host "  Summary" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 
 $moduleStatus = if ($moduleExitCode -eq 0) { 'PASS' } else { 'FAIL' }
-$singleFileStatus = if ($singleFileExitCode -eq 0) { 'PASS' } else { 'FAIL' }
+$builtModuleStatus = if ($builtModuleExitCode -eq 0) { 'PASS' } else { 'FAIL' }
 $moduleColor = if ($moduleExitCode -eq 0) { 'Green' } else { 'Red' }
-$singleFileColor = if ($singleFileExitCode -eq 0) { 'Green' } else { 'Red' }
+$builtModuleColor = if ($builtModuleExitCode -eq 0) { 'Green' } else { 'Red' }
 
-Write-Host "  Module mode:     " -NoNewline; Write-Host $moduleStatus -ForegroundColor $moduleColor
-Write-Host "  SingleFile mode: " -NoNewline; Write-Host $singleFileStatus -ForegroundColor $singleFileColor
+Write-Host "  Module mode:      " -NoNewline; Write-Host $moduleStatus -ForegroundColor $moduleColor
+Write-Host "  BuiltModule mode: " -NoNewline; Write-Host $builtModuleStatus -ForegroundColor $builtModuleColor
 Write-Host ""
 
 # Exit with non-zero if either mode failed
-$finalExitCode = if ($moduleExitCode -ne 0 -or $singleFileExitCode -ne 0) { 1 } else { 0 }
+$finalExitCode = if ($moduleExitCode -ne 0 -or $builtModuleExitCode -ne 0) { 1 } else { 0 }
 
 if ($finalExitCode -eq 0) {
     Write-Host "  All tests passed in both modes." -ForegroundColor Green

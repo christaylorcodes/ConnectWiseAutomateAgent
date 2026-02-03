@@ -11,8 +11,10 @@
 
     Tests three loading methods per PowerShell version:
     - Module Import: Import-Module from .psd1 manifest (PSGallery install path)
-    - SingleFile Dot-Source: . .\ConnectWiseAutomateAgent.ps1 (local file execution)
-    - SingleFile Invoke-Expression: Get-Content | IEX (web download path — the primary
+    - Built Module Dot-Source: Content loaded as scriptblock (local file execution).
+      Uses [scriptblock]::Create() because PowerShell applies module-scoping to .psm1
+      files when dot-sourced directly, making functions invisible to Get-Command.
+    - Built Module Invoke-Expression: Get-Content | IEX (web download path — the primary
       method for systems without gallery access: Invoke-RestMethod <url> | IEX)
 
     The module targets PowerShell 3.0+ but these tests exercise whichever
@@ -48,16 +50,26 @@ BeforeDiscovery {
         $script:PSVersions += @{ Name = 'PowerShell 7 preview'; Exe = $ps7preview }
     }
 
-    # Check if single-file build exists (needed for SingleFile contexts)
+    # Check if built module exists (needed for Built Module contexts)
     $repoRoot = Split-Path -Parent $PSScriptRoot
-    $script:SingleFileExists = Test-Path (Join-Path $repoRoot 'output\ConnectWiseAutomateAgent.ps1')
+    $script:BuiltModuleExists = $null -ne (
+        Get-ChildItem -Path (Join-Path $repoRoot 'output\ConnectWiseAutomateAgent\*\ConnectWiseAutomateAgent.psm1') -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+    )
 }
 
 BeforeAll {
     $ModuleName = 'ConnectWiseAutomateAgent'
     $ModuleRoot = Split-Path -Parent $PSScriptRoot
     $script:ModulePsd1 = Join-Path $ModuleRoot "source\$ModuleName.psd1"
-    $script:SingleFilePath = Join-Path $ModuleRoot "output\$ModuleName.ps1"
+    $script:BuiltModulePsm1 = Get-ChildItem -Path (Join-Path $ModuleRoot "output\$ModuleName\*\$ModuleName.psm1") -ErrorAction SilentlyContinue |
+        Sort-Object { [version](Split-Path (Split-Path $_.FullName -Parent) -Leaf) } -Descending |
+        Select-Object -First 1 -ExpandProperty FullName
+
+    $PublicPath = Join-Path $ModuleRoot 'source\Public'
+    $script:ExpectedFunctionCount = @(Get-ChildItem -Path $PublicPath -Filter '*.ps1' -Recurse -File).Count
+    # Alias count: 1 per function + 2 extra for Redo-CWAA (Reinstall-CWAA, Reinstall-LTService)
+    $script:ExpectedAliasCount = $script:ExpectedFunctionCount + 2
 
     # Helper: Run a verification script in a child process and parse JSON output.
     # Defined inside BeforeAll so Pester 5 scoping makes it available to test blocks.
@@ -174,14 +186,14 @@ Catch {
             $script:Result.ModuleVersion | Should -Be $expectedVersion
         }
 
-        It 'exports all 30 functions' {
+        It 'exports all expected functions' {
             if (-not $script:Result.ModuleLoaded) { Set-ItResult -Skipped -Because 'module failed to import' }
-            $script:Result.FunctionCount | Should -Be 30
+            $script:Result.FunctionCount | Should -Be $script:ExpectedFunctionCount
         }
 
-        It 'exports all 32 aliases' {
+        It 'exports all expected aliases' {
             if (-not $script:Result.ModuleLoaded) { Set-ItResult -Skipped -Because 'module failed to import' }
-            $script:Result.AliasCount | Should -Be 32
+            $script:Result.AliasCount | Should -Be $script:ExpectedAliasCount
         }
 
         It 'exports the ConvertTo-CWAASecurity function' {
@@ -223,18 +235,22 @@ Catch {
 }
 
 # =============================================================================
-# Cross-Version SingleFile Dot-Source (local file execution)
+# Cross-Version Built Module Dot-Source (local file execution)
 # =============================================================================
-Describe 'Cross-Version Compatibility - SingleFile Dot-Source' -Skip:(-not $script:SingleFileExists) {
+Describe 'Cross-Version Compatibility - Built Module Dot-Source' -Skip:(-not $script:BuiltModuleExists) {
 
     Context '<Name> - Dot-Source' -ForEach $script:PSVersions {
 
         BeforeAll {
             $currentExe = $Exe
-            $singleFile = $script:SingleFilePath
+            $builtPsm1 = $script:BuiltModulePsm1
 
-            # Dot-source the single file in a child process — this is how users run
-            # the file locally when they don't have gallery access.
+            # Load the compiled .psm1 content as a scriptblock in a child process.
+            # This simulates how users run the file locally without gallery access.
+            # We use [scriptblock]::Create() instead of direct ". file.psm1" because
+            # PowerShell applies module-scoping rules to .psm1 files that make
+            # functions invisible to Get-Command. The scriptblock approach matches
+            # the real-world behavior when content is loaded as text.
             $verifyScript = @"
 `$ErrorActionPreference = 'Stop'
 `$results = [ordered]@{
@@ -253,7 +269,8 @@ Describe 'Cross-Version Compatibility - SingleFile Dot-Source' -Skip:(-not $scri
 if (-not `$results.PSEdition) { `$results.PSEdition = 'Desktop' }
 
 Try {
-    . '$($singleFile -replace "'","''")'
+    `$content = Get-Content '$($builtPsm1 -replace "'","''")' -Raw
+    . ([scriptblock]::Create(`$content))
     `$results.Success = `$true
 
     # In dot-source mode, functions are in the session scope — find CWAA functions
@@ -296,33 +313,33 @@ Catch {
             $script:Result.PSVersion | Should -Not -BeNullOrEmpty
         }
 
-        It 'loads the single file without errors' {
+        It 'loads the built module without errors' {
             $script:Result.Success | Should -BeTrue -Because $script:Result.ImportError
         }
 
-        It 'makes all 30 public functions available' {
-            if (-not $script:Result.Success) { Set-ItResult -Skipped -Because 'single file failed to load' }
-            $script:Result.FunctionCount | Should -BeGreaterOrEqual 30
+        It 'makes all public functions available' {
+            if (-not $script:Result.Success) { Set-ItResult -Skipped -Because 'built module failed to load' }
+            $script:Result.FunctionCount | Should -BeGreaterOrEqual $script:ExpectedFunctionCount
         }
 
         It 'has the ConvertTo-CWAASecurity function' {
-            if (-not $script:Result.Success) { Set-ItResult -Skipped -Because 'single file failed to load' }
+            if (-not $script:Result.Success) { Set-ItResult -Skipped -Because 'built module failed to load' }
             $script:Result.Functions | Should -Contain 'ConvertTo-CWAASecurity'
         }
 
         It 'has the Install-CWAA function' {
-            if (-not $script:Result.Success) { Set-ItResult -Skipped -Because 'single file failed to load' }
+            if (-not $script:Result.Success) { Set-ItResult -Skipped -Because 'built module failed to load' }
             $script:Result.Functions | Should -Contain 'Install-CWAA'
         }
 
         It 'has legacy aliases available' {
-            if (-not $script:Result.Success) { Set-ItResult -Skipped -Because 'single file failed to load' }
+            if (-not $script:Result.Success) { Set-ItResult -Skipped -Because 'built module failed to load' }
             $script:Result.Aliases | Should -Contain 'Install-LTService'
             $script:Result.Aliases | Should -Contain 'ConvertTo-LTSecurity'
         }
 
         It 'encrypt/decrypt round-trip succeeds' {
-            if (-not $script:Result.Success) { Set-ItResult -Skipped -Because 'single file failed to load' }
+            if (-not $script:Result.Success) { Set-ItResult -Skipped -Because 'built module failed to load' }
             $errorDetail = if ($script:Result.TestErrors) { $script:Result.TestErrors -join '; ' } else { 'no errors' }
             $script:Result.EncryptDecrypt | Should -BeTrue -Because $errorDetail
         }
@@ -330,17 +347,17 @@ Catch {
 }
 
 # =============================================================================
-# Cross-Version SingleFile Invoke-Expression (web download path)
+# Cross-Version Built Module Invoke-Expression (web download path)
 # This is the primary method for systems without gallery access:
-#   Invoke-RestMethod 'https://.../ConnectWiseAutomateAgent.ps1' | Invoke-Expression
+#   Invoke-RestMethod 'https://.../ConnectWiseAutomateAgent.psm1' | Invoke-Expression
 # =============================================================================
-Describe 'Cross-Version Compatibility - SingleFile Invoke-Expression' -Skip:(-not $script:SingleFileExists) {
+Describe 'Cross-Version Compatibility - Built Module Invoke-Expression' -Skip:(-not $script:BuiltModuleExists) {
 
     Context '<Name> - Invoke-Expression' -ForEach $script:PSVersions {
 
         BeforeAll {
             $currentExe = $Exe
-            $singleFile = $script:SingleFilePath
+            $builtPsm1 = $script:BuiltModulePsm1
 
             # Simulate the IEX web-download path: Get-Content | Invoke-Expression
             # This is different from dot-sourcing — $MyInvocation has no file context,
@@ -364,7 +381,7 @@ if (-not `$results.PSEdition) { `$results.PSEdition = 'Desktop' }
 
 Try {
     # Read file content as string and execute via IEX — simulates web download
-    `$scriptContent = Get-Content '$($singleFile -replace "'","''")' -Raw
+    `$scriptContent = Get-Content '$($builtPsm1 -replace "'","''")' -Raw
     Invoke-Expression `$scriptContent
     `$results.Success = `$true
 
@@ -412,9 +429,9 @@ Catch {
             $script:Result.Success | Should -BeTrue -Because $script:Result.ImportError
         }
 
-        It 'makes all 30 public functions available' {
+        It 'makes all public functions available' {
             if (-not $script:Result.Success) { Set-ItResult -Skipped -Because 'IEX execution failed' }
-            $script:Result.FunctionCount | Should -BeGreaterOrEqual 30
+            $script:Result.FunctionCount | Should -BeGreaterOrEqual $script:ExpectedFunctionCount
         }
 
         It 'has the ConvertTo-CWAASecurity function' {
@@ -456,7 +473,7 @@ Describe 'Version Coverage' {
         $ps7 | Should -Not -BeNullOrEmpty -Because 'PowerShell 7 should be installed for cross-version testing'
     }
 
-    It 'single-file build exists for SingleFile tests' {
-        $script:SingleFilePath | Should -Exist -Because 'Run ./build.ps1 -Tasks build to create the single-file distribution'
+    It 'built module .psm1 exists for Built Module tests' {
+        $script:BuiltModulePsm1 | Should -Exist -Because 'Run ./build.ps1 -Tasks build to create the compiled module'
     }
 }

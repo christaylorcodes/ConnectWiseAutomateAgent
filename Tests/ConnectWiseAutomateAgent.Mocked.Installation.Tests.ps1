@@ -573,7 +573,7 @@ Describe 'Register-CWAAHealthCheckTask' {
             }
             $result.Created | Should -BeTrue
             $result.Updated | Should -BeFalse
-            $result.TaskName | Should -Be 'CWAAHealthCheck'
+            $result.TaskName | Should -Be 'AAutomate'
         }
     }
 
@@ -649,7 +649,7 @@ Describe 'Unregister-CWAAHealthCheckTask' {
                 Unregister-CWAAHealthCheckTask -Confirm:$false
             }
             $result.Removed | Should -BeTrue
-            $result.TaskName | Should -Be 'CWAAHealthCheck'
+            $result.TaskName | Should -Be 'AAutomate'
         }
     }
 

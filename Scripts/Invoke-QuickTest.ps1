@@ -7,7 +7,7 @@
     without the overhead of the full build pipeline. Designed for rapid
     write-test-fix-retest cycles.
 
-    Does NOT build the single-file distribution or compute code coverage.
+    Does NOT build the compiled module output or compute code coverage.
     For full validation, use Tests/test-local.ps1.
 
 .PARAMETER FunctionName
