@@ -25,8 +25,39 @@
     PowerShellVersion = '3.0'
 
     # Functions to export from this module
-    # Wildcard for development; ModuleBuilder writes explicit list at build time
-    FunctionsToExport = @('*')
+    # ModuleBuilder overwrites this list at build time
+    FunctionsToExport = @(
+        'ConvertFrom-CWAASecurity',
+        'ConvertTo-CWAASecurity',
+        'Get-CWAAError',
+        'Get-CWAAInfo',
+        'Get-CWAAInfoBackup',
+        'Get-CWAALogLevel',
+        'Get-CWAAProbeError',
+        'Get-CWAAProxy',
+        'Get-CWAASettings',
+        'Hide-CWAAAddRemove',
+        'Install-CWAA',
+        'Invoke-CWAACommand',
+        'New-CWAABackup',
+        'Redo-CWAA',
+        'Register-CWAAHealthCheckTask',
+        'Rename-CWAAAddRemove',
+        'Repair-CWAA',
+        'Reset-CWAA',
+        'Restart-CWAA',
+        'Set-CWAALogLevel',
+        'Set-CWAAProxy',
+        'Show-CWAAAddRemove',
+        'Start-CWAA',
+        'Stop-CWAA',
+        'Test-CWAAHealth',
+        'Test-CWAAPort',
+        'Test-CWAAServerConnectivity',
+        'Uninstall-CWAA',
+        'Unregister-CWAAHealthCheckTask',
+        'Update-CWAA'
+    )
 
     # Cmdlets to export from this module
     CmdletsToExport   = @()
@@ -35,8 +66,41 @@
     VariablesToExport  = @()
 
     # Aliases to export from this module
-    # Wildcard for development; ModuleBuilder discovers [Alias()] attributes at build time
-    AliasesToExport   = @('*')
+    # ModuleBuilder discovers [Alias()] attributes at build time
+    AliasesToExport   = @(
+        'ConvertFrom-LTSecurity',
+        'ConvertTo-LTSecurity',
+        'Get-LTErrors',
+        'Get-LTLogging',
+        'Get-LTProbeErrors',
+        'Get-LTProxy',
+        'Get-LTServiceInfo',
+        'Get-LTServiceInfoBackup',
+        'Get-LTServiceSettings',
+        'Hide-LTAddRemove',
+        'Install-LTService',
+        'Invoke-LTServiceCommand',
+        'New-LTServiceBackup',
+        'Redo-LTService',
+        'Register-LTHealthCheckTask',
+        'Reinstall-CWAA',
+        'Reinstall-LTService',
+        'Rename-LTAddRemove',
+        'Repair-LTService',
+        'Reset-LTService',
+        'Restart-LTService',
+        'Set-LTLogging',
+        'Set-LTProxy',
+        'Show-LTAddRemove',
+        'Start-LTService',
+        'Stop-LTService',
+        'Test-LTHealth',
+        'Test-LTPorts',
+        'Test-LTServerConnectivity',
+        'Uninstall-LTService',
+        'Unregister-LTHealthCheckTask',
+        'Update-LTService'
+    )
 
     # Private data to pass to the module specified in RootModule/ModuleToProcess
     PrivateData       = @{

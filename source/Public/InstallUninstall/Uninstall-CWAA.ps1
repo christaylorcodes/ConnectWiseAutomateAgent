@@ -1,4 +1,4 @@
-function Uninstall-CWAA {
+ï»¿function Uninstall-CWAA {
     <#
     .SYNOPSIS
         Completely uninstalls the ConnectWise Automate Agent from the local computer.
@@ -208,7 +208,7 @@ function Uninstall-CWAA {
             if ($PSCmdlet.ShouldProcess("$uninstaller", 'DownloadFile')) {
                 Write-Debug "Downloading Agent_Uninstall.exe from $uninstaller"
                 $Script:LTServiceNetWebClient.DownloadFile($uninstaller, "${env:windir}\temp\Agent_Uninstall.exe")
-                # Uninstall EXE is smaller than MSI — use 80 KB threshold
+                # Uninstall EXE is smaller than MSI ï¿½ use 80 KB threshold
                 if (-not (Test-CWAADownloadIntegrity -FilePath "${env:windir}\temp\Agent_Uninstall.exe" -FileName 'Agent_Uninstall.exe' -MinimumSizeKB 80)) {
                     return
                 }
