@@ -1,0 +1,51 @@
+# PR Validation workflow
+# Checks that PRs include changelog updates and runs basic validation.
+
+name: PR Validation
+
+on:
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  validate:
+    name: PR Checks
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check CHANGELOG updated
+        shell: pwsh
+        run: |
+          $changedFiles = git diff --name-only origin/${{ github.base_ref }}...HEAD
+          if ($changedFiles -contains 'CHANGELOG.md') {
+              Write-Host "CHANGELOG.md has been updated." -ForegroundColor Green
+          } else {
+              Write-Host "::warning::CHANGELOG.md has not been updated. Please add an entry for your changes."
+          }
+
+      - name: Validate CHANGELOG format
+        shell: pwsh
+        run: |
+          if (Test-Path CHANGELOG.md) {
+              $content = Get-Content CHANGELOG.md -Raw
+              if ($content -match '\[Unreleased\]') {
+                  Write-Host "CHANGELOG.md has an [Unreleased] section." -ForegroundColor Green
+              } else {
+                  Write-Host "::warning::CHANGELOG.md is missing an [Unreleased] section."
+              }
+          }
+
+      - name: Summary
+        shell: pwsh
+        run: |
+          $summary = @"
+          ## PR Validation Summary
+
+          - Version is driven by the module manifest (source/ConnectWiseAutomateAgent.psd1)
+          - Remember to update CHANGELOG.md with your changes
+          - Prerelease tag in manifest controls whether publish goes to prerelease or stable
+          "@
+          $summary >> $env:GITHUB_STEP_SUMMARY

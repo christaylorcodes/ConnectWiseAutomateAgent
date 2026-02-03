@@ -1,0 +1,29 @@
+# EditorConfig — https://editorconfig.org
+
+root = true
+
+# Default: UTF-8, CRLF (Windows PowerShell project), trim trailing whitespace
+[*]
+charset = utf-8
+end_of_line = crlf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# PowerShell: 4-space indentation (community standard)
+[*.{ps1,psm1,psd1}]
+indent_style = space
+indent_size = 4
+
+# YAML/JSON: 2-space indentation
+[*.{yml,yaml,json}]
+indent_style = space
+indent_size = 2
+
+# XML (MAML help): 2-space indentation
+[*.xml]
+indent_style = space
+indent_size = 2
+
+# Markdown: preserve trailing whitespace (line breaks)
+[*.md]
+trim_trailing_whitespace = false

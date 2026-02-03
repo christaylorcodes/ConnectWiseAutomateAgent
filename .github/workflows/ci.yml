@@ -1,0 +1,450 @@
+# CI / Publish workflow for ConnectWiseAutomateAgent
+#
+# Uses Sampler/ModuleBuilder/InvokeBuild pipeline with GitVersion for automatic
+# semantic versioning.
+#
+# Branch strategy:
+#   develop push  → build → test → analyze → publish prerelease → GitHub Release
+#   main push     → build → test → analyze → publish stable → GitHub Release
+#   pull requests → build → test → analyze (no publish, no release)
+#
+# Versioning:
+#   GitVersion calculates the version from git history and branch.
+#   develop → prerelease (e.g., 1.0.0-alpha0001)
+#   main    → stable (e.g., 1.0.0)
+#   Sampler reads GitVersion output automatically during Build_ModuleOutput_ModuleBuilder.
+#
+# Required secrets:
+#   PSGALLERY_API_KEY — NuGet API key for the PowerShell Gallery
+#
+# Required permissions:
+#   contents: write — for creating git tags and GitHub Releases (set per-job)
+
+name: CI / Publish
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  MODULE_NAME: ConnectWiseAutomateAgent
+
+jobs:
+  build:
+    name: Build Module
+    runs-on: windows-latest
+    outputs:
+      module_version: ${{ steps.version.outputs.version }}
+      full_version: ${{ steps.version.outputs.full_version }}
+      is_prerelease: ${{ steps.version.outputs.is_prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install GitVersion
+        uses: gittools/actions/gitversion/setup@v1
+        with:
+          versionSpec: '5.x'
+
+      - name: Resolve dependencies
+        shell: pwsh
+        run: ./build.ps1 -ResolveDependency -Tasks noop
+
+      - name: Build module
+        shell: pwsh
+        run: ./build.ps1 -Tasks build
+
+      - name: Read version from built manifest
+        id: version
+        shell: pwsh
+        run: |
+          $modulePath = Get-ChildItem -Path "output/${{ env.MODULE_NAME }}" -Directory |
+            Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1
+          $manifest = Import-PowerShellDataFile (Join-Path $modulePath.FullName "${{ env.MODULE_NAME }}.psd1")
+          $version = $manifest.ModuleVersion
+          $prerelease = $manifest.PrivateData.PSData.Prerelease
+          $fullVersion = if ($prerelease) { "$version-$prerelease" } else { $version }
+          $isPrerelease = if ($prerelease) { 'true' } else { 'false' }
+          Write-Host "Version: $fullVersion (prerelease: $isPrerelease)"
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "full_version=$fullVersion" >> $env:GITHUB_OUTPUT
+          "is_prerelease=$isPrerelease" >> $env:GITHUB_OUTPUT
+
+      - name: Upload built module
+        uses: actions/upload-artifact@v4
+        with:
+          name: module-build
+          path: output/${{ env.MODULE_NAME }}
+          retention-days: 7
+
+      - name: Upload release notes
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: output/ReleaseNotes.md
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Upload required modules
+        uses: actions/upload-artifact@v4
+        with:
+          name: required-modules
+          path: output/RequiredModules
+          retention-days: 1
+
+  test:
+    name: Test
+    needs: build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download built module
+        uses: actions/download-artifact@v4
+        with:
+          name: module-build
+          path: output/${{ env.MODULE_NAME }}
+
+      - name: Download required modules
+        uses: actions/download-artifact@v4
+        with:
+          name: required-modules
+          path: output/RequiredModules
+
+      - name: Run Pester tests
+        shell: pwsh
+        run: |
+          $env:PSModulePath = "$(Resolve-Path output/RequiredModules)" + [IO.Path]::PathSeparator + $env:PSModulePath
+          ./build.ps1 -Tasks test
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            output/testResults/testResults.xml
+            output/testResults/JaCoCo_coverage.xml
+          retention-days: 7
+          if-no-files-found: ignore
+
+  analyze:
+    name: PSScriptAnalyzer
+    needs: build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download required modules
+        uses: actions/download-artifact@v4
+        with:
+          name: required-modules
+          path: output/RequiredModules
+
+      - name: Run PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          $env:PSModulePath = "$(Resolve-Path output/RequiredModules)" + [IO.Path]::PathSeparator + $env:PSModulePath
+          Import-Module PSScriptAnalyzer
+          $results = Invoke-ScriptAnalyzer -Path source -Recurse -Severity Error,Warning -Settings .PSScriptAnalyzerSettings.psd1
+          if ($results) {
+              $results | Format-Table -AutoSize
+              throw "PSScriptAnalyzer found $($results.Count) issue(s)"
+          }
+
+  # ─── Publish jobs ───────────────────────────────────────────────────────
+
+  publish-prerelease:
+    name: Publish Prerelease
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    needs: [build, test, analyze]
+    runs-on: windows-latest
+    environment: PSGallery
+    steps:
+      - name: Download built module
+        uses: actions/download-artifact@v4
+        with:
+          name: module-build
+          path: output/${{ env.MODULE_NAME }}
+
+      - name: Verify prerelease tag is set
+        shell: pwsh
+        run: |
+          $modulePath = Get-ChildItem -Path "output/${{ env.MODULE_NAME }}" -Directory |
+            Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1
+          $manifest = Import-PowerShellDataFile (Join-Path $modulePath.FullName "${{ env.MODULE_NAME }}.psd1")
+          $prerelease = $manifest.PrivateData.PSData.Prerelease
+          if (-not $prerelease) {
+            Write-Error "Prerelease tag is not set in the built manifest. GitVersion should produce a prerelease on develop."
+            exit 1
+          }
+          Write-Host "Prerelease tag: $prerelease"
+
+      - name: Check if version already exists on PSGallery
+        id: gallery-check
+        shell: pwsh
+        run: |
+          $modulePath = Get-ChildItem -Path "output/${{ env.MODULE_NAME }}" -Directory |
+            Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1
+          $manifest = Import-PowerShellDataFile (Join-Path $modulePath.FullName "${{ env.MODULE_NAME }}.psd1")
+          $version = $manifest.ModuleVersion
+          $prerelease = $manifest.PrivateData.PSData.Prerelease
+          $fullVersion = if ($prerelease) { "$version-$prerelease" } else { $version }
+          $existing = Find-Module -Name ${{ env.MODULE_NAME }} -RequiredVersion $fullVersion -AllowPrerelease -ErrorAction SilentlyContinue
+          if ($existing) {
+            Write-Host "Version $fullVersion already exists on PSGallery. Skipping publish."
+            "skip=true" >> $env:GITHUB_OUTPUT
+          } else {
+            Write-Host "Version $fullVersion not found on PSGallery. Proceeding with publish."
+            "skip=false" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Publish to PSGallery (prerelease)
+        if: steps.gallery-check.outputs.skip != 'true'
+        shell: pwsh
+        env:
+          NUGET_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
+        run: |
+          $modulePath = Get-ChildItem -Path "output/${{ env.MODULE_NAME }}" -Directory |
+            Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1
+          Publish-Module -Path $modulePath.FullName -NuGetApiKey $env:NUGET_API_KEY -Force
+
+  publish-stable:
+    name: Publish Stable
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [build, test, analyze]
+    runs-on: windows-latest
+    environment: PSGallery
+    steps:
+      - name: Download built module
+        uses: actions/download-artifact@v4
+        with:
+          name: module-build
+          path: output/${{ env.MODULE_NAME }}
+
+      - name: Verify no prerelease tag
+        shell: pwsh
+        run: |
+          $modulePath = Get-ChildItem -Path "output/${{ env.MODULE_NAME }}" -Directory |
+            Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1
+          $manifest = Import-PowerShellDataFile (Join-Path $modulePath.FullName "${{ env.MODULE_NAME }}.psd1")
+          $prerelease = $manifest.PrivateData.PSData.Prerelease
+          if ($prerelease) {
+            Write-Error "Prerelease tag '$prerelease' is still set in the built manifest. Expected GitVersion to produce a stable version on main."
+            exit 1
+          }
+          Write-Host "Version: $($manifest.ModuleVersion) (stable)"
+
+      - name: Check if version already exists on PSGallery
+        id: gallery-check
+        shell: pwsh
+        run: |
+          $modulePath = Get-ChildItem -Path "output/${{ env.MODULE_NAME }}" -Directory |
+            Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1
+          $manifest = Import-PowerShellDataFile (Join-Path $modulePath.FullName "${{ env.MODULE_NAME }}.psd1")
+          $version = $manifest.ModuleVersion
+          $existing = Find-Module -Name ${{ env.MODULE_NAME }} -RequiredVersion $version -ErrorAction SilentlyContinue
+          if ($existing) {
+            Write-Host "Version $version already exists on PSGallery. Skipping publish."
+            "skip=true" >> $env:GITHUB_OUTPUT
+          } else {
+            Write-Host "Version $version not found on PSGallery. Proceeding with publish."
+            "skip=false" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Publish to PSGallery (stable)
+        if: steps.gallery-check.outputs.skip != 'true'
+        shell: pwsh
+        env:
+          NUGET_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
+        run: |
+          $modulePath = Get-ChildItem -Path "output/${{ env.MODULE_NAME }}" -Directory |
+            Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1
+          Publish-Module -Path $modulePath.FullName -NuGetApiKey $env:NUGET_API_KEY
+
+  # ─── GitHub Release jobs ────────────────────────────────────────────────
+
+  release-prerelease:
+    name: GitHub Release (Prerelease)
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push' && !failure() && !cancelled()
+    needs: [publish-prerelease, build]
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Set version from build outputs
+        id: version
+        shell: pwsh
+        run: |
+          $fullVersion = '${{ needs.build.outputs.full_version }}'
+          "full_version=$fullVersion" >> $env:GITHUB_OUTPUT
+          "tag=v$fullVersion" >> $env:GITHUB_OUTPUT
+
+      - name: Check if release already exists
+        id: check
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = '${{ steps.version.outputs.tag }}'
+          $existing = gh release view $tag 2>&1
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Release $tag already exists. Skipping."
+            "skip=true" >> $env:GITHUB_OUTPUT
+          } else {
+            "skip=false" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Download release notes
+        if: steps.check.outputs.skip != 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: release-notes
+          path: .
+        continue-on-error: true
+
+      - name: Prepare release notes
+        if: steps.check.outputs.skip != 'true'
+        shell: pwsh
+        run: |
+          if (Test-Path 'ReleaseNotes.md') {
+            $content = (Get-Content 'ReleaseNotes.md' -Raw).Trim()
+            if ($content) {
+              $content | Out-File release-notes.md -Encoding UTF8
+              return
+            }
+          }
+          "Prerelease ${{ steps.version.outputs.full_version }}" | Out-File release-notes.md -Encoding UTF8
+
+      - name: Download built module
+        if: steps.check.outputs.skip != 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: module-build
+          path: artifact
+
+      - name: Create git tag
+        if: steps.check.outputs.skip != 'true'
+        shell: pwsh
+        run: |
+          git tag '${{ steps.version.outputs.tag }}' '${{ github.sha }}'
+          git push origin '${{ steps.version.outputs.tag }}'
+
+      - name: Create GitHub Release
+        if: steps.check.outputs.skip != 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $psm1 = Get-ChildItem -Path 'artifact/*/ConnectWiseAutomateAgent.psm1' | Select-Object -First 1
+          gh release create '${{ steps.version.outputs.tag }}' `
+            $psm1.FullName `
+            --title 'ConnectWiseAutomateAgent ${{ steps.version.outputs.full_version }}' `
+            --notes-file release-notes.md `
+            --prerelease `
+            --verify-tag
+
+  release-stable:
+    name: GitHub Release (Stable)
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && !failure() && !cancelled()
+    needs: [publish-stable, build]
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Set version from build outputs
+        id: version
+        shell: pwsh
+        run: |
+          $fullVersion = '${{ needs.build.outputs.full_version }}'
+          "full_version=$fullVersion" >> $env:GITHUB_OUTPUT
+          "tag=v$fullVersion" >> $env:GITHUB_OUTPUT
+
+      - name: Check if release already exists
+        id: check
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = '${{ steps.version.outputs.tag }}'
+          $existing = gh release view $tag 2>&1
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Release $tag already exists. Skipping."
+            "skip=true" >> $env:GITHUB_OUTPUT
+          } else {
+            "skip=false" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Download release notes
+        if: steps.check.outputs.skip != 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: release-notes
+          path: .
+        continue-on-error: true
+
+      - name: Prepare release notes
+        if: steps.check.outputs.skip != 'true'
+        shell: pwsh
+        run: |
+          if (Test-Path 'ReleaseNotes.md') {
+            $content = (Get-Content 'ReleaseNotes.md' -Raw).Trim()
+            if ($content) {
+              $content | Out-File release-notes.md -Encoding UTF8
+              return
+            }
+          }
+          $version = '${{ steps.version.outputs.full_version }}'
+          $lines = Get-Content CHANGELOG.md
+          $pattern = "^## \[$([regex]::Escape($version))\]"
+          $start = -1
+          for ($i = 0; $i -lt $lines.Count; $i++) {
+              if ($lines[$i] -match $pattern) { $start = $i; break }
+          }
+          if ($start -eq -1) {
+              "Release $version" | Out-File release-notes.md -Encoding UTF8
+          } else {
+              $end = $lines.Count
+              for ($i = $start + 1; $i -lt $lines.Count; $i++) {
+                  if ($lines[$i] -match '^## \[') { $end = $i; break }
+              }
+              ($lines[($start+1)..($end-1)] -join "`n").Trim() | Out-File release-notes.md -Encoding UTF8
+          }
+
+      - name: Download built module
+        if: steps.check.outputs.skip != 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: module-build
+          path: artifact
+
+      - name: Create git tag
+        if: steps.check.outputs.skip != 'true'
+        shell: pwsh
+        run: |
+          git tag '${{ steps.version.outputs.tag }}' '${{ github.sha }}'
+          git push origin '${{ steps.version.outputs.tag }}'
+
+      - name: Create GitHub Release
+        if: steps.check.outputs.skip != 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $psm1 = Get-ChildItem -Path 'artifact/*/ConnectWiseAutomateAgent.psm1' | Select-Object -First 1
+          gh release create '${{ steps.version.outputs.tag }}' `
+            $psm1.FullName `
+            --title 'ConnectWiseAutomateAgent ${{ steps.version.outputs.full_version }}' `
+            --notes-file release-notes.md `
+            --verify-tag

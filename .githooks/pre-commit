@@ -1,0 +1,36 @@
+#!/usr/bin/env pwsh
+# Pre-commit hook for ConnectWiseAutomateAgent
+# Runs PSScriptAnalyzer and Pester tests before allowing commits.
+#
+# Setup: git config core.hooksPath .githooks
+# Or:    git config --local core.hooksPath .githooks
+
+$ErrorActionPreference = 'Stop'
+
+# Verify required modules are installed
+foreach ($moduleName in @('PSScriptAnalyzer', 'Pester')) {
+    if (-not (Get-Module -ListAvailable -Name $moduleName)) {
+        Write-Host "Pre-commit: $moduleName module not found. Install it with: Install-Module $moduleName" -ForegroundColor Red
+        exit 1
+    }
+}
+
+Write-Host '--- Pre-commit: Running PSScriptAnalyzer ---' -ForegroundColor Cyan
+$analyzerResults = Invoke-ScriptAnalyzer -Path source -Recurse -Severity Error,Warning -Settings .PSScriptAnalyzerSettings.psd1
+if ($analyzerResults) {
+    Write-Host 'PSScriptAnalyzer found issues:' -ForegroundColor Red
+    $analyzerResults | Format-Table RuleName, Severity, ScriptName, Line, Message -AutoSize
+    exit 1
+}
+Write-Host 'PSScriptAnalyzer: passed' -ForegroundColor Green
+
+Write-Host '--- Pre-commit: Running Pester tests ---' -ForegroundColor Cyan
+$testResult = Invoke-Pester Tests\ -ExcludeTag 'Live' -PassThru -Output Minimal
+if ($testResult.FailedCount -gt 0) {
+    Write-Host "Pester: $($testResult.FailedCount) test(s) failed" -ForegroundColor Red
+    exit 1
+}
+Write-Host "Pester: $($testResult.PassedCount) tests passed" -ForegroundColor Green
+
+Write-Host '--- Pre-commit: All checks passed ---' -ForegroundColor Green
+exit 0

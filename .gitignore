@@ -1,7 +1,29 @@
+# IDE and editor
+.vscode/
+.vs/
+*.suo
+*.user
 
+# Development scratch files
 Scratch\.ps1
 
+# Claude Code
+.claude/
 
-\.vscode/
+# Build output
+output/
 
-\.vs/
+# Build artifacts
+*.log
+*.nupkg
+
+# OS-generated files
+Thumbs.db
+.DS_Store
+Desktop.ini
+
+# Windows reserved name artifact
+nul
+
+# Blog drafts (local only)
+.blog/
