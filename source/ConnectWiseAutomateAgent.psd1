@@ -26,42 +26,7 @@
 
     # Functions to export from this module
     # ModuleBuilder overwrites this list at build time
-<<<<<<< HEAD
     FunctionsToExport = @('ConvertFrom-CWAASecurity','ConvertTo-CWAASecurity','Get-CWAAError','Get-CWAAInfo','Get-CWAAInfoBackup','Get-CWAALogLevel','Get-CWAAProbeError','Get-CWAAProxy','Get-CWAASettings','Hide-CWAAAddRemove','Install-CWAA','Invoke-CWAACommand','New-CWAABackup','Redo-CWAA','Register-CWAAHealthCheckTask','Rename-CWAAAddRemove','Repair-CWAA','Reset-CWAA','Restart-CWAA','Set-CWAALogLevel','Set-CWAAProxy','Show-CWAAAddRemove','Start-CWAA','Stop-CWAA','Test-CWAAHealth','Test-CWAAPort','Test-CWAAServerConnectivity','Uninstall-CWAA','Unregister-CWAAHealthCheckTask','Update-CWAA')
-=======
-    FunctionsToExport = @(
-        'ConvertFrom-CWAASecurity',
-        'ConvertTo-CWAASecurity',
-        'Get-CWAAError',
-        'Get-CWAAInfo',
-        'Get-CWAAInfoBackup',
-        'Get-CWAALogLevel',
-        'Get-CWAAProbeError',
-        'Get-CWAAProxy',
-        'Get-CWAASettings',
-        'Hide-CWAAAddRemove',
-        'Install-CWAA',
-        'Invoke-CWAACommand',
-        'New-CWAABackup',
-        'Redo-CWAA',
-        'Register-CWAAHealthCheckTask',
-        'Rename-CWAAAddRemove',
-        'Repair-CWAA',
-        'Reset-CWAA',
-        'Restart-CWAA',
-        'Set-CWAALogLevel',
-        'Set-CWAAProxy',
-        'Show-CWAAAddRemove',
-        'Start-CWAA',
-        'Stop-CWAA',
-        'Test-CWAAHealth',
-        'Test-CWAAPort',
-        'Test-CWAAServerConnectivity',
-        'Uninstall-CWAA',
-        'Unregister-CWAAHealthCheckTask',
-        'Update-CWAA'
-    )
->>>>>>> 22c1b556ffd7355e9bdf90c8629ae656cb300dbe
 
     # Cmdlets to export from this module
     CmdletsToExport   = @()
@@ -71,44 +36,7 @@
 
     # Aliases to export from this module
     # ModuleBuilder discovers [Alias()] attributes at build time
-<<<<<<< HEAD
     AliasesToExport   = @('ConvertFrom-LTSecurity','ConvertTo-LTSecurity','Get-LTErrors','Get-LTLogging','Get-LTProbeErrors','Get-LTProxy','Get-LTServiceInfo','Get-LTServiceInfoBackup','Get-LTServiceSettings','Hide-LTAddRemove','Install-LTService','Invoke-LTServiceCommand','New-LTServiceBackup','Redo-LTService','Register-LTHealthCheckTask','Reinstall-CWAA','Reinstall-LTService','Rename-LTAddRemove','Repair-LTService','Reset-LTService','Restart-LTService','Set-LTLogging','Set-LTProxy','Show-LTAddRemove','Start-LTService','Stop-LTService','Test-LTHealth','Test-LTPorts','Test-LTServerConnectivity','Uninstall-LTService','Unregister-LTHealthCheckTask','Update-LTService')
-=======
-    AliasesToExport   = @(
-        'ConvertFrom-LTSecurity',
-        'ConvertTo-LTSecurity',
-        'Get-LTErrors',
-        'Get-LTLogging',
-        'Get-LTProbeErrors',
-        'Get-LTProxy',
-        'Get-LTServiceInfo',
-        'Get-LTServiceInfoBackup',
-        'Get-LTServiceSettings',
-        'Hide-LTAddRemove',
-        'Install-LTService',
-        'Invoke-LTServiceCommand',
-        'New-LTServiceBackup',
-        'Redo-LTService',
-        'Register-LTHealthCheckTask',
-        'Reinstall-CWAA',
-        'Reinstall-LTService',
-        'Rename-LTAddRemove',
-        'Repair-LTService',
-        'Reset-LTService',
-        'Restart-LTService',
-        'Set-LTLogging',
-        'Set-LTProxy',
-        'Show-LTAddRemove',
-        'Start-LTService',
-        'Stop-LTService',
-        'Test-LTHealth',
-        'Test-LTPorts',
-        'Test-LTServerConnectivity',
-        'Uninstall-LTService',
-        'Unregister-LTHealthCheckTask',
-        'Update-LTService'
-    )
->>>>>>> 22c1b556ffd7355e9bdf90c8629ae656cb300dbe
 
     # Private data to pass to the module specified in RootModule/ModuleToProcess
     PrivateData       = @{

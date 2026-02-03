@@ -101,7 +101,7 @@ The build uses [Sampler](https://github.com/gaelcolas/Sampler) with ModuleBuilde
 
 ### CI/CD
 
-CI is intentionally lightweight (smoke test, build, publish). Full testing is local. See the header comments in `.github/workflows/ci.yml` for branch strategy and gating rules.
+CI runs build + a consolidated smoke test (PSScriptAnalyzer + Pester on one runner) + publish. It is a safety net -- local validation is the primary gate. See CLAUDE.md for the mandatory validation workflow and `.github/workflows/ci.yml` for branch strategy.
 
 ### Common Patterns
 
@@ -175,6 +175,7 @@ See `Get-Help .\Tests\test-local.ps1` for flags: `-SkipBuild`, `-SkipTests`, `-S
 
 ### Key Rules
 
+- **Local validation is mandatory before every commit.** Run `Invoke-QuickTest.ps1 -IncludeAnalyzer` during development and `test-local.ps1` before committing. CI is a safety net, not the primary gate.
 - No code is complete without passing tests. A function without a test is unfinished work.
 - PSScriptAnalyzer zero errors required. Run against `source/`. Always use `-IncludeAnalyzer` during development.
 - Dual-mode testing details: `Get-Help .\Tests\Invoke-AllTests.ps1`
@@ -193,10 +194,19 @@ gh issue edit <number> --add-label ai-in-progress --remove-label ai-ready
 
 1. Claim the issue (above), create branch: `git checkout -b feature/<number>-short-description`
 2. Read the full issue body and acceptance criteria
-3. Implement, add tests, iterate with `Invoke-QuickTest.ps1 -IncludeAnalyzer -OutputFormat Structured`
-4. Run `./build.ps1 -Tasks build` then `./Tests/test-local.ps1` -- build + analyze + test must all pass
-5. Commit referencing the issue: `Add feature X (fixes #123)`
-6. Push, open PR, update label: `gh issue edit <number> --add-label ai-review --remove-label ai-in-progress`
+3. Implement changes, adding tests as you go
+4. **After each meaningful change**, validate:
+   ```powershell
+   ./Scripts/Invoke-QuickTest.ps1 -IncludeAnalyzer -OutputFormat Structured
+   ```
+   Parse the JSON `success` field. Fix all `failedTests` and `analyzerErrors` before proceeding.
+5. **Before committing**, run the full pipeline:
+   ```powershell
+   ./Tests/test-local.ps1
+   ```
+   All three stages (build, analyze, test) must pass. Do not commit until they do.
+6. Commit referencing the issue: `Add feature X (fixes #123)`
+7. Push, open PR, update label: `gh issue edit <number> --add-label ai-review --remove-label ai-in-progress`
 
 ### Guardrails
 

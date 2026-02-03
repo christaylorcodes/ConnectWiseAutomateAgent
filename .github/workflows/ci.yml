@@ -4,9 +4,14 @@
 # semantic versioning.
 #
 # Branch strategy:
-#   develop push  → build → test → analyze → publish prerelease → GitHub Release
-#   main push     → build → test → analyze → publish stable → GitHub Release
-#   pull requests → build → test → analyze (no publish, no release)
+#   develop push  → build → smoke-test → publish prerelease → GitHub Release
+#   main push     → build → smoke-test → publish stable → GitHub Release
+#   pull requests → build → smoke-test (no publish, no release)
+#
+# Testing strategy:
+#   Full validation (build + PSScriptAnalyzer + Pester) runs LOCALLY before every
+#   commit via ./Tests/test-local.ps1. CI provides a safety-net smoke test only.
+#   See AGENTS.md for the mandatory local validation workflow.
 #
 # Versioning:
 #   GitVersion calculates the version from git history and branch.
@@ -95,8 +100,8 @@ jobs:
           path: output/RequiredModules
           retention-days: 1
 
-  test:
-    name: Test
+  smoke-test:
+    name: Smoke Test
     needs: build
     runs-on: windows-latest
     steps:
@@ -113,6 +118,17 @@ jobs:
         with:
           name: required-modules
           path: output/RequiredModules
+
+      - name: Run PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          $env:PSModulePath = "$(Resolve-Path output/RequiredModules)" + [IO.Path]::PathSeparator + $env:PSModulePath
+          Import-Module PSScriptAnalyzer
+          $results = Invoke-ScriptAnalyzer -Path source -Recurse -Settings .PSScriptAnalyzerSettings.psd1
+          if ($results) {
+              $results | Format-Table -AutoSize
+              throw "PSScriptAnalyzer found $($results.Count) issue(s)"
+          }
 
       - name: Run Pester tests
         shell: pwsh
@@ -131,36 +147,12 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-  analyze:
-    name: PSScriptAnalyzer
-    needs: build
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download required modules
-        uses: actions/download-artifact@v4
-        with:
-          name: required-modules
-          path: output/RequiredModules
-
-      - name: Run PSScriptAnalyzer
-        shell: pwsh
-        run: |
-          $env:PSModulePath = "$(Resolve-Path output/RequiredModules)" + [IO.Path]::PathSeparator + $env:PSModulePath
-          Import-Module PSScriptAnalyzer
-          $results = Invoke-ScriptAnalyzer -Path source -Recurse -Severity Error,Warning -Settings .PSScriptAnalyzerSettings.psd1
-          if ($results) {
-              $results | Format-Table -AutoSize
-              throw "PSScriptAnalyzer found $($results.Count) issue(s)"
-          }
-
   # ─── Publish jobs ───────────────────────────────────────────────────────
 
   publish-prerelease:
     name: Publish Prerelease
     if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
-    needs: [build, test, analyze]
+    needs: [build, smoke-test]
     runs-on: windows-latest
     environment: PSGallery
     steps:
@@ -215,7 +207,7 @@ jobs:
   publish-stable:
     name: Publish Stable
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    needs: [build, test, analyze]
+    needs: [build, smoke-test]
     runs-on: windows-latest
     environment: PSGallery
     steps:

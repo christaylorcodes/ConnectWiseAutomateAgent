@@ -84,15 +84,8 @@ if (-not $SkipAnalyze) {
 
     if ($results) {
         $results | Format-Table -AutoSize
-        $errors = @($results | Where-Object Severity -eq 'Error')
-
-        if ($errors.Count -gt 0) {
-            Write-Host "PSScriptAnalyzer found $($errors.Count) error(s)" -ForegroundColor Red
-            exit 1
-        }
-        else {
-            Write-Host "PSScriptAnalyzer warnings found (but no errors)`n" -ForegroundColor Yellow
-        }
+        Write-Host "PSScriptAnalyzer found $($results.Count) issue(s)" -ForegroundColor Red
+        exit 1
     }
     else {
         Write-Host "PSScriptAnalyzer PASSED - no issues found`n" -ForegroundColor Green
