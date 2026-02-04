@@ -1,4 +1,4 @@
-function Test-CWAAHealth {
+ï»¿function Test-CWAAHealth {
     <#
     .SYNOPSIS
         Performs a read-only health assessment of the ConnectWise Automate agent.
@@ -60,7 +60,7 @@ function Test-CWAAHealth {
     }
 
     Process {
-        # Defaults — populated progressively as checks succeed
+        # Defaults ï¿½ populated progressively as checks succeed
         $agentInstalled = $False
         $servicesRunning = $False
         $lastContact = $Null

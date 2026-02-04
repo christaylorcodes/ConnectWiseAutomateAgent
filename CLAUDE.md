@@ -2,6 +2,26 @@
 
 For project context, architecture, build commands, code conventions, and contribution workflow, read [AGENTS.md](AGENTS.md). That is the single source of truth for all AI agents.
 
+## Mandatory Validation
+
+**After each meaningful change**, run:
+
+```powershell
+./Scripts/Invoke-QuickTest.ps1 -IncludeAnalyzer -OutputFormat Structured
+```
+
+Parse the JSON output. If `success` is `false`, fix all `failedTests` and `analyzerErrors` before proceeding.
+
+**Before every commit**, run the full pipeline:
+
+```powershell
+./Tests/test-local.ps1
+```
+
+All three stages (build, analyze, test) must pass. Do not commit until they do.
+
+CI is a safety net only -- failures should never first appear there.
+
 ## Session State
 
 Use `.claude/plan.md` as a personal scratchpad for the current session. It is gitignored and not shared across agents or users.

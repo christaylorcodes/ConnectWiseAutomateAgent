@@ -1,4 +1,4 @@
-function Repair-CWAA {
+ï»¿function Repair-CWAA {
     <#
     .SYNOPSIS
         Performs escalating remediation of the ConnectWise Automate agent.
@@ -6,14 +6,14 @@ function Repair-CWAA {
         Checks the health of the installed Automate agent and takes corrective action
         using an escalating strategy:
 
-        1. If the agent is installed and healthy — no action taken.
-        2. If the agent is installed but has not checked in within HoursRestart — restarts
+        1. If the agent is installed and healthy ï¿½ no action taken.
+        2. If the agent is installed but has not checked in within HoursRestart ï¿½ restarts
            services and waits up to 2 minutes for the agent to recover.
-        3. If the agent is still not checking in after HoursReinstall — reinstalls the agent
+        3. If the agent is still not checking in after HoursReinstall ï¿½ reinstalls the agent
            using Redo-CWAA.
-        4. If the agent configuration is unreadable — uninstalls and reinstalls.
-        5. If the installed agent points to the wrong server — reinstalls with the correct server.
-        6. If the agent is not installed — performs a fresh install from provided parameters
+        4. If the agent configuration is unreadable ï¿½ uninstalls and reinstalls.
+        5. If the installed agent points to the wrong server ï¿½ reinstalls with the correct server.
+        6. If the agent is not installed ï¿½ performs a fresh install from provided parameters
            or from backup settings.
 
         All remediation actions are logged to the Windows Event Log (Application log,
@@ -106,7 +106,7 @@ function Repair-CWAA {
         $agentServiceExists = [bool](Get-Service 'LTService' -ErrorAction SilentlyContinue)
 
         if ($agentServiceExists) {
-            #region Agent is installed — check health and remediate
+            #region Agent is installed ï¿½ check health and remediate
 
             # Verify we can read agent configuration
             $agentInfo = $Null
@@ -114,7 +114,7 @@ function Repair-CWAA {
                 $agentInfo = Get-CWAAInfo -EA Stop -Verbose:$False -WhatIf:$False -Confirm:$False
             }
             Catch {
-                # Agent config is unreadable — uninstall so we can reinstall cleanly
+                # Agent config is unreadable ï¿½ uninstall so we can reinstall cleanly
                 Write-Warning "Unable to read agent configuration. Uninstalling for clean reinstall."
                 Write-CWAAEventLog -EventId 4009 -EntryType Warning -Message "Agent configuration unreadable. Uninstalling for clean reinstall. Error: $($_.Exception.Message)"
 
@@ -194,7 +194,7 @@ function Repair-CWAA {
                     [datetime]$lastContact = $agentInfo.HeartbeatLastReceived
                 }
                 Catch {
-                    # No valid contact timestamp — treat as very old
+                    # No valid contact timestamp ï¿½ treat as very old
                     [datetime]$lastContact = (Get-Date).AddYears(-1)
                 }
             }
@@ -319,7 +319,7 @@ function Repair-CWAA {
             #endregion
         }
         else {
-            #region Agent is NOT installed — attempt install
+            #region Agent is NOT installed ï¿½ attempt install
 
             Write-Verbose 'Agent service not found. Attempting installation.'
             Write-CWAAEventLog -EventId 4003 -EntryType Warning -Message 'Agent not installed. Attempting installation.'
