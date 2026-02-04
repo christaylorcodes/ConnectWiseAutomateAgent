@@ -28,9 +28,11 @@ branches:
     tag: PR
     increment: Inherit
 
-major-version-bump-message: '(breaking\schange|breaking|major)\b'
-minor-version-bump-message: '(adds?|features?|minor)\b'
-patch-version-bump-message: '\s?(fix|patch)'
+# Version bumps require explicit +semver: prefix in commit messages
+# e.g. "+semver: major", "+semver: minor", "+semver: patch"
+major-version-bump-message: '\+semver:\s?major'
+minor-version-bump-message: '\+semver:\s?minor'
+patch-version-bump-message: '\+semver:\s?patch'
 no-bump-message: '\+semver:\s?(none|skip)'
 
 ignore:
