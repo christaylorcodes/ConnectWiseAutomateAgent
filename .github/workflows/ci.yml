@@ -124,7 +124,9 @@ jobs:
         run: |
           $env:PSModulePath = "$(Resolve-Path output/RequiredModules)" + [IO.Path]::PathSeparator + $env:PSModulePath
           Import-Module PSScriptAnalyzer
-          $results = Invoke-ScriptAnalyzer -Path source -Recurse -Settings .PSScriptAnalyzerSettings.psd1
+          # Analyze .ps1/.psm1 only; .psd1 excluded due to PSScriptAnalyzer NullRef bug
+          $files = Get-ChildItem -Path source -Include '*.ps1','*.psm1' -Recurse -File
+          $results = $files | ForEach-Object { Invoke-ScriptAnalyzer -Path $_.FullName -Settings .PSScriptAnalyzerSettings.psd1 }
           if ($results) {
               $results | Format-Table -AutoSize
               throw "PSScriptAnalyzer found $($results.Count) issue(s)"

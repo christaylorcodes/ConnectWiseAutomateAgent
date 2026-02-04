@@ -171,12 +171,19 @@ if ($IncludeAnalyzer) {
     }
 
     if ($analyzePath) {
-        $analyzeParams = @{ Path = $analyzePath; Recurse = $true }
+        # Analyze .ps1/.psm1 only; .psd1 excluded due to PSScriptAnalyzer NullRef bug
+        $analyzeParams = @{}
         if (Test-Path $settingsFile) {
             $analyzeParams['Settings'] = $settingsFile
         }
 
-        $analyzeResults = Invoke-ScriptAnalyzer @analyzeParams
+        if (Test-Path $analyzePath -PathType Leaf) {
+            $analyzeResults = Invoke-ScriptAnalyzer -Path $analyzePath @analyzeParams
+        }
+        else {
+            $files = Get-ChildItem -Path $analyzePath -Include '*.ps1','*.psm1' -Recurse -File
+            $analyzeResults = $files | ForEach-Object { Invoke-ScriptAnalyzer -Path $_.FullName @analyzeParams }
+        }
 
         if ($analyzeResults) {
             $analyzerErrors = @($analyzeResults | Where-Object Severity -eq 'Error' | ForEach-Object {

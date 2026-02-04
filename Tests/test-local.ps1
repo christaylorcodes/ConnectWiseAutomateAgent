@@ -72,15 +72,14 @@ if (-not $SkipAnalyze) {
     $sourcePath = Join-Path $ProjectRoot 'source'
     $settingsFile = Join-Path $ProjectRoot '.PSScriptAnalyzerSettings.psd1'
 
-    $analyzeParams = @{
-        Path    = $sourcePath
-        Recurse = $true
-    }
+    # Analyze .ps1/.psm1 only; .psd1 excluded due to PSScriptAnalyzer NullRef bug
+    $files = Get-ChildItem -Path $sourcePath -Include '*.ps1','*.psm1' -Recurse -File
+    $analyzeParams = @{}
     if (Test-Path $settingsFile) {
         $analyzeParams['Settings'] = $settingsFile
     }
 
-    $results = Invoke-ScriptAnalyzer @analyzeParams
+    $results = $files | ForEach-Object { Invoke-ScriptAnalyzer -Path $_.FullName @analyzeParams }
 
     if ($results) {
         $results | Format-Table -AutoSize
