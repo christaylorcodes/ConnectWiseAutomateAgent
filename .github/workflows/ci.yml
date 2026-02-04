@@ -291,8 +291,10 @@ jobs:
             Write-Host "Release $tag already exists. Skipping."
             "skip=true" >> $env:GITHUB_OUTPUT
           } else {
+            Write-Host "Release $tag not found. Will create."
             "skip=false" >> $env:GITHUB_OUTPUT
           }
+          exit 0
 
       - name: Download release notes
         if: steps.check.outputs.skip != 'true'
@@ -375,8 +377,10 @@ jobs:
             Write-Host "Release $tag already exists. Skipping."
             "skip=true" >> $env:GITHUB_OUTPUT
           } else {
+            Write-Host "Release $tag not found. Will create."
             "skip=false" >> $env:GITHUB_OUTPUT
           }
+          exit 0
 
       - name: Download release notes
         if: steps.check.outputs.skip != 'true'
