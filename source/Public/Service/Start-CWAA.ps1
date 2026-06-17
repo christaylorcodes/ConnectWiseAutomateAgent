@@ -38,6 +38,9 @@ function Start-CWAA {
 
     Process {
         if (-not (Test-CWAAServiceExists -WriteErrorOnMissing)) { return }
+        # Ensure WMI (winmgmt) is Automatic + Running before starting the agent. The agent
+        # depends on it for check-in, inventory, and scripting.
+        Confirm-CWAADependencyService
         Try {
             if ((('LTService') | Get-Service -EA 0 | Where-Object { $_.Status -eq 'Stopped' } | Measure-Object | Select-Object -Expand Count) -gt 0) {
                 Try { $netstat = & "$env:windir\system32\netstat.exe" -a -o -n 2>'' | Select-String -Pattern " .*[0-9\.]+:$($Port).*[0-9\.]+:[0-9]+ .*?([0-9]+)" -EA 0 }

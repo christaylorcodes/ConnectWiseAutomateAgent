@@ -205,6 +205,7 @@ Describe 'Repair-CWAA' {
         It 'returns ActionTaken=None with success' {
             $result = InModuleScope 'ConnectWiseAutomateAgent' {
                 Mock Get-CimInstance { @() }
+                Mock Confirm-CWAADependencyService {}
                 Mock Stop-Process {}
                 Mock Get-Service { [PSCustomObject]@{ Name = 'LTService'; Status = 'Running' } }
                 Mock Get-CWAAInfo {
@@ -230,6 +231,7 @@ Describe 'Repair-CWAA' {
             $script:callCount = 0
             $result = InModuleScope 'ConnectWiseAutomateAgent' {
                 Mock Get-CimInstance { @() }
+                Mock Confirm-CWAADependencyService {}
                 Mock Stop-Process {}
                 Mock Get-Service { [PSCustomObject]@{ Name = 'LTService'; Status = 'Running' } }
                 # First call returns old LastSuccessStatus, subsequent calls return recent
@@ -268,6 +270,7 @@ Describe 'Repair-CWAA' {
         It 'triggers reinstall after failed restart' {
             $result = InModuleScope 'ConnectWiseAutomateAgent' {
                 Mock Get-CimInstance { @() }
+                Mock Confirm-CWAADependencyService {}
                 Mock Stop-Process {}
                 Mock Get-Service { [PSCustomObject]@{ Name = 'LTService'; Status = 'Running' } }
                 # Return old date consistently. The wait loop calls Get-CWAAInfo
@@ -308,6 +311,7 @@ Describe 'Repair-CWAA' {
         It 'attempts a fresh install with provided parameters' {
             $result = InModuleScope 'ConnectWiseAutomateAgent' {
                 Mock Get-CimInstance { @() }
+                Mock Confirm-CWAADependencyService {}
                 Mock Stop-Process {}
                 Mock Get-Service { return $null }
                 Mock Redo-CWAA {}
@@ -323,6 +327,7 @@ Describe 'Repair-CWAA' {
         It 'reports error when no install settings are available' {
             $result = InModuleScope 'ConnectWiseAutomateAgent' {
                 Mock Get-CimInstance { @() }
+                Mock Confirm-CWAADependencyService {}
                 Mock Stop-Process {}
                 Mock Get-Service { return $null }
                 Mock Get-CWAAInfo { throw 'Not installed' }
@@ -340,6 +345,7 @@ Describe 'Repair-CWAA' {
         It 'returns error about unreachable server' {
             $result = InModuleScope 'ConnectWiseAutomateAgent' {
                 Mock Get-CimInstance { @() }
+                Mock Confirm-CWAADependencyService {}
                 Mock Stop-Process {}
                 Mock Get-Service { [PSCustomObject]@{ Name = 'LTService'; Status = 'Running' } }
                 Mock Get-CWAAInfo {
@@ -364,6 +370,7 @@ Describe 'Repair-CWAA' {
         It 'reinstalls with the correct server' {
             $result = InModuleScope 'ConnectWiseAutomateAgent' {
                 Mock Get-CimInstance { @() }
+                Mock Confirm-CWAADependencyService {}
                 Mock Stop-Process {}
                 Mock Get-Service { [PSCustomObject]@{ Name = 'LTService'; Status = 'Running' } }
                 Mock Get-CWAAInfo {
@@ -381,6 +388,30 @@ Describe 'Repair-CWAA' {
             }
             $result.ActionTaken | Should -Be 'Reinstall'
             $result.Message | Should -Match 'correct server'
+        }
+    }
+
+    Context 'WMI dependency service' {
+        It 'ensures the dependency service before remediation' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock Get-CimInstance { @() }
+                Mock Confirm-CWAADependencyService {}
+                Mock Stop-Process {}
+                Mock Get-Service { [PSCustomObject]@{ Name = 'LTService'; Status = 'Running' } }
+                Mock Get-CWAAInfo {
+                    [PSCustomObject]@{
+                        Server              = @('automate.example.com')
+                        LastSuccessStatus   = (Get-Date).AddMinutes(-30).ToString()
+                        HeartbeatLastSent   = (Get-Date).AddMinutes(-15).ToString()
+                        HeartbeatLastReceived = (Get-Date).AddMinutes(-15).ToString()
+                    }
+                }
+                Mock Write-CWAAEventLog {}
+
+                Repair-CWAA -InstallerToken 'abc123' -Confirm:$false
+
+                Should -Invoke Confirm-CWAADependencyService -Scope It -Times 1
+            }
         }
     }
 }
@@ -795,11 +826,8 @@ Describe 'Test-CWAAPort' {
         It 'returns $true' {
             $result = InModuleScope 'ConnectWiseAutomateAgent' {
                 Mock Get-CWAAInfo { [PSCustomObject]@{ TrayPort = '42000' } }
-                # netstat returns no matching output for the port
-                $env_windir = $env:windir
-                Mock Invoke-Expression { return $null }
-                # Mock netstat by ensuring no process is found on the port
-                function netstat { return @() }
+                # No process is using the TrayPort: netstat returns nothing matching it.
+                Mock Get-CWAANetstat { @() }
                 Test-CWAAPort -TrayPort 42000 -Quiet
             }
             $result | Should -BeTrue
@@ -813,8 +841,8 @@ Describe 'Test-CWAAPort' {
                 Mock Get-CWAAInfoBackup { return $null }
                 Mock Get-Process { [PSCustomObject]@{ ProcessName = 'LTSvc'; Id = 1234 } }
                 Mock Test-Connection { return $true }
-                # Mock netstat to return a line matching the port with a PID
-                $Script:MockNetstatOutput = "  TCP    0.0.0.0:42000         0.0.0.0:0              LISTENING       1234"
+                # netstat reports a process (PID 1234) listening on the TrayPort.
+                Mock Get-CWAANetstat { '  TCP    0.0.0.0:42000         0.0.0.0:0              LISTENING       1234' }
 
                 # We need to test the output message
                 Test-CWAAPort -TrayPort 42000 -Server 'automate.example.com' 2>&1
