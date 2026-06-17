@@ -268,6 +268,20 @@ Describe 'Start-CWAA' {
             Should -Invoke Invoke-CWAACommand -Times 1 -Scope It -ParameterFilter { $Command -eq 'Send Status' }
         }
     }
+
+    It 'ensures the WMI dependency service before starting the agent' {
+        InModuleScope 'ConnectWiseAutomateAgent' {
+            Mock Get-CWAAInfo { [PSCustomObject]@{ TrayPort = '42000' } }
+            Mock Get-Service { [PSCustomObject]@{ Name = 'LTService'; Status = 'Running' } }
+            Mock Set-Service {}
+            Mock Invoke-CWAACommand {}
+            Mock Confirm-CWAADependencyService {}
+
+            Start-CWAA -Confirm:$false
+
+            Should -Invoke Confirm-CWAADependencyService -Times 1 -Scope It
+        }
+    }
 }
 
 # =============================================================================

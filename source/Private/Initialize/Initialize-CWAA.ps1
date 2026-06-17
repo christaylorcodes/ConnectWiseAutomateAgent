@@ -155,6 +155,12 @@ function Initialize-CWAA {
     # All service names including LabVNC — for full service cleanup in Uninstall-CWAA.
     $Script:CWAAAllServiceNames = @('LTService', 'LTSvcMon', 'LabVNC')
 
+    # OS services the agent depends on — ensured Automatic + Running before install/repair/start
+    # via Confirm-CWAADependencyService. The agent relies on WMI (winmgmt) for inventory,
+    # scripting, and check-in; a disabled winmgmt breaks the agent (and this module's own
+    # Get-CimInstance calls). Kept as a list so additional dependencies are trivial to add.
+    $Script:CWAADependencyServiceNames = @('winmgmt')
+
     # Service credential storage -- populated on-demand by Get-CWAAProxy
     $Script:LTServiceKeys = [PSCustomObject]@{
         ServerPasswordString = ''

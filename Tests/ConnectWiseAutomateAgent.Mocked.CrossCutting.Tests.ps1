@@ -95,6 +95,7 @@ Describe 'Pipeline Support' {
                 }
                 Mock Write-CWAAEventLog {}
                 Mock Get-CimInstance { return @() }
+                Mock Confirm-CWAADependencyService {}
 
                 # Pipe an object with Server and LocationID — bind via ValueFromPipelineByPropertyName
                 # InstallerToken is provided explicitly (it wouldn't come from Get-CWAAInfo output)
@@ -179,8 +180,8 @@ Describe 'Pipeline Support' {
         It 'accepts Server and TrayPort from piped PSCustomObject' {
             $result = InModuleScope 'ConnectWiseAutomateAgent' {
                 Mock Get-CWAAInfo { [PSCustomObject]@{ TrayPort = '42000' } }
-                Mock Invoke-Expression { return $null }
-                function netstat { return @() }
+                # No process is using the TrayPort: netstat returns nothing matching it.
+                Mock Get-CWAANetstat { @() }
 
                 [PSCustomObject]@{ Server = 'automate.example.com'; TrayPort = 42000 } | Test-CWAAPort -Quiet
             }

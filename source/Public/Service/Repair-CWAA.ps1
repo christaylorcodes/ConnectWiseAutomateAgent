@@ -79,6 +79,10 @@
     Begin {
         Write-Debug "Starting $($MyInvocation.InvocationName)"
 
+        # Ensure WMI (winmgmt) is Automatic + Running first. The agent depends on it, and the
+        # Get-CimInstance call below silently no-ops on a WMI-disabled box, so this must run before it.
+        Confirm-CWAADependencyService
+
         # Kill duplicate Repair-CWAA processes to prevent overlapping remediation
         # Uses CIM for reliable command-line matching (Get-Process cannot filter by arguments)
         if ($PSCmdlet.ShouldProcess('Duplicate Repair-CWAA processes', 'Terminate')) {

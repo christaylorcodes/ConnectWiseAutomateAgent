@@ -144,6 +144,9 @@ function Install-CWAA {
             Throw 'Needs to be ran as Administrator'
         }
 
+        # Ensure WMI (winmgmt) is Automatic + Running before the MSI runs and the agent registers.
+        Confirm-CWAADependencyService
+
         $Null = Test-CWAADotNetPrerequisite -SkipDotNet:$SkipDotNet -Force:$Force
 
         $InstallBase = $Script:CWAAInstallerTempPath

@@ -614,3 +614,106 @@ Describe 'Invoke-CWAAMsiInstaller' {
         }
     }
 }
+
+# -----------------------------------------------------------------------------
+# Confirm-CWAADependencyService Tests
+# -----------------------------------------------------------------------------
+
+Describe 'Confirm-CWAADependencyService' {
+
+    It 'sets startup type to Automatic for the dependency service' {
+        InModuleScope 'ConnectWiseAutomateAgent' {
+            Mock Get-Service { [PSCustomObject]@{ Name = 'winmgmt'; Status = 'Running' } }
+            Mock Set-Service {}
+            Mock Start-Service {}
+            Mock Wait-CWAACondition { $true }
+
+            Confirm-CWAADependencyService -Confirm:$false
+
+            Should -Invoke Set-Service -Scope It -ParameterFilter { $StartupType -eq 'Automatic' }
+        }
+    }
+
+    It 'starts the service when it is not running' {
+        InModuleScope 'ConnectWiseAutomateAgent' {
+            Mock Get-Service { [PSCustomObject]@{ Name = 'winmgmt'; Status = 'Stopped' } }
+            Mock Set-Service {}
+            Mock Start-Service {}
+            Mock Wait-CWAACondition { $true }
+            Mock Write-CWAAEventLog {}
+
+            Confirm-CWAADependencyService -Confirm:$false
+
+            Should -Invoke Start-Service -Scope It -Times 1
+            Should -Invoke Write-CWAAEventLog -Scope It -ParameterFilter { $EventId -eq 2030 }
+        }
+    }
+
+    It 'does not start the service when already running' {
+        InModuleScope 'ConnectWiseAutomateAgent' {
+            Mock Get-Service { [PSCustomObject]@{ Name = 'winmgmt'; Status = 'Running' } }
+            Mock Set-Service {}
+            Mock Start-Service {}
+            Mock Wait-CWAACondition { $true }
+
+            Confirm-CWAADependencyService -Confirm:$false
+
+            Should -Invoke Start-Service -Scope It -Times 0
+        }
+    }
+
+    It 'falls back to sc.exe when Start-Service throws' {
+        InModuleScope 'ConnectWiseAutomateAgent' {
+            Mock Get-Service { [PSCustomObject]@{ Name = 'winmgmt'; Status = 'Stopped' } }
+            Mock Set-Service {}
+            Mock Start-Service { throw 'cannot start' }
+            Mock Wait-CWAACondition { $true }
+            Mock Write-CWAAEventLog {}
+
+            { Confirm-CWAADependencyService -Confirm:$false } | Should -Not -Throw
+            # No assertion on sc.exe (native exe is not easily mockable); the test confirms
+            # the throw is caught and the function completes without error.
+        }
+    }
+
+    It 'logs a warning event when the service never reaches Running' {
+        InModuleScope 'ConnectWiseAutomateAgent' {
+            Mock Get-Service { [PSCustomObject]@{ Name = 'winmgmt'; Status = 'Stopped' } }
+            Mock Set-Service {}
+            Mock Start-Service {}
+            Mock Wait-CWAACondition { $false }
+            Mock Write-CWAAEventLog {}
+
+            Confirm-CWAADependencyService -Confirm:$false -WarningAction SilentlyContinue
+
+            Should -Invoke Write-CWAAEventLog -Scope It -ParameterFilter { $EventId -eq 2031 }
+        }
+    }
+
+    It 'skips a service that does not exist without error' {
+        InModuleScope 'ConnectWiseAutomateAgent' {
+            Mock Get-Service { $null }
+            Mock Set-Service {}
+            Mock Start-Service {}
+
+            { Confirm-CWAADependencyService -Confirm:$false } | Should -Not -Throw
+
+            Should -Invoke Set-Service -Scope It -Times 0
+            Should -Invoke Start-Service -Scope It -Times 0
+        }
+    }
+
+    It 'makes no changes under -WhatIf' {
+        InModuleScope 'ConnectWiseAutomateAgent' {
+            Mock Get-Service { [PSCustomObject]@{ Name = 'winmgmt'; Status = 'Stopped' } }
+            Mock Set-Service {}
+            Mock Start-Service {}
+            Mock Wait-CWAACondition { $true }
+
+            Confirm-CWAADependencyService -WhatIf
+
+            Should -Invoke Set-Service -Scope It -Times 0
+            Should -Invoke Start-Service -Scope It -Times 0
+        }
+    }
+}
