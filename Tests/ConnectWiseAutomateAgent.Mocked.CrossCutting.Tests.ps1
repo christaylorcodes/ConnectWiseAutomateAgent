@@ -224,7 +224,13 @@ Describe 'Pipeline Support' {
 
         It 'Register-CWAAHealthCheckTask accepts Server as string[] and builds valid command' {
             $result = InModuleScope 'ConnectWiseAutomateAgent' {
-                Mock schtasks { return $null }
+                # The mock must set $LASTEXITCODE for the /CREATE branch; the code checks it
+                # after the native call, and a bare 'return $null' leaks a prior exit code.
+                Mock schtasks {
+                    if ($args -contains '/QUERY') { throw 'Task not found' }
+                    elseif ($args -contains '/DELETE') { return $null }
+                    elseif ($args -contains '/CREATE') { $global:LASTEXITCODE = 0; return 'SUCCESS' }
+                }
                 Mock New-CWAABackup {}
 
                 [PSCustomObject]@{
