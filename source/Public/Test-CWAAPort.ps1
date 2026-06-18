@@ -101,7 +101,7 @@ function Test-CWAAPort {
             [array]$processes = @()
             # Get all processes using the TrayPort (default 42000)
             Try {
-                $netstatOutput = & "$env:windir\system32\netstat.exe" -a -o -n | Select-String -Pattern " .*[0-9\.]+:$($TrayPort).*[0-9\.]+:[0-9]+ .*?([0-9]+)" -EA 0
+                $netstatOutput = Get-CWAANetstat | Select-String -Pattern " .*[0-9\.]+:$($TrayPort).*[0-9\.]+:[0-9]+ .*?([0-9]+)" -EA 0
             }
             Catch {
                 Write-Output 'Error calling netstat.exe.'
