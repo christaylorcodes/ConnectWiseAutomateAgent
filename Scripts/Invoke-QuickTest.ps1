@@ -209,7 +209,7 @@ if ($IncludeAnalyzer) {
 # --- Build output ---
 
 $failedTests = @()
-if ($results.FailedCount -gt 0) {
+if (($results.FailedCount + $results.FailedBlocksCount + $results.FailedContainersCount) -gt 0) {
     $failedTests = @($results.Failed | ForEach-Object {
         $relativePath = if ($_.ScriptBlock.File) {
             $_.ScriptBlock.File -replace [regex]::Escape($ProjectRoot + [IO.Path]::DirectorySeparatorChar), ''
@@ -226,10 +226,10 @@ if ($results.FailedCount -gt 0) {
 
 $totalDuration = '{0:N2}s' -f $results.Duration.TotalSeconds
 
-$success = ($results.FailedCount -eq 0) -and ($analyzerErrors.Count -eq 0)
+$success = (($results.FailedCount + $results.FailedBlocksCount + $results.FailedContainersCount) -eq 0) -and ($analyzerErrors.Count -eq 0)
 $summaryParts = @()
 if ($results.PassedCount -gt 0) { $summaryParts += "$($results.PassedCount) passed" }
-if ($results.FailedCount -gt 0) { $summaryParts += "$($results.FailedCount) failed" }
+if (($results.FailedCount + $results.FailedBlocksCount + $results.FailedContainersCount) -gt 0) { $summaryParts += "$($results.FailedCount) failed" }
 if ($results.SkippedCount -gt 0) { $summaryParts += "$($results.SkippedCount) skipped" }
 $summaryText = if ($success) { "PASSED ($($summaryParts -join ', '))" } else { "FAILED ($($summaryParts -join ', '))" }
 
@@ -259,7 +259,7 @@ else {
     Write-Host "=== QUICK TEST: $label ===" -ForegroundColor Cyan
 
     # Failed test details
-    if ($results.FailedCount -gt 0) {
+    if (($results.FailedCount + $results.FailedBlocksCount + $results.FailedContainersCount) -gt 0) {
         Write-Host ""
         Write-Host "FAILED TESTS:" -ForegroundColor Red
         foreach ($ft in $failedTests) {
