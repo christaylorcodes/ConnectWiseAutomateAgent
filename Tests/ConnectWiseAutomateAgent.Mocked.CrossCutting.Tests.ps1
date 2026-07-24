@@ -232,6 +232,7 @@ Describe 'Pipeline Support' {
                     elseif ($args -contains '/CREATE') { $global:LASTEXITCODE = 0; return 'SUCCESS' }
                 }
                 Mock New-CWAABackup {}
+                Mock Get-ScheduledTask { [PSCustomObject]@{ TaskName = $TaskName } }
 
                 [PSCustomObject]@{
                     Server     = @('primary.example.com', 'backup.example.com')

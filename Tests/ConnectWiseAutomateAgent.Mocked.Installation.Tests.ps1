@@ -599,6 +599,7 @@ Describe 'Register-CWAAHealthCheckTask' {
                 Mock New-CWAABackup {}
                 Mock Remove-Item {}
                 Mock Write-CWAAEventLog {}
+                Mock Get-ScheduledTask { [PSCustomObject]@{ TaskName = $TaskName } }
 
                 Register-CWAAHealthCheckTask -InstallerToken 'abc123' -Confirm:$false
             }
@@ -608,13 +609,15 @@ Describe 'Register-CWAAHealthCheckTask' {
         }
     }
 
-    Context 'when task exists with matching token' {
+    Context 'when task exists with matching configuration' {
         It 'skips recreation and returns Created=$false, Updated=$false' {
             $result = InModuleScope 'ConnectWiseAutomateAgent' {
                 Mock schtasks {
                     if ($args -contains '/QUERY') {
-                        # Return XML that contains the token in the Arguments element
-                        return '<Task><Actions><Exec><Arguments>-Command "Repair-CWAA -InstallerToken abc123"</Arguments></Exec></Actions></Task>'
+                        # Arguments contains the exact command Register-CWAAHealthCheckTask would build for
+                        # -InstallerToken 'abc123' with no Server/LocationID, and Interval matches the
+                        # default IntervalHours (6 -> PT6H).
+                        return '<Task><Actions><Exec><Arguments>-NoProfile -WindowStyle Hidden -Command "Import-Module ConnectWiseAutomateAgent; Repair-CWAA -InstallerToken ''abc123''"</Arguments></Exec></Actions><Triggers><TimeTrigger><Repetition><Interval>PT6H</Interval></Repetition></TimeTrigger></Triggers></Task>'
                     }
                 }
 
@@ -625,12 +628,13 @@ Describe 'Register-CWAAHealthCheckTask' {
         }
     }
 
-    Context 'when -Force is used with existing task' {
+    Context 'when task exists with matching token but a different interval' {
         It 'recreates the task' {
             $result = InModuleScope 'ConnectWiseAutomateAgent' {
                 Mock schtasks {
                     if ($args -contains '/QUERY') {
-                        return '<Task><Actions><Exec><Arguments>-Command "Repair-CWAA -InstallerToken abc123"</Arguments></Exec></Actions></Task>'
+                        # Same command, but interval is PT12H instead of the requested default PT6H.
+                        return '<Task><Actions><Exec><Arguments>-NoProfile -WindowStyle Hidden -Command "Import-Module ConnectWiseAutomateAgent; Repair-CWAA -InstallerToken ''abc123''"</Arguments></Exec></Actions><Triggers><TimeTrigger><Repetition><Interval>PT12H</Interval></Repetition></TimeTrigger></Triggers></Task>'
                     }
                     elseif ($args -contains '/DELETE') { return $null }
                     elseif ($args -contains '/CREATE') { $global:LASTEXITCODE = 0; return 'SUCCESS' }
@@ -638,6 +642,50 @@ Describe 'Register-CWAAHealthCheckTask' {
                 Mock New-CWAABackup {}
                 Mock Remove-Item {}
                 Mock Write-CWAAEventLog {}
+                Mock Get-ScheduledTask { [PSCustomObject]@{ TaskName = $TaskName } }
+
+                Register-CWAAHealthCheckTask -InstallerToken 'abc123' -Confirm:$false
+            }
+            ($result.Created -or $result.Updated) | Should -BeTrue
+        }
+    }
+
+    Context 'when task exists with matching token/interval but different Server or LocationID' {
+        It 'recreates the task' {
+            $result = InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock schtasks {
+                    if ($args -contains '/QUERY') {
+                        # Existing task was registered for a different LocationID (99, not 42).
+                        return '<Task><Actions><Exec><Arguments>-NoProfile -WindowStyle Hidden -Command "Import-Module ConnectWiseAutomateAgent; Repair-CWAA -Server ''https://automate.example.com'' -LocationID 99 -InstallerToken ''abc123''"</Arguments></Exec></Actions><Triggers><TimeTrigger><Repetition><Interval>PT6H</Interval></Repetition></TimeTrigger></Triggers></Task>'
+                    }
+                    elseif ($args -contains '/DELETE') { return $null }
+                    elseif ($args -contains '/CREATE') { $global:LASTEXITCODE = 0; return 'SUCCESS' }
+                }
+                Mock New-CWAABackup {}
+                Mock Remove-Item {}
+                Mock Write-CWAAEventLog {}
+                Mock Get-ScheduledTask { [PSCustomObject]@{ TaskName = $TaskName } }
+
+                Register-CWAAHealthCheckTask -Server 'https://automate.example.com' -LocationID 42 -InstallerToken 'abc123' -Confirm:$false
+            }
+            ($result.Created -or $result.Updated) | Should -BeTrue
+        }
+    }
+
+    Context 'when -Force is used with existing task' {
+        It 'recreates the task' {
+            $result = InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock schtasks {
+                    if ($args -contains '/QUERY') {
+                        return '<Task><Actions><Exec><Arguments>-NoProfile -WindowStyle Hidden -Command "Import-Module ConnectWiseAutomateAgent; Repair-CWAA -InstallerToken ''abc123''"</Arguments></Exec></Actions><Triggers><TimeTrigger><Repetition><Interval>PT6H</Interval></Repetition></TimeTrigger></Triggers></Task>'
+                    }
+                    elseif ($args -contains '/DELETE') { return $null }
+                    elseif ($args -contains '/CREATE') { $global:LASTEXITCODE = 0; return 'SUCCESS' }
+                }
+                Mock New-CWAABackup {}
+                Mock Remove-Item {}
+                Mock Write-CWAAEventLog {}
+                Mock Get-ScheduledTask { [PSCustomObject]@{ TaskName = $TaskName } }
 
                 Register-CWAAHealthCheckTask -InstallerToken 'abc123' -Force -Confirm:$false
             }
@@ -656,10 +704,53 @@ Describe 'Register-CWAAHealthCheckTask' {
                 Mock New-CWAABackup {}
                 Mock Remove-Item {}
                 Mock Write-CWAAEventLog {}
+                Mock Get-ScheduledTask { [PSCustomObject]@{ TaskName = $TaskName } }
 
                 Register-CWAAHealthCheckTask -InstallerToken 'abc123' -TaskName 'MyHealthCheck' -IntervalHours 12 -Confirm:$false
             }
             $result.TaskName | Should -Be 'MyHealthCheck'
+        }
+    }
+
+    Context 'when task creation succeeds but post-create verification fails' {
+        It 'logs an error event without throwing' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock schtasks {
+                    if ($args -contains '/QUERY') { throw 'Task not found' }
+                    elseif ($args -contains '/DELETE') { return $null }
+                    elseif ($args -contains '/CREATE') { $global:LASTEXITCODE = 0; return 'SUCCESS' }
+                }
+                Mock New-CWAABackup {}
+                Mock Remove-Item {}
+                Mock Write-CWAAEventLog {}
+                # Task is reported as created by schtasks but is gone by the time we verify it —
+                # simulates AV/policy removing it immediately after creation.
+                Mock Get-ScheduledTask { $null }
+
+                Register-CWAAHealthCheckTask -InstallerToken 'abc123' -Confirm:$false -ErrorAction SilentlyContinue
+
+                Should -Invoke Write-CWAAEventLog -ParameterFilter { $EventId -eq 4023 }
+            }
+        }
+    }
+
+    Context 'when task creation fails' {
+        It 'still writes the failure event log even when the caller sets $ErrorActionPreference = Stop' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock schtasks {
+                    if ($args -contains '/QUERY') { throw 'Task not found' }
+                    elseif ($args -contains '/DELETE') { return $null }
+                    elseif ($args -contains '/CREATE') { $global:LASTEXITCODE = 1; return 'FAILURE' }
+                }
+                Mock New-CWAABackup {}
+                Mock Remove-Item {}
+                Mock Write-CWAAEventLog {}
+
+                $ErrorActionPreference = 'Stop'
+                Register-CWAAHealthCheckTask -InstallerToken 'abc123' -Confirm:$false -ErrorAction SilentlyContinue
+
+                Should -Invoke Write-CWAAEventLog -ParameterFilter { $EventId -eq 4022 }
+            }
         }
     }
 }
