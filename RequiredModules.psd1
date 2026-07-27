@@ -15,7 +15,7 @@
             SkipPublisherCheck = $true
         }
     }
-    Sampler                     = 'latest'
+    Sampler                     = '0.119.1'
     ModuleBuilder               = 'latest'
     platyPS                     = 'latest'
     'powershell-yaml'           = 'latest'
