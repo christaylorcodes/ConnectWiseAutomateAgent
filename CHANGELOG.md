@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `Register-CWAAHealthCheckTask` now recreates the scheduled task when `-IntervalHours`, `-Server`, or `-LocationID` change, not only when `-InstallerToken` changes.
+- `Register-CWAAHealthCheckTask` now verifies the scheduled task actually exists after registration and logs an error if it doesn't (e.g. removed by AV/policy immediately after creation).
+- `Register-CWAAHealthCheckTask` now correctly writes to the Windows Event Log on registration failure even when the caller has set `$ErrorActionPreference = 'Stop'`.
+
 ## [2.1.0] - 2026-06-17
 
 ### Added

@@ -16,7 +16,7 @@ function Write-CWAAEventLog {
           2000-2029  Service Control (Start, Stop, Restart)
           2030-2039  Dependency Services (winmgmt/WMI auto-start + start)
           3000-3069  Configuration (Reset, Backup, Proxy, LogLevel, AddRemove)
-          4000-4039  Health/Monitoring (Repair, Register/Unregister task)
+          4000-4039  Health/Monitoring (Repair, Register/Unregister task, 4022/4023 register failures)
     .NOTES
         Version: 0.1.5.0
         Author: Chris Taylor

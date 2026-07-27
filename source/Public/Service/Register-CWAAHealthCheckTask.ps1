@@ -1,4 +1,4 @@
-function Register-CWAAHealthCheckTask {
+﻿function Register-CWAAHealthCheckTask {
     <#
     .SYNOPSIS
         Creates or updates a scheduled task for periodic ConnectWise Automate agent health checks.
@@ -9,8 +9,9 @@ function Register-CWAAHealthCheckTask {
         The task runs as SYSTEM with highest privileges, includes a random delay equal to the
         interval to stagger execution across multiple machines, and has a 1-hour execution timeout.
 
-        If the task already exists and the InstallerToken has changed, the task is recreated
-        with the new token. Use -Force to recreate unconditionally.
+        If the task already exists and its configuration (InstallerToken, Server, LocationID, or
+        IntervalHours) has changed, the task is recreated to match. Use -Force to recreate
+        unconditionally.
 
         A backup of the current agent configuration is created before task registration
         via New-CWAABackup.
@@ -27,7 +28,7 @@ function Register-CWAAHealthCheckTask {
     .PARAMETER IntervalHours
         Hours between health check runs. Default: 6.
     .PARAMETER Force
-        Force recreation of the task even if it already exists with the same token.
+        Force recreation of the task even if it already exists with a matching configuration.
     .EXAMPLE
         Register-CWAAHealthCheckTask -InstallerToken 'abc123def456'
         Creates a task that runs Repair-CWAA in Checkup mode every 6 hours.
@@ -79,6 +80,22 @@ function Register-CWAAHealthCheckTask {
         $created = $False
         $updated = $False
 
+        # Build the PowerShell command for the scheduled task action
+        # Use Install mode if Server and LocationID are provided, otherwise Checkup mode
+        if ($Server -and $LocationID) {
+            # Build a proper PowerShell array literal for the Server argument.
+            # Handles both single-server and multi-server arrays from Get-CWAAInfo pipeline.
+            $serverArgument = ($Server | ForEach-Object { "'$_'" }) -join ','
+            $repairCommand = "Import-Module ConnectWiseAutomateAgent; Repair-CWAA -Server $serverArgument -LocationID $LocationID -InstallerToken '$InstallerToken'"
+        }
+        else {
+            $repairCommand = "Import-Module ConnectWiseAutomateAgent; Repair-CWAA -InstallerToken '$InstallerToken'"
+        }
+
+        # XML-escape special characters in the command for the task definition
+        $escapedCommand = $repairCommand -replace '&', '&amp;' -replace '<', '&lt;' -replace '>', '&gt;' -replace '"', '&quot;' -replace "'", '&apos;'
+        $intervalIso = "PT${IntervalHours}H"
+
         # Check if the task already exists
         $existingTaskXml = $Null
         Try {
@@ -86,10 +103,14 @@ function Register-CWAAHealthCheckTask {
         }
         Catch { Write-Debug "Task '$TaskName' not found or query failed: $($_.Exception.Message)" }
 
-        # If the task exists and the token hasn't changed, skip recreation unless -Force
+        # If the task exists and both its command (token/server/locationid) and interval already match,
+        # skip recreation unless -Force. schtasks returns XML-decoded text, so compare against the raw
+        # (unescaped) command, not $escapedCommand.
         if ($existingTaskXml -and -not $Force) {
-            if ($existingTaskXml.Task.Actions.Exec.Arguments -match [regex]::Escape($InstallerToken)) {
-                Write-Verbose "Scheduled task '$TaskName' already exists with the same InstallerToken. Use -Force to recreate."
+            $configMatches = $existingTaskXml.Task.Actions.Exec.Arguments -match [regex]::Escape($repairCommand)
+            $intervalMatches = $existingTaskXml.Task.Triggers.TimeTrigger.Repetition.Interval -eq $intervalIso
+            if ($configMatches -and $intervalMatches) {
+                Write-Verbose "Scheduled task '$TaskName' already exists with matching configuration. Use -Force to recreate."
                 [PSCustomObject]@{
                     TaskName = $TaskName
                     Created  = $False
@@ -105,21 +126,6 @@ function Register-CWAAHealthCheckTask {
             Write-Verbose 'Backing up agent configuration.'
             New-CWAABackup -ErrorAction SilentlyContinue
 
-            # Build the PowerShell command for the scheduled task action
-            # Use Install mode if Server and LocationID are provided, otherwise Checkup mode
-            if ($Server -and $LocationID) {
-                # Build a proper PowerShell array literal for the Server argument.
-                # Handles both single-server and multi-server arrays from Get-CWAAInfo pipeline.
-                $serverArgument = ($Server | ForEach-Object { "'$_'" }) -join ','
-                $repairCommand = "Import-Module ConnectWiseAutomateAgent; Repair-CWAA -Server $serverArgument -LocationID $LocationID -InstallerToken '$InstallerToken'"
-            }
-            else {
-                $repairCommand = "Import-Module ConnectWiseAutomateAgent; Repair-CWAA -InstallerToken '$InstallerToken'"
-            }
-
-            # XML-escape special characters in the command for the task definition
-            $escapedCommand = $repairCommand -replace '&', '&amp;' -replace '<', '&lt;' -replace '>', '&gt;' -replace '"', '&quot;' -replace "'", '&apos;'
-
             # Delete existing task if present
             Try {
                 $Null = schtasks /DELETE /TN $TaskName /F 2>&1
@@ -129,7 +135,6 @@ function Register-CWAAHealthCheckTask {
             # Build the task XML definition
             # Runs as SYSTEM (S-1-5-18) with highest privileges
             # Repeats every $IntervalHours hours with randomized delay for staggering
-            $intervalIso = "PT${IntervalHours}H"
             $startBoundary = Get-Date -Format 'yyyy-MM-ddTHH:mm:ssK'
 
             [xml]$taskXml = @"
@@ -186,13 +191,27 @@ function Register-CWAAHealthCheckTask {
                     throw "schtasks returned exit code $LASTEXITCODE. Output: $schtasksOutput"
                 }
 
-                $created = -not $updated
-                $resultMessage = if ($updated) { "Scheduled task '$TaskName' updated." } else { "Scheduled task '$TaskName' created." }
-                Write-Output $resultMessage
-                Write-CWAAEventLog -EventId 4020 -EntryType Information -Message "$resultMessage Interval: every $IntervalHours hours."
+                # Verify the task actually persists after creation — a task can be reported as created
+                # successfully by schtasks and then be removed immediately afterward (e.g. by AV/policy).
+                # Uses schtasks (not Get-ScheduledTask/ScheduledTasks module) to match this function's
+                # PowerShell 2.0/3.0 compatibility target and the existence check above.
+                $Null = schtasks /QUERY /TN $TaskName 2>&1
+                if ($LASTEXITCODE -ne 0) {
+                    $verifyMessage = "Task '$TaskName' reported successful creation but could not be found on verification (possible AV/policy removal)."
+                    Write-Error $verifyMessage -ErrorAction Continue
+                    Write-CWAAEventLog -EventId 4023 -EntryType Error -Message $verifyMessage
+                }
+                else {
+                    $created = -not $updated
+                    $resultMessage = if ($updated) { "Scheduled task '$TaskName' updated." } else { "Scheduled task '$TaskName' created." }
+                    Write-Output $resultMessage
+                    Write-CWAAEventLog -EventId 4020 -EntryType Information -Message "$resultMessage Interval: every $IntervalHours hours."
+                }
             }
             Catch {
-                Write-Error "Failed to create scheduled task '$TaskName'. Error: $($_.Exception.Message)"
+                # -ErrorAction Continue ensures the event log call below still runs even when the caller
+                # has set $ErrorActionPreference = 'Stop' (Write-Error would otherwise terminate here).
+                Write-Error "Failed to create scheduled task '$TaskName'. Error: $($_.Exception.Message)" -ErrorAction Continue
                 Write-CWAAEventLog -EventId 4022 -EntryType Error -Message "Failed to create scheduled task '$TaskName'. Error: $($_.Exception.Message)"
             }
             Finally {
