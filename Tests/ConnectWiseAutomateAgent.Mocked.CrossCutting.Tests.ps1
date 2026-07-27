@@ -227,12 +227,12 @@ Describe 'Pipeline Support' {
                 # The mock must set $LASTEXITCODE for the /CREATE branch; the code checks it
                 # after the native call, and a bare 'return $null' leaks a prior exit code.
                 Mock schtasks {
-                    if ($args -contains '/QUERY') { throw 'Task not found' }
+                    if ($args -contains '/QUERY' -and $args -contains '/XML') { throw 'Task not found' }
                     elseif ($args -contains '/DELETE') { return $null }
                     elseif ($args -contains '/CREATE') { $global:LASTEXITCODE = 0; return 'SUCCESS' }
+                    elseif ($args -contains '/QUERY') { $global:LASTEXITCODE = 0; return 'SUCCESS' }
                 }
                 Mock New-CWAABackup {}
-                Mock Get-ScheduledTask { [PSCustomObject]@{ TaskName = $TaskName } }
 
                 [PSCustomObject]@{
                     Server     = @('primary.example.com', 'backup.example.com')

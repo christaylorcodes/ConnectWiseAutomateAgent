@@ -28,7 +28,7 @@ Event IDs are organized by category:
 | 1000-1039 | Installation | Install (1000), Uninstall (1010), Redo (1020), Update (1030) |
 | 2000-2029 | Service Control | Start (2000), Stop (2010), Restart (2020) |
 | 3000-3069 | Configuration | Reset (3000), Backup (3010), Proxy (3020), LogLevel (3030), AddRemove (3040) |
-| 4000-4039 | Health/Monitoring | Repair (4000-4008), Register task (4020), Unregister task (4030) |
+| 4000-4039 | Health/Monitoring | Repair (4000-4008), Register task (4020), Register task creation failed (4022), Register task verification failed (4023), Unregister task (4030) |
 
 Events are viewable in Windows Event Viewer or via PowerShell:
 

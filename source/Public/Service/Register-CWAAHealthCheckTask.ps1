@@ -193,16 +193,20 @@
 
                 # Verify the task actually persists after creation — a task can be reported as created
                 # successfully by schtasks and then be removed immediately afterward (e.g. by AV/policy).
-                if (-not (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue)) {
+                # Uses schtasks (not Get-ScheduledTask/ScheduledTasks module) to match this function's
+                # PowerShell 2.0/3.0 compatibility target and the existence check above.
+                $Null = schtasks /QUERY /TN $TaskName 2>&1
+                if ($LASTEXITCODE -ne 0) {
                     $verifyMessage = "Task '$TaskName' reported successful creation but could not be found on verification (possible AV/policy removal)."
                     Write-Error $verifyMessage -ErrorAction Continue
                     Write-CWAAEventLog -EventId 4023 -EntryType Error -Message $verifyMessage
                 }
-
-                $created = -not $updated
-                $resultMessage = if ($updated) { "Scheduled task '$TaskName' updated." } else { "Scheduled task '$TaskName' created." }
-                Write-Output $resultMessage
-                Write-CWAAEventLog -EventId 4020 -EntryType Information -Message "$resultMessage Interval: every $IntervalHours hours."
+                else {
+                    $created = -not $updated
+                    $resultMessage = if ($updated) { "Scheduled task '$TaskName' updated." } else { "Scheduled task '$TaskName' created." }
+                    Write-Output $resultMessage
+                    Write-CWAAEventLog -EventId 4020 -EntryType Information -Message "$resultMessage Interval: every $IntervalHours hours."
+                }
             }
             Catch {
                 # -ErrorAction Continue ensures the event log call below still runs even when the caller
