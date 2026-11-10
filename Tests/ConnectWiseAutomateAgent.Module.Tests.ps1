@@ -198,6 +198,13 @@ Describe 'Module: ConnectWiseAutomateAgent' {
                 'Repair-CWAA'
                 'Register-CWAAHealthCheckTask'
                 'Unregister-CWAAHealthCheckTask'
+                'ConvertTo-CWAAScriptOutput'
+                'Initialize-CWAAScriptLog'
+                'Invoke-CWAAPwsh'
+                'Invoke-CWAAScript'
+                'New-CWAARemoteMonitor'
+                'New-CWAAScriptOutput'
+                'Write-CWAAScriptLog'
             )
             $ExportedFunctions = (Get-Module 'ConnectWiseAutomateAgent').ExportedFunctions.Keys
         }
@@ -250,6 +257,13 @@ Describe 'Module: ConnectWiseAutomateAgent' {
                 'Repair-LTService'
                 'Register-LTHealthCheckTask'
                 'Unregister-LTHealthCheckTask'
+                'ConvertTo-AutomateOutput'
+                'Initialize-AutomateLogging'
+                'Invoke-CWAScript'
+                'Invoke-LTPwsh'
+                'New-AutomateOutput'
+                'New-CWARemoteMonitor'
+                'Write-AutomateLog'
             )
             $ExportedAliases = (Get-Module 'ConnectWiseAutomateAgent').ExportedAliases.Keys
         }

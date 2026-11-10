@@ -63,17 +63,19 @@ ConnectWiseAutomateAgent/
       InstallUninstall/               # Install, Uninstall, Update, Redo
       Logging/                        # Error logs, log levels
       Proxy/                          # Proxy configuration
+      Scripting/                      # Helpers for scripts run from Automate
       Service/                        # Service control, health checks
       Settings/                       # Agent configuration and backup
   output/                             # Build output (gitignored)
   Tests/
-    *.Tests.ps1                       # 11 test suites (Module, Mocked.*, Docs, Security, CrossVersion, Live)
+    *.Tests.ps1                       # 12 test suites (Module, Mocked.*, Docs, Security, CrossVersion, Live)
     Helpers/                          # Shared mock helpers
     TestBootstrap.ps1                 # Shared module loading bootstrap
     Invoke-AllTests.ps1               # Dual-mode test runner
     test-local.ps1                    # Pre-push validation script
   Scripts/
     Invoke-QuickTest.ps1              # Fast targeted test runner for dev loops
+    Update-PlatyPSDocs.ps1            # Post-process PlatyPS output in Docs/Help
   Docs/                               # Hand-written guides
     Help/                             # Auto-generated function reference (PlatyPS)
   Examples/                           # Ready-to-use deployment scripts
