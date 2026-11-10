@@ -510,6 +510,19 @@ Describe 'Invoke-CWAAPwsh' {
         }
     }
 
+    It 'refuses a PATH pwsh.exe that is not validly signed by Microsoft' {
+        InModuleScope 'ConnectWiseAutomateAgent' {
+            Mock Test-Path { $false } -ParameterFilter { $PathType -eq 'Leaf' }
+            Mock Get-Command { [PSCustomObject]@{ Source = 'C:\Users\Public\pwsh.exe' } } -ParameterFilter { $Name -eq 'pwsh' }
+            Mock Get-AuthenticodeSignature { [PSCustomObject]@{ Status = 'NotSigned'; SignerCertificate = $null } }
+
+            $result = Invoke-CWAAPwsh -ScriptBlock { 'test' }
+
+            $result | Should -Match 'Status=Error'
+            $result | Should -Match 'not validly signed'
+        }
+    }
+
     It 'returns Error with descriptive message when valid PwshPath cannot execute' {
         InModuleScope 'ConnectWiseAutomateAgent' {
             # Test-Path says the file exists, but execution will fail (mocked path)

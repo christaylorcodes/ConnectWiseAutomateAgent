@@ -36,7 +36,7 @@ The path specified by the PwshPath parameter
 2.
 Program Files default install (C:\Program Files\PowerShell\7\pwsh.exe)
 3.
-The system PATH (via Get-Command)
+The system PATH (via Get-Command), accepted only when the file has a valid Microsoft Authenticode signature
 
 Output is captured and returned as a CWAAScriptOutput-formatted pipe-delimited
 string.

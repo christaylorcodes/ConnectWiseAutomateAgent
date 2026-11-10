@@ -10,7 +10,8 @@ function Invoke-CWAAPwsh {
         The function searches for pwsh.exe in the following locations (in order):
         1. The path specified by the PwshPath parameter
         2. Program Files default install (C:\Program Files\PowerShell\7\pwsh.exe)
-        3. The system PATH (via Get-Command)
+        3. The system PATH (via Get-Command), accepted only when the file has a valid
+           Microsoft Authenticode signature
 
         Output is captured and returned as a CWAAScriptOutput-formatted pipe-delimited
         string. Errors from pwsh execution are caught and reported in the output.
@@ -90,7 +91,18 @@ function Invoke-CWAAPwsh {
                 $defaultPath
             }
             else {
-                (Get-Command -Name 'pwsh' -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1).Source
+                # PATH can include user-writable folders and this often runs as SYSTEM, so only
+                # accept a PATH match that carries a valid Microsoft Authenticode signature.
+                $pathCandidate = (Get-Command -Name 'pwsh' -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1).Source
+                if ($pathCandidate) {
+                    $signature = Get-AuthenticodeSignature -FilePath $pathCandidate -ErrorAction SilentlyContinue
+                    if ($signature.Status -eq 'Valid' -and $signature.SignerCertificate.Subject -match 'O=Microsoft Corporation') {
+                        $pathCandidate
+                    }
+                    else {
+                        Write-Error "pwsh.exe found on PATH at '$pathCandidate' is not validly signed by Microsoft; refusing to run it. Specify a trusted path using -PwshPath." -ErrorAction Stop
+                    }
+                }
             }
 
             if (-not $resolvedPwshPath) {
