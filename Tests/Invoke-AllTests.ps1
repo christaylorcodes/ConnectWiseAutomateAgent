@@ -90,7 +90,7 @@ function Invoke-PesterInProcess {
 Invoke-Pester -Configuration `$config
 "@
 
-    & $pwshExe -NoProfile -NonInteractive -Command $pesterCommand
+    & $pwshExe -NoProfile -NonInteractive -Command $pesterCommand | Out-Host
     return $LASTEXITCODE
 }
 

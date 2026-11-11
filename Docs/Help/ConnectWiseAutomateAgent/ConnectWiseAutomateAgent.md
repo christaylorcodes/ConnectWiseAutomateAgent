@@ -22,6 +22,10 @@ PowerShell module for working with the ConnectWise Automate Agent.
 
 Decodes a Base64-encoded string using TripleDES decryption.
 
+### [ConvertTo-CWAAScriptOutput](ConvertTo-CWAAScriptOutput.md)
+
+Converts a script output object or hashtable to the pipe-delimited format expected by ConnectWise Automate.
+
 ### [ConvertTo-CWAASecurity](ConvertTo-CWAASecurity.md)
 
 Encodes a string using TripleDES encryption compatible with Automate operations.
@@ -58,6 +62,10 @@ Retrieves ConnectWise Automate agent settings from the registry.
 
 Hides the Automate agent from the Add/Remove Programs list.
 
+### [Initialize-CWAAScriptLog](Initialize-CWAAScriptLog.md)
+
+Initializes a log file for ConnectWise Automate script execution.
+
 ### [Install-CWAA](Install-CWAA.md)
 
 Installs the ConnectWise Automate Agent on the local computer.
@@ -66,9 +74,25 @@ Installs the ConnectWise Automate Agent on the local computer.
 
 Sends a service command to the ConnectWise Automate agent.
 
+### [Invoke-CWAAPwsh](Invoke-CWAAPwsh.md)
+
+Executes a scriptblock or script file under PowerShell 7 (pwsh.exe).
+
+### [Invoke-CWAAScript](Invoke-CWAAScript.md)
+
+Executes a scriptblock with standardized Automate script output and error handling.
+
 ### [New-CWAABackup](New-CWAABackup.md)
 
 Creates a complete backup of the ConnectWise Automate agent installation.
+
+### [New-CWAARemoteMonitor](New-CWAARemoteMonitor.md)
+
+Encodes a PowerShell scriptblock for use in a ConnectWise Automate remote monitor.
+
+### [New-CWAAScriptOutput](New-CWAAScriptOutput.md)
+
+Creates a structured output object for ConnectWise Automate script results.
 
 ### [Redo-CWAA](Redo-CWAA.md)
 
@@ -137,4 +161,8 @@ Removes the ConnectWise Automate agent health check scheduled task.
 ### [Update-CWAA](Update-CWAA.md)
 
 Manually updates the ConnectWise Automate Agent to a specified version.
+
+### [Write-CWAAScriptLog](Write-CWAAScriptLog.md)
+
+Writes a timestamped log entry to a ConnectWise Automate script log file.
 

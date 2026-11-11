@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Script helpers** for scripts run from ConnectWise Automate: `Initialize-CWAAScriptLog`, `Write-CWAAScriptLog`, `New-CWAAScriptOutput`, `ConvertTo-CWAAScriptOutput`, `Invoke-CWAAScript`, `Invoke-CWAAPwsh`, and `New-CWAARemoteMonitor`. See `Examples/ScriptHelper-*.ps1`. Output values are kept to one line (line breaks become ` / `, pipes become `/`). `Invoke-CWAAPwsh` only runs pwsh.exe from Program Files, the PowerShellCore registry install locations, or `-PwshPath`, never from PATH; it reports stderr output as `Status=Error`.
+
 ### Changed
 
 - Build and test tooling synced with the GitHub-Template (Nov 2026): Pester 6, Sampler 0.120, PSResourceGet dependency resolution with version ranges in `RequiredModules.psd1`, and a new `Assert_RequiredModule_Versions` build task. Build tooling now requires PowerShell 7.6+; the module itself still supports PowerShell 3.0+.

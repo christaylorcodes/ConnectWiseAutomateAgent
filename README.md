@@ -62,8 +62,9 @@ Redo-CWAA -Server 'automate.example.com' -LocationID 1 -InstallerToken 'MyToken'
 | **Scheduled Monitoring** | `Register-CWAAHealthCheckTask`, `Unregister-CWAAHealthCheckTask` | Automated health checks via Windows Task Scheduler |
 | **Add/Remove Programs** | `Hide-CWAAAddRemove`, `Show-CWAAAddRemove`, `Rename-CWAAAddRemove` | Control agent visibility in Control Panel |
 | **Security & Utilities** | `ConvertFrom-CWAASecurity`, `ConvertTo-CWAASecurity`, `Invoke-CWAACommand` | Agent credential encryption and remote command execution |
+| **Script Helpers** | `Initialize-CWAAScriptLog`, `Write-CWAAScriptLog`, `New-CWAAScriptOutput`, `ConvertTo-CWAAScriptOutput`, `Invoke-CWAAScript`, `Invoke-CWAAPwsh`, `New-CWAARemoteMonitor` | Logging, structured output, and PowerShell 7 launching for scripts run from Automate |
 
-30 functions total. Full details in the **[Function Reference](Docs/Help/ConnectWiseAutomateAgent.md)**.
+37 functions total. Full details in the **[Function Reference](Docs/Help/ConnectWiseAutomateAgent.md)**.
 
 ## Install
 
@@ -150,7 +151,7 @@ _Generated from source code comment-based help via [PlatyPS](https://github.com/
 
 | Resource | Description |
 | --- | --- |
-| [Function Reference](Docs/Help/ConnectWiseAutomateAgent.md) | All 30 functions organized by category with descriptions |
+| [Function Reference](Docs/Help/ConnectWiseAutomateAgent.md) | All 37 functions organized by category with descriptions |
 | [Individual Function Docs](Docs/Help/ConnectWiseAutomateAgent/) | One file per function -- parameters, examples, and syntax |
 | `Get-Help <function>` | In-session help compiled from the same source (MAML XML) |
 
@@ -177,6 +178,9 @@ Ready-to-use scripts in the [Examples/](Examples/) directory:
 | [ProxyConfiguration.ps1](Examples/ProxyConfiguration.ps1) | Configure proxy settings for restricted networks |
 | [HealthCheck-Monitoring.ps1](Examples/HealthCheck-Monitoring.ps1) | Set up ongoing health check monitoring |
 | [Troubleshooting-QuickDiagnostic.ps1](Examples/Troubleshooting-QuickDiagnostic.ps1) | Quick diagnostic script for common issues |
+| [ScriptHelper-BasicUsage.ps1](Examples/ScriptHelper-BasicUsage.ps1) | Script logging and structured output helpers |
+| [ScriptHelper-AutomateTemplate.ps1](Examples/ScriptHelper-AutomateTemplate.ps1) | Template for a script run from an Automate script step |
+| [ScriptHelper-PwshLauncher.ps1](Examples/ScriptHelper-PwshLauncher.ps1) | Run PowerShell 7 code from the agent's Windows PowerShell |
 | [PipelineUsage.ps1](Examples/PipelineUsage.ps1) | Pipeline patterns, multi-machine operations, function chaining |
 
 ## Project

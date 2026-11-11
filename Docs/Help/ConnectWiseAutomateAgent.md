@@ -10,7 +10,7 @@ Locale: en-US
 
 PowerShell module for managing the ConnectWise Automate (formerly LabTech) Windows agent. Install, configure, troubleshoot, and manage the Automate agent on Windows systems.
 
-> Every function below has a legacy `LT` alias (e.g., `Install-CWAA` = `Install-LTService`). Run `Get-Alias -Definition *-CWAA*` to see them all.
+> Every agent-management function below has a legacy `LT` alias (e.g., `Install-CWAA` = `Install-LTService`). Run `Get-Alias -Definition *-CWAA*` to see them all.
 
 ## Install & Uninstall
 
@@ -81,3 +81,17 @@ PowerShell module for managing the ConnectWise Automate (formerly LabTech) Windo
 | [ConvertTo-CWAASecurity](ConvertTo-CWAASecurity.md) | Encodes a string using TripleDES encryption compatible with Automate operations. |
 | [Invoke-CWAACommand](ConnectWiseAutomateAgent/Invoke-CWAACommand.md) | Sends a service command to the ConnectWise Automate agent. |
 | [Test-CWAAPort](ConnectWiseAutomateAgent/Test-CWAAPort.md) | Tests connectivity to TCP ports required by the ConnectWise Automate agent. |
+
+## Script Helpers
+
+Helpers for writing scripts that run from ConnectWise Automate. Their aliases preserve the names from the legacy CW-Automate-ScriptHelper.ps1 (e.g., `Write-AutomateLog`, `Invoke-CWAScript`, `Invoke-LTPwsh`).
+
+| Function | Description |
+| --- | --- |
+| [Initialize-CWAAScriptLog](ConnectWiseAutomateAgent/Initialize-CWAAScriptLog.md) | Initializes a log file for ConnectWise Automate script execution. |
+| [Write-CWAAScriptLog](ConnectWiseAutomateAgent/Write-CWAAScriptLog.md) | Writes a timestamped log entry to a ConnectWise Automate script log file. |
+| [New-CWAAScriptOutput](ConnectWiseAutomateAgent/New-CWAAScriptOutput.md) | Creates a structured output object for ConnectWise Automate script results. |
+| [ConvertTo-CWAAScriptOutput](ConnectWiseAutomateAgent/ConvertTo-CWAAScriptOutput.md) | Converts a script output object or hashtable to the pipe-delimited format expected by ConnectWise Automate. |
+| [Invoke-CWAAScript](ConnectWiseAutomateAgent/Invoke-CWAAScript.md) | Executes a scriptblock with standardized Automate script output and error handling. |
+| [Invoke-CWAAPwsh](ConnectWiseAutomateAgent/Invoke-CWAAPwsh.md) | Executes a scriptblock or script file under PowerShell 7 (pwsh.exe). |
+| [New-CWAARemoteMonitor](ConnectWiseAutomateAgent/New-CWAARemoteMonitor.md) | Encodes a PowerShell scriptblock for use in a ConnectWise Automate remote monitor. |
