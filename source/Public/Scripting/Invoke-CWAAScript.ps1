@@ -133,93 +133,91 @@ function Invoke-CWAAScript {
 
         # The finally block emits the output line even when the scriptblock leaves through
         # exit or a labeled break/continue that unwinds past this function.
-        try {
-            Try {
-                if ($PSCmdlet.ParameterSetName -eq 'URL') {
-                    Write-Debug "Invoke-CWAAScript: Fetching remote script from '$URL'."
-                    # Windows PowerShell 5.1 may not offer TLS 1.2 by default
-                    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
-                    $remoteScript = Invoke-RestMethod -Uri $URL -ErrorAction Stop
-                    if ($remoteScript -isnot [string] -or [string]::IsNullOrWhiteSpace($remoteScript)) {
-                        $typeName = if ($null -eq $remoteScript) { 'nothing' } else { $remoteScript.GetType().Name }
-                        throw "Remote script at '$URL' was empty or not text (received $typeName)."
-                    }
-                    $executionBlock = [scriptblock]::Create($remoteScript)
+        Try {
+            if ($PSCmdlet.ParameterSetName -eq 'URL') {
+                Write-Debug "Invoke-CWAAScript: Fetching remote script from '$URL'."
+                # Windows PowerShell 5.1 may not offer TLS 1.2 by default
+                [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+                $remoteScript = Invoke-RestMethod -Uri $URL -ErrorAction Stop
+                if ($remoteScript -isnot [string] -or [string]::IsNullOrWhiteSpace($remoteScript)) {
+                    $typeName = if ($null -eq $remoteScript) { 'nothing' } else { $remoteScript.GetType().Name }
+                    throw "Remote script at '$URL' was empty or not text (received $typeName)."
                 }
-                else {
-                    $executionBlock = $ScriptBlock
-                }
-
-                # Success output is tagged before the error stream is merged in, so an error
-                # record the script outputs on purpose (catch { $_ }) is not mistaken for an
-                # escaped error. Only errors that reach the error stream count: errors handled
-                # with try/catch or suppressed with -ErrorAction SilentlyContinue never do.
-                # The one-iteration loop contains an unlabeled break/continue.
-                foreach ($null in 1) {
-                    & { & $executionBlock | ForEach-Object { New-Object -TypeName PSObject -Property @{ '__CWAAScriptOutput' = $_ } } } 2>&1 |
-                        ForEach-Object {
-                            if ($_ -is [System.Management.Automation.ErrorRecord]) {
-                                # Native command stderr is output, not failure (judge natives by exit code)
-                                if ($_.FullyQualifiedErrorId -like 'NativeCommandError*') { $result.Add("$_") }
-                                else { $scriptErrors.Add($_) }
-                            }
-                            elseif ($_.PSObject.Properties['__CWAAScriptOutput']) { $result.Add($_.__CWAAScriptOutput) }
-                            else { $result.Add($_) }
-                        }
-                }
-                if ($scriptErrors.Count) {
-                    $raisedCollectedErrors = $true
-                    throw (($scriptErrors | ForEach-Object { "$_" }) -join '; ')
-                }
-                $scriptOutput.Result = ($result | Out-String -Width 4096).Trim()
-                $completed = $true
-
-                Write-Debug "Invoke-CWAAScript: Execution completed successfully."
+                $executionBlock = [scriptblock]::Create($remoteScript)
             }
-            Catch {
-                $failed = $true
-                # Location without the source line text, which could contain secrets
-                $describeLocation = {
-                    param($record)
-                    if ($record.ScriptStackTrace) { return $record.ScriptStackTrace }
-                    $info = $record.InvocationInfo
-                    if ($info -and $info.ScriptLineNumber) { return "at $($info.ScriptName): line $($info.ScriptLineNumber), char $($info.OffsetInLine)" }
-                }
+            else {
+                $executionBlock = $ScriptBlock
+            }
 
-                # Report every error in order: those collected before a terminating error, then it
-                $failures = @()
-                foreach ($record in $scriptErrors) {
-                    $failures += @{ Message = "$record"; Trace = & $describeLocation $record }
-                }
-                if (-not $raisedCollectedErrors) {
-                    # A record written to the error stream and then rethrown is reported once
-                    $terminatingMessage = $_.Exception.Message
-                    if (-not ($failures | Where-Object { $_.Message -eq $terminatingMessage })) {
-                        $failures += @{ Message = $terminatingMessage; Trace = & $describeLocation $_ }
-                    }
-                }
-
-                $scriptOutput.Status = 'Error'
-                $scriptOutput.Result = ($failures | ForEach-Object { $_.Message }) -join '; '
-
-                Write-Debug "Invoke-CWAAScript: Execution failed. Error: $($scriptOutput.Result)"
-
-                # Best-effort: a failed log write must not escape and lose the formatted output
-                if ($scriptOutput.LogPath) {
-                    Try {
-                        foreach ($failure in $failures) {
-                            $logMessage = "Script execution failed: $($failure.Message)"
-                            if ($failure.Trace) { $logMessage += "`n$($failure.Trace)" }
-                            Write-CWAAScriptLog -Message $logMessage -Level ERROR -LogPath $scriptOutput.LogPath -ErrorAction Stop
+            # Success output is tagged before the error stream is merged in, so an error
+            # record the script outputs on purpose (catch { $_ }) is not mistaken for an
+            # escaped error. Only errors that reach the error stream count: errors handled
+            # with try/catch or suppressed with -ErrorAction SilentlyContinue never do.
+            # The one-iteration loop contains an unlabeled break/continue.
+            foreach ($null in 1) {
+                & { & $executionBlock | ForEach-Object { New-Object -TypeName PSObject -Property @{ '__CWAAScriptOutput' = $_ } } } 2>&1 |
+                    ForEach-Object {
+                        if ($_ -is [System.Management.Automation.ErrorRecord]) {
+                            # Native command stderr is output, not failure (judge natives by exit code)
+                            if ($_.FullyQualifiedErrorId -like 'NativeCommandError*') { $result.Add("$_") }
+                            else { $scriptErrors.Add($_) }
                         }
+                        elseif ($_.PSObject.Properties['__CWAAScriptOutput']) { $result.Add($_.__CWAAScriptOutput) }
+                        else { $result.Add($_) }
                     }
-                    Catch {
-                        $dataParts += "LogWriteFailed=$($_.Exception.Message)"
+            }
+            if ($scriptErrors.Count) {
+                $raisedCollectedErrors = $true
+                throw (($scriptErrors | ForEach-Object { "$_" }) -join '; ')
+            }
+            $scriptOutput.Result = ($result | Out-String -Width 4096).Trim()
+            $completed = $true
+
+            Write-Debug "Invoke-CWAAScript: Execution completed successfully."
+        }
+        Catch {
+            $failed = $true
+            # Location without the source line text, which could contain secrets
+            $describeLocation = {
+                param($record)
+                if ($record.ScriptStackTrace) { return $record.ScriptStackTrace }
+                $info = $record.InvocationInfo
+                if ($info -and $info.ScriptLineNumber) { return "at $($info.ScriptName): line $($info.ScriptLineNumber), char $($info.OffsetInLine)" }
+            }
+
+            # Report every error in order: those collected before a terminating error, then it
+            $failures = @()
+            foreach ($record in $scriptErrors) {
+                $failures += @{ Message = "$record"; Trace = & $describeLocation $record }
+            }
+            if (-not $raisedCollectedErrors) {
+                # A record written to the error stream and then rethrown is reported once
+                $terminatingMessage = $_.Exception.Message
+                if (-not ($failures | Where-Object { $_.Message -eq $terminatingMessage })) {
+                    $failures += @{ Message = $terminatingMessage; Trace = & $describeLocation $_ }
+                }
+            }
+
+            $scriptOutput.Status = 'Error'
+            $scriptOutput.Result = ($failures | ForEach-Object { $_.Message }) -join '; '
+
+            Write-Debug "Invoke-CWAAScript: Execution failed. Error: $($scriptOutput.Result)"
+
+            # Best-effort: a failed log write must not escape and lose the formatted output
+            if ($scriptOutput.LogPath) {
+                Try {
+                    foreach ($failure in $failures) {
+                        $logMessage = "Script execution failed: $($failure.Message)"
+                        if ($failure.Trace) { $logMessage += "`n$($failure.Trace)" }
+                        Write-CWAAScriptLog -Message $logMessage -Level ERROR -LogPath $scriptOutput.LogPath -ErrorAction Stop
                     }
+                }
+                Catch {
+                    $dataParts += "LogWriteFailed=$($_.Exception.Message)"
                 }
             }
         }
-        finally {
+        Finally {
             if (-not $completed) {
                 if (-not $failed) {
                     # Unwound by exit or a labeled break/continue: still report, as a failure

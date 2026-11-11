@@ -147,10 +147,9 @@ function Invoke-CWAAPwsh {
                 }
 
                 $resolvedPwshPath = $candidatePaths | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
-            }
-
-            if (-not $resolvedPwshPath) {
-                Write-Error "PowerShell 7 (pwsh.exe) was not found in Program Files or the PowerShellCore registry install locations.$registryNote Install PowerShell 7 or specify the path using -PwshPath." -ErrorAction Stop
+                if (-not $resolvedPwshPath) {
+                    Write-Error "PowerShell 7 (pwsh.exe) was not found in Program Files or the PowerShellCore registry install locations.$registryNote Install PowerShell 7 or specify the path using -PwshPath." -ErrorAction Stop
+                }
             }
 
             # Match pwsh -File: $? is false only after an explicit non-zero exit or an

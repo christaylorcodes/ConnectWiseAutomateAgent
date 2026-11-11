@@ -130,5 +130,5 @@ ConvertTo-CWAAScriptOutput -InputObject ([ordered]@{
 
 # --- Note: do not call exit inside Invoke-CWAAScript -------------------------
 #
-# exit ends the whole PowerShell host and bypasses the wrapper, so no
-# Status=... line is returned. Use throw for failures instead.
+# exit is reported as Status=Error, but it then ends the whole PowerShell host,
+# so nothing after the Invoke-CWAAScript call runs. Use throw for failures instead.
