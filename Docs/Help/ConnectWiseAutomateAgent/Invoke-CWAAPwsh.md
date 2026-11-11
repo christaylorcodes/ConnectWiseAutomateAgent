@@ -80,6 +80,11 @@ non-zero exit code from the last native command does not.
 Warning, verbose and
 Write-Host output from the child is captured into Result as plain text lines.
 
+Objects the script outputs are formatted to text as PowerShell would display them.
+An object shown as a table that is output immediately before exit or throw is not
+captured; let the script end normally, or convert it to text first (for example
+with Out-String).
+
 For the ScriptBlock parameter set, the scriptblock is Base64-encoded using
 Unicode (UTF-16LE) for transport via the -EncodedCommand parameter.
 Only the

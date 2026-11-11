@@ -36,6 +36,11 @@ function Invoke-CWAAPwsh {
         non-zero exit code from the last native command does not. Warning, verbose and
         Write-Host output from the child is captured into Result as plain text lines.
 
+        Objects the script outputs are formatted to text as PowerShell would display them.
+        An object shown as a table that is output immediately before exit or throw is not
+        captured; let the script end normally, or convert it to text first (for example
+        with Out-String).
+
         For the ScriptBlock parameter set, the scriptblock is Base64-encoded using
         Unicode (UTF-16LE) for transport via the -EncodedCommand parameter. Only the
         scriptblock's source text is sent: variables from the calling session (including
@@ -173,8 +178,9 @@ function Invoke-CWAAPwsh {
             # Match pwsh -File: $? is false only after an explicit non-zero exit or an
             # error, so a handled error or leftover native exit code on the last line is ignored.
             # (A terminating error already exits 1.)
-            # -Stream passes each line on as it is produced, so output written before a throw
-            # or exit is kept.
+            # -Stream passes each line on as it is produced, so text written before a throw or
+            # exit is kept. A table-formatted object written immediately before one is still
+            # lost: the formatter holds it until it sees what follows (see the help).
             $commandSuffix = '; $script:__cwaaOk = $? } | Out-String -Stream -Width 4096; ' +
                 'if ($__cwaaOk) { exit 0 } elseif ($LASTEXITCODE) { exit $LASTEXITCODE } else { exit 1 }'
 
