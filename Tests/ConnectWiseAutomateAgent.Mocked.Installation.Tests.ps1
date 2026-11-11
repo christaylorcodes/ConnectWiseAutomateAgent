@@ -606,12 +606,10 @@ Describe 'Register-CWAAHealthCheckTask' {
             $result = InModuleScope 'ConnectWiseAutomateAgent' {
                 Mock schtasks {
                     if ($args -contains '/QUERY' -and $args -contains '/XML') { throw 'Task not found' }
-                    elseif ($args -contains '/DELETE') { return $null }
                     elseif ($args -contains '/CREATE') { $global:LASTEXITCODE = 0; return 'SUCCESS' }
                     elseif ($args -contains '/QUERY') { $global:LASTEXITCODE = 0; return 'SUCCESS' }
                 }
                 Mock New-CWAABackup {}
-                Mock Remove-Item {}
                 Mock Write-CWAAEventLog {}
 
                 Register-CWAAHealthCheckTask -InstallerToken 'abc123' -Confirm:$false
@@ -643,32 +641,26 @@ Describe 'Register-CWAAHealthCheckTask' {
                 Case        = 'the token matches but the interval differs (PT12H vs default PT6H)'
                 TaskXmlArgs = @{ Interval = 'PT12H' }
                 Parameters  = @{ InstallerToken = 'abc123' }
-                Forced      = $false
             }
             @{
                 Case        = 'token/interval match but the LocationID differs (99 vs 42)'
                 TaskXmlArgs = @{ RepairArguments = "-Server 'https://automate.example.com' -LocationID 99 -InstallerToken 'abc123'" }
                 Parameters  = @{ Server = 'https://automate.example.com'; LocationID = 42; InstallerToken = 'abc123' }
-                Forced      = $false
             }
             @{
                 Case        = 'the token differs by a suffix (abc1234 vs abc123)'
                 TaskXmlArgs = @{ RepairArguments = "-InstallerToken 'abc1234'" }
                 Parameters  = @{ InstallerToken = 'abc123' }
-                Forced      = $false
             }
             @{
                 Case        = 'the Server differs'
                 TaskXmlArgs = @{ RepairArguments = "-Server 'https://old.example.com' -LocationID 42 -InstallerToken 'abc123'" }
                 Parameters  = @{ Server = 'https://automate.example.com'; LocationID = 42; InstallerToken = 'abc123' }
-                Forced      = $false
             }
             @{
-                # -Force on a matching task is reported as a creation, not an update
                 Case        = '-Force is used with a matching task'
                 TaskXmlArgs = @{}
                 Parameters  = @{ InstallerToken = 'abc123'; Force = $true }
-                Forced      = $true
             }
         ) {
             $result = InModuleScope 'ConnectWiseAutomateAgent' -Parameters @{ TaskXml = (New-TestTaskXml @TaskXmlArgs); TaskParameters = $Parameters } {
@@ -679,7 +671,6 @@ Describe 'Register-CWAAHealthCheckTask' {
                     elseif ($args -contains '/QUERY') { $global:LASTEXITCODE = 0; return 'SUCCESS' }
                 }
                 Mock New-CWAABackup {}
-                Mock Remove-Item {}
                 Mock Write-CWAAEventLog {}
 
                 Register-CWAAHealthCheckTask @TaskParameters -Confirm:$false
@@ -688,8 +679,9 @@ Describe 'Register-CWAAHealthCheckTask' {
                 Should -Invoke schtasks -Times 1 -Exactly -ParameterFilter { $args -contains '/CREATE' -and $args -contains '/F' }
                 Should -Not -Invoke schtasks -ParameterFilter { $args -contains '/DELETE' }
             }
-            $result.Created | Should -Be ([bool]$Forced)
-            $result.Updated | Should -Be (-not $Forced)
+            # An existing task was replaced, with or without -Force: an update, not a creation
+            $result.Created | Should -BeFalse
+            $result.Updated | Should -BeTrue
         }
 
         It 'reports Created=$false, Updated=$false and logs event <EventId> when <Case>' -ForEach @(
@@ -704,7 +696,6 @@ Describe 'Register-CWAAHealthCheckTask' {
                     elseif ($args -contains '/QUERY') { $global:LASTEXITCODE = $VerifyExit; return 'VERIFY' }
                 }
                 Mock New-CWAABackup {}
-                Mock Remove-Item {}
                 Mock Write-CWAAEventLog {}
 
                 Register-CWAAHealthCheckTask -InstallerToken 'abc123' -Confirm:$false -ErrorAction SilentlyContinue
@@ -740,17 +731,42 @@ Describe 'Register-CWAAHealthCheckTask' {
             $result = InModuleScope 'ConnectWiseAutomateAgent' {
                 Mock schtasks {
                     if ($args -contains '/QUERY' -and $args -contains '/XML') { throw 'Task not found' }
-                    elseif ($args -contains '/DELETE') { return $null }
                     elseif ($args -contains '/CREATE') { $global:LASTEXITCODE = 0; return 'SUCCESS' }
                     elseif ($args -contains '/QUERY') { $global:LASTEXITCODE = 0; return 'SUCCESS' }
                 }
                 Mock New-CWAABackup {}
-                Mock Remove-Item {}
                 Mock Write-CWAAEventLog {}
 
                 Register-CWAAHealthCheckTask -InstallerToken 'abc123' -TaskName 'MyHealthCheck' -IntervalHours 12 -Confirm:$false
             }
             $result.TaskName | Should -Be 'MyHealthCheck'
+        }
+
+        It 'registers a SYSTEM task with the requested command and interval, and removes its temporary file' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock schtasks {
+                    if ($args -contains '/QUERY' -and $args -contains '/XML') { throw 'Task not found' }
+                    elseif ($args -contains '/CREATE') {
+                        $script:CWAATestTaskFile = $args[[array]::IndexOf($args, '/XML') + 1]
+                        $script:CWAATestTaskXml = [xml](Get-Content -LiteralPath $script:CWAATestTaskFile -Raw)
+                        $global:LASTEXITCODE = 0
+                        return 'SUCCESS'
+                    }
+                    elseif ($args -contains '/QUERY') { $global:LASTEXITCODE = 0; return 'SUCCESS' }
+                }
+                Mock New-CWAABackup {}
+                Mock Write-CWAAEventLog {}
+
+                $null = Register-CWAAHealthCheckTask -InstallerToken 'abc123' -Server 'https://a.example.com', 'https://b.example.com' -LocationID 42 -IntervalHours 12 -Confirm:$false
+
+                $task = $script:CWAATestTaskXml.Task
+                $task.Actions.Exec.Arguments | Should -Be "-NoProfile -WindowStyle Hidden -Command `"Import-Module ConnectWiseAutomateAgent; Repair-CWAA -Server 'https://a.example.com','https://b.example.com' -LocationID 42 -InstallerToken 'abc123'`""
+                $task.Triggers.TimeTrigger.Repetition.Interval | Should -Be 'PT12H'
+                $task.Triggers.TimeTrigger.RandomDelay | Should -Be 'PT12H'
+                $task.Principals.Principal.UserId | Should -Be 'S-1-5-18'
+                # The file holds the installer token
+                $script:CWAATestTaskFile | Should -Not -Exist
+            }
         }
     }
 
@@ -759,14 +775,12 @@ Describe 'Register-CWAAHealthCheckTask' {
             $result = InModuleScope 'ConnectWiseAutomateAgent' {
                 Mock schtasks {
                     if ($args -contains '/QUERY' -and $args -contains '/XML') { throw 'Task not found' }
-                    elseif ($args -contains '/DELETE') { return $null }
                     elseif ($args -contains '/CREATE') { $global:LASTEXITCODE = 0; return 'SUCCESS' }
                     # Task is reported as created by schtasks but is gone by the time we verify it —
                     # simulates AV/policy removing it immediately after creation.
                     elseif ($args -contains '/QUERY') { $global:LASTEXITCODE = 1; return 'ERROR: The system cannot find the file specified.' }
                 }
                 Mock New-CWAABackup {}
-                Mock Remove-Item {}
                 Mock Write-CWAAEventLog {}
 
                 $taskResult = Register-CWAAHealthCheckTask -InstallerToken 'abc123' -Confirm:$false -ErrorAction SilentlyContinue
@@ -785,11 +799,9 @@ Describe 'Register-CWAAHealthCheckTask' {
             InModuleScope 'ConnectWiseAutomateAgent' {
                 Mock schtasks {
                     if ($args -contains '/QUERY' -and $args -contains '/XML') { throw 'Task not found' }
-                    elseif ($args -contains '/DELETE') { return $null }
                     elseif ($args -contains '/CREATE') { $global:LASTEXITCODE = 1; return 'FAILURE' }
                 }
                 Mock New-CWAABackup {}
-                Mock Remove-Item {}
                 Mock Write-CWAAEventLog {}
 
                 $ErrorActionPreference = 'Stop'
@@ -806,7 +818,6 @@ Describe 'Register-CWAAHealthCheckTask' {
                     elseif ($args -contains '/CREATE') { $global:LASTEXITCODE = 1; return 'FAILURE' }
                 }
                 Mock New-CWAABackup {}
-                Mock Remove-Item {}
                 Mock Write-CWAAEventLog {}
 
                 { Register-CWAAHealthCheckTask -InstallerToken 'abc123' -Confirm:$false -ErrorAction Stop } |
@@ -830,7 +841,6 @@ Describe 'Register-CWAAHealthCheckTask' {
                     elseif ($args -contains '/QUERY') { $global:LASTEXITCODE = 0; return 'SUCCESS' }
                 }
                 Mock New-CWAABackup {}
-                Mock Remove-Item {}
                 Mock Write-CWAAEventLog {}
 
                 $records = @(

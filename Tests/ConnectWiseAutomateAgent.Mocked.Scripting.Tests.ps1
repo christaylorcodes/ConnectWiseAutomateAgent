@@ -34,6 +34,16 @@ AfterAll {
 
 Describe 'ConvertTo-CWAAScriptOutput' {
 
+    It 'writes an error and returns nothing for an input with no fields (<Case>)' -ForEach @(
+        @{ Case = 'a bare string'; Value = 'Status=Success' }
+        @{ Case = 'a number'; Value = 42 }
+        @{ Case = 'an empty hashtable'; Value = @{} }
+    ) {
+        $result = ConvertTo-CWAAScriptOutput -InputObject $Value -ErrorVariable problems -ErrorAction SilentlyContinue
+        $result | Should -BeNullOrEmpty
+        "$($problems[0])" | Should -Match 'has no fields to format'
+    }
+
     It 'serializes a PSCustomObject to pipe-delimited format' {
         $obj = [PSCustomObject]@{ Status = 'Success'; Result = 'Done' }
         ConvertTo-CWAAScriptOutput -InputObject $obj | Should -Be 'Status=Success|Result=Done'
@@ -418,6 +428,17 @@ Describe 'Invoke-CWAAScript' {
         $output | Should -Match '^Status=Error\|Result=The script left Invoke-CWAAScript early.*\|Data=Output=partial$'
     }
 
+    It 'writes the early-exit failure to the log when logging is enabled' {
+        $logDirectory = Join-Path $TestDrive 'early-exit'
+        $output = :outer foreach ($i in 1, 2) {
+            Invoke-CWAAScript -EnableLogging -LogDirectory $logDirectory -LogName 'EarlyExit' -ScriptBlock { break outer }
+        }
+        $output | Should -Match '^Status=Error\|Result=The script left Invoke-CWAAScript early'
+        $logFile = Get-ChildItem -LiteralPath $logDirectory -Filter 'EarlyExit*.log'
+        @($logFile).Count | Should -Be 1
+        Get-Content -LiteralPath $logFile.FullName -Raw | Should -Match '\[ERROR\] Script execution failed: The script left Invoke-CWAAScript early'
+    }
+
     It 'treats native command stderr as output, not as an error' {
         Invoke-CWAAScript -ScriptBlock { cmd.exe /c '1>&2 echo progress'; 'done' } |
             Should -Be 'Status=Success|Result=progress / done|LogPath=|Data='
@@ -508,125 +529,166 @@ Describe 'Invoke-CWAAScript' {
         }
     }
 
-    It 'fetches and executes a remote script via URL' {
-        InModuleScope 'ConnectWiseAutomateAgent' {
-            Mock Invoke-RestMethod { "'RemoteResult'" } -ParameterFilter { $Uri -eq 'https://example.com/test.ps1' }
-
-            $result = Invoke-CWAAScript -URL 'https://example.com/test.ps1'
-
-            Should -Invoke Invoke-RestMethod -Times 1
-            $result | Should -Be 'Status=Success|Result=RemoteResult|LogPath=|Data='
-        }
-    }
-
-    It 'runs a remote script that starts with a UTF-8 byte order mark (<Case>)' -ForEach @(
-        @{ Case = 'decoded as U+FEFF'; Bom = [string][char]0xFEFF }
-        @{ Case = 'decoded as Latin-1'; Bom = [string][char]0xEF + [char]0xBB + [char]0xBF }
-    ) {
-        # Not named $Body: the mock would bind Invoke-RestMethod's own -Body parameter over it
-        InModuleScope 'ConnectWiseAutomateAgent' -Parameters @{ Response = "$Bom'RemoteResult'" } {
-            param($Response)
-            Mock Invoke-RestMethod { $Response }
-
-            Invoke-CWAAScript -URL 'https://example.com/bom.ps1' |
-                Should -Be 'Status=Success|Result=RemoteResult|LogPath=|Data='
-        }
-    }
-
-    It 'enables TLS 1.2 for the download and restores the process-wide setting when the fetch <Case>' -ForEach @(
-        @{ Case = 'succeeds'; Fails = $false }
-        @{ Case = 'fails'; Fails = $true }
-    ) {
-        InModuleScope 'ConnectWiseAutomateAgent' -Parameters @{ Fails = $Fails } {
-            param($Fails)
-            Mock Invoke-RestMethod {
-                $script:CWAATestProtocolDuringFetch = [Net.ServicePointManager]::SecurityProtocol
-                if ($Fails) { throw 'Network error' }
-                "'x'"
-            }
-            $original = [Net.ServicePointManager]::SecurityProtocol
-            try {
-                # A known value without TLS 1.2, so the result does not depend on earlier tests
-                [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls11
-
-                $null = Invoke-CWAAScript -URL 'https://example.com/tls.ps1'
-
-                $script:CWAATestProtocolDuringFetch | Should -Be ([Net.SecurityProtocolType]'Tls11, Tls12')
-                [Net.ServicePointManager]::SecurityProtocol | Should -Be ([Net.SecurityProtocolType]::Tls11)
-            }
-            finally { [Net.ServicePointManager]::SecurityProtocol = $original }
-        }
-    }
-
-    It 'leaves the operating system default TLS setting alone during the download' {
-        InModuleScope 'ConnectWiseAutomateAgent' {
-            Mock Invoke-RestMethod {
-                $script:CWAATestProtocolDuringFetch = [Net.ServicePointManager]::SecurityProtocol
-                "'x'"
-            }
-            $original = [Net.ServicePointManager]::SecurityProtocol
-            try {
-                [Net.ServicePointManager]::SecurityProtocol = 0
-
-                $null = Invoke-CWAAScript -URL 'https://example.com/tls.ps1'
-
-                [int]$script:CWAATestProtocolDuringFetch | Should -Be 0
-            }
-            finally { [Net.ServicePointManager]::SecurityProtocol = $original }
-        }
-    }
-
     It 'still returns one output line when the script output cannot be formatted' {
         $unformattable = New-Object PSObject
         $unformattable | Add-Member -MemberType ScriptMethod -Name ToString -Value { throw 'no string for you' } -Force
 
         { $script:result = Invoke-CWAAScript -ScriptBlock { 'before'; $unformattable } } | Should -Not -Throw
         @($script:result).Count | Should -Be 1
-        $script:result | Should -Match '^Status=Error\|'
-    }
-
-    It 'returns Error when URL fetch fails' {
-        InModuleScope 'ConnectWiseAutomateAgent' {
-            Mock Invoke-RestMethod { throw 'Network error' } -ParameterFilter { $Uri -eq 'https://example.com/bad.ps1' }
-
-            $result = Invoke-CWAAScript -URL 'https://example.com/bad.ps1'
-
-            $result | Should -Match '^Status=Error\|Result=Network error\|'
-        }
-    }
-
-    It 'returns Error when the remote script is <Case>' -ForEach @(
-        @{ Case = 'empty'; Response = ''; Received = 'String' }
-        @{ Case = 'whitespace'; Response = "  `n "; Received = 'String' }
-        @{ Case = 'not text'; Response = [PSCustomObject]@{ a = 1 }; Received = 'PSCustomObject' }
-        @{ Case = 'only a byte order mark'; Response = [string][char]0xFEFF; Received = 'String' }
-    ) {
-        # Not named $Body: the mock would bind Invoke-RestMethod's own -Body parameter over it,
-        # and every case would then be the "received nothing" one.
-        InModuleScope 'ConnectWiseAutomateAgent' -Parameters @{ Response = $Response; Received = $Received } {
-            param($Response, $Received)
-            Mock Invoke-RestMethod { , $Response }
-
-            $result = Invoke-CWAAScript -URL 'https://example.com/empty.ps1'
-
-            $result | Should -Match "^Status=Error\|Result=Remote script .* was empty or not text \(received $Received\)"
-        }
-    }
-
-    It 'returns Error without throwing when the remote script has a syntax error' {
-        InModuleScope 'ConnectWiseAutomateAgent' {
-            Mock Invoke-RestMethod { 'if (' }
-
-            { $script:result = Invoke-CWAAScript -URL 'https://example.com/broken.ps1' } | Should -Not -Throw
-            $script:result | Should -Match '^Status=Error\|'
-        }
+        $script:result | Should -Match '^Status=Error\|.*\|Data=Output=<could not be formatted: '
     }
 
     It 'rejects a URL without https:// (<URL>)' -ForEach @(
         @{ URL = 'example.com/script.ps1' }
         @{ URL = 'http://example.com/script.ps1' }
     ) {
-        { Invoke-CWAAScript -URL $URL } | Should -Throw
+        { Invoke-CWAAScript -URL $URL } | Should -Throw '*https*'
+    }
+
+    Context 'running a remote script with -URL' {
+
+        BeforeAll {
+            # Global so mock bodies, which run inside the module, can call it. Builds what
+            # Invoke-CWAAScript reads from Invoke-WebRequest: the raw response bytes.
+            function global:New-CWAATestWebResponse {
+                param([string]$Text, [byte[]]$Bytes)
+                if (-not $PSBoundParameters.ContainsKey('Bytes')) { $Bytes = [System.Text.Encoding]::UTF8.GetBytes($Text) }
+                $stream = New-Object System.IO.MemoryStream
+                $stream.Write($Bytes, 0, $Bytes.Length)
+                [PSCustomObject]@{ RawContentStream = $stream }
+            }
+        }
+
+        AfterAll {
+            Remove-Item -LiteralPath 'function:\New-CWAATestWebResponse' -ErrorAction SilentlyContinue
+        }
+
+        It 'fetches and executes the script' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock Invoke-WebRequest { New-CWAATestWebResponse -Text "'RemoteResult'" }
+
+                Invoke-CWAAScript -URL 'https://example.com/test.ps1' |
+                    Should -Be 'Status=Success|Result=RemoteResult|LogPath=|Data='
+
+                Should -Invoke Invoke-WebRequest -Times 1 -Exactly -ParameterFilter { $Uri -eq 'https://example.com/test.ps1' }
+            }
+        }
+
+        It 'decodes the script as <Case>' -ForEach @(
+            @{ Case = 'UTF-8 without a byte order mark'; Encoding = (New-Object System.Text.UTF8Encoding($false)) }
+            @{ Case = 'UTF-8 with a byte order mark'; Encoding = (New-Object System.Text.UTF8Encoding($true)) }
+            @{ Case = 'UTF-16 with a byte order mark'; Encoding = [System.Text.Encoding]::Unicode }
+        ) {
+            # A non-ASCII character shows a wrong decoding; a kept byte order mark breaks the first command
+            $text = "'caf$([char]0xE9)'"
+            [byte[]]$responseBytes = $Encoding.GetPreamble() + $Encoding.GetBytes($text)
+            InModuleScope 'ConnectWiseAutomateAgent' -Parameters @{ ResponseBytes = $responseBytes } {
+                param($ResponseBytes)
+                Mock Invoke-WebRequest { New-CWAATestWebResponse -Bytes $ResponseBytes }
+
+                Invoke-CWAAScript -URL 'https://example.com/encoded.ps1' |
+                    Should -Be "Status=Success|Result=caf$([char]0xE9)|LogPath=|Data="
+            }
+        }
+
+        It 'runs the script in the caller''s scope, as -ScriptBlock does' {
+            Mock Invoke-WebRequest { New-CWAATestWebResponse -Text '"$callerVariable / $ErrorActionPreference"' } -ModuleName 'ConnectWiseAutomateAgent'
+            $callerVariable = 'seen'
+            $ErrorActionPreference = 'Stop'
+
+            Invoke-CWAAScript -URL 'https://example.com/scope.ps1' |
+                Should -Be 'Status=Success|Result=seen / Stop|LogPath=|Data='
+        }
+
+        It 'does not expose the module''s private state to the script' {
+            Mock Invoke-WebRequest { New-CWAATestWebResponse -Text '"[$Script:CWAAInstallPath]"; $Script:CWAAInstallPath = ''clobbered''' } -ModuleName 'ConnectWiseAutomateAgent'
+            $before = InModuleScope 'ConnectWiseAutomateAgent' { $Script:CWAAInstallPath }
+            $before | Should -Not -BeNullOrEmpty
+
+            Invoke-CWAAScript -URL 'https://example.com/private.ps1' |
+                Should -Be 'Status=Success|Result=[]|LogPath=|Data='
+
+            InModuleScope 'ConnectWiseAutomateAgent' { $Script:CWAAInstallPath } | Should -Be $before
+        }
+
+        It 'enables TLS 1.2 for the download and restores the process-wide setting when the fetch <Case>' -ForEach @(
+            @{ Case = 'succeeds'; Fails = $false }
+            @{ Case = 'fails'; Fails = $true }
+        ) {
+            InModuleScope 'ConnectWiseAutomateAgent' -Parameters @{ Fails = $Fails } {
+                param($Fails)
+                Mock Invoke-WebRequest {
+                    $script:CWAATestProtocolDuringFetch = [Net.ServicePointManager]::SecurityProtocol
+                    if ($Fails) { throw 'Network error' }
+                    New-CWAATestWebResponse -Text "'x'"
+                }
+                $original = [Net.ServicePointManager]::SecurityProtocol
+                try {
+                    # A known value without TLS 1.2, so the result does not depend on earlier tests
+                    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls11
+
+                    $null = Invoke-CWAAScript -URL 'https://example.com/tls.ps1'
+
+                    $script:CWAATestProtocolDuringFetch | Should -Be ([Net.SecurityProtocolType]'Tls11, Tls12')
+                    [Net.ServicePointManager]::SecurityProtocol | Should -Be ([Net.SecurityProtocolType]::Tls11)
+                }
+                finally { [Net.ServicePointManager]::SecurityProtocol = $original }
+            }
+        }
+
+        It 'leaves the operating system default TLS setting alone during the download' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock Invoke-WebRequest {
+                    $script:CWAATestProtocolDuringFetch = [Net.ServicePointManager]::SecurityProtocol
+                    New-CWAATestWebResponse -Text "'x'"
+                }
+                $original = [Net.ServicePointManager]::SecurityProtocol
+                try {
+                    [Net.ServicePointManager]::SecurityProtocol = 0
+
+                    $null = Invoke-CWAAScript -URL 'https://example.com/tls.ps1'
+
+                    [int]$script:CWAATestProtocolDuringFetch | Should -Be 0
+                }
+                finally { [Net.ServicePointManager]::SecurityProtocol = $original }
+            }
+        }
+
+        It 'returns Error when the fetch fails' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock Invoke-WebRequest { throw 'Network error' }
+
+                Invoke-CWAAScript -URL 'https://example.com/bad.ps1' |
+                    Should -Be 'Status=Error|Result=Network error|LogPath=|Data='
+            }
+        }
+
+        It 'returns Error when the remote script is <Case>' -ForEach @(
+            @{ Case = 'empty'; ResponseBytes = [byte[]]@() }
+            @{ Case = 'whitespace'; ResponseBytes = [System.Text.Encoding]::UTF8.GetBytes("  `n ") }
+            @{ Case = 'only a byte order mark'; ResponseBytes = [byte[]](0xEF, 0xBB, 0xBF) }
+        ) {
+            InModuleScope 'ConnectWiseAutomateAgent' -Parameters @{ ResponseBytes = $ResponseBytes } {
+                param($ResponseBytes)
+                Mock Invoke-WebRequest { New-CWAATestWebResponse -Bytes $ResponseBytes }
+
+                Invoke-CWAAScript -URL 'https://example.com/empty.ps1' |
+                    Should -Be "Status=Error|Result=Remote script at 'https://example.com/empty.ps1' was empty.|LogPath=|Data="
+            }
+        }
+
+        It 'returns Error without running anything when the remote script has a syntax error' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock Invoke-WebRequest { New-CWAATestWebResponse -Text "`$global:CWAATestRanBeforeSyntaxError = `$true`nif (" }
+                $global:CWAATestRanBeforeSyntaxError = $false
+                try {
+                    { $script:result = Invoke-CWAAScript -URL 'https://example.com/broken.ps1' } | Should -Not -Throw
+                    $script:result | Should -Match '^Status=Error\|'
+                    $global:CWAATestRanBeforeSyntaxError | Should -BeFalse
+                }
+                finally { Remove-Variable -Name CWAATestRanBeforeSyntaxError -Scope Global -ErrorAction SilentlyContinue }
+            }
+        }
     }
 }
 
@@ -742,6 +804,25 @@ Describe 'Invoke-CWAAPwsh' {
         It 'treats stderr output with exit code 0 as Error' {
             Invoke-CWAAPwsh -ScriptBlock { 'out'; [Console]::Error.WriteLine('warn') } -PwshPath $script:HostExe |
                 Should -Be 'Status=Error|Result=warn|LogPath=|Data=Output=out'
+        }
+
+        # The failing source line can hold a value the caller wrote into the script, so it
+        # must not be echoed back: exact matches below leave no room for it.
+        It 'reports an unhandled throw as the error message only' {
+            Invoke-CWAAPwsh -ScriptBlock { $value = 'S3CRET-MARKER'; 'out'; throw "kaboom $($value.Length)" } -PwshPath $script:HostExe |
+                Should -Be 'Status=Error|Result=kaboom 13|LogPath=|Data=ExitCode=1; Output=out'
+        }
+
+        It 'reports a non-terminating error as the error message only and keeps running' {
+            Invoke-CWAAPwsh -ScriptBlock { $value = 'S3CRET-MARKER'; Write-Error "soft $($value.Length)"; 'after' } -PwshPath $script:HostExe |
+                Should -Be 'Status=Error|Result=soft 13|LogPath=|Data=Output=after'
+        }
+
+        It 'reports an error raised in a script file as the error message only' {
+            $failingScript = Join-Path $TestDrive 'failing.ps1'
+            Set-Content -LiteralPath $failingScript -Value '$value = ''S3CRET-MARKER''; throw "file boom $($value.Length)"'
+            Invoke-CWAAPwsh -FilePath $failingScript -PwshPath $script:HostExe |
+                Should -Be 'Status=Error|Result=file boom 13|LogPath=|Data=ExitCode=1'
         }
 
         It 'does not throw on stderr when the caller uses -ErrorAction Stop' {

@@ -10,8 +10,15 @@
         interval to stagger execution across multiple machines, and has a 1-hour execution timeout.
 
         If the task already exists and its configuration (InstallerToken, Server, LocationID, or
-        IntervalHours) has changed, the task is recreated to match. Use -Force to recreate
-        unconditionally.
+        IntervalHours) has changed, the task is replaced in place to match. Use -Force to
+        replace it unconditionally. A failed replacement leaves the existing task as it was.
+
+        Returns an object with TaskName, Created and Updated. Created is true when a new task
+        was registered and Updated when an existing one was replaced (including with -Force);
+        both are false when nothing changed, with -WhatIf, or on failure. A failure is written
+        to the Application event log (4022 when the task could not be created, 4023 when it
+        was created but is missing afterwards) and reported as an error that follows
+        -ErrorAction.
 
         A backup of the current agent configuration is created before task registration
         via New-CWAABackup.
@@ -79,7 +86,6 @@
     Process {
         $created = $False
         $updated = $False
-        $taskDrifted = $False
 
         # Build the PowerShell command for the scheduled task action
         # Use Install mode if Server and LocationID are provided, otherwise Checkup mode
@@ -119,8 +125,9 @@
                 }
                 return
             }
-            $taskDrifted = $True
         }
+        # Replacing a task that is already there (drifted, or -Force) is an update, not a creation
+        $taskExisted = [bool]$existingTaskXml
 
         if ($PSCmdlet.ShouldProcess("Scheduled Task '$TaskName'", 'Create health check task')) {
             # Back up agent settings before creating/updating the task
@@ -177,7 +184,9 @@
 </Task>
 "@
 
-            $taskFilePath = "$env:TEMP\CWAAHealthCheckTask.xml"
+            # Unique name: the file holds the InstallerToken, and a fixed name would let two
+            # registrations running at once overwrite or delete each other's file
+            $taskFilePath = Join-Path $env:TEMP ('CWAAHealthCheckTask-{0}.xml' -f [guid]::NewGuid().ToString('N'))
             $failureEventId = $Null
             # With an effective ErrorActionPreference of Stop, Windows PowerShell turns redirected
             # native stderr into a terminating error, so relax it for the schtasks calls. The caller's
@@ -221,8 +230,8 @@
                 Write-Error $failureMessage -ErrorAction $callerErrorAction
             }
             else {
-                $updated = $taskDrifted
-                $created = -not $taskDrifted
+                $updated = $taskExisted
+                $created = -not $taskExisted
                 $resultMessage = if ($updated) { "Scheduled task '$TaskName' updated." } else { "Scheduled task '$TaskName' created." }
                 Write-Output $resultMessage
                 Write-CWAAEventLog -EventId 4020 -EntryType Information -Message "$resultMessage Interval: every $IntervalHours hours."

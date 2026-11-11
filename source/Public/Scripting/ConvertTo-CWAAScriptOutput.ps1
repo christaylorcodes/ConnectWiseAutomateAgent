@@ -47,11 +47,16 @@ function ConvertTo-CWAAScriptOutput {
     }
 
     Process {
-        $pairs = if ($InputObject -is [System.Collections.IDictionary]) {
-            $InputObject.GetEnumerator()
-        }
-        else {
-            $InputObject.PSObject.Properties | Where-Object { $_.MemberType -eq 'NoteProperty' }
+        $pairs = @(if ($InputObject -is [System.Collections.IDictionary]) {
+                $InputObject.GetEnumerator()
+            }
+            else {
+                $InputObject.PSObject.Properties | Where-Object { $_.MemberType -eq 'NoteProperty' }
+            })
+        if (-not $pairs.Count) {
+            # A bare string or number has no fields: say so rather than hand Automate a blank line
+            Write-Error "InputObject of type '$($InputObject.GetType().FullName)' has no fields to format. Pass a hashtable or an object from New-CWAAScriptOutput."
+            return
         }
         # One line, one field per '|': strip line breaks and pipes from values so the
         # Automate parser cannot be confused or spoofed by script output.

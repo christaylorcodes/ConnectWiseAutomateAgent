@@ -80,8 +80,12 @@ function Invoke-PesterInProcess {
     Write-Host "  $Label" -ForegroundColor Yellow
     Write-Host "----------------------------------------" -ForegroundColor Yellow
 
+    # Both modes use the pinned Pester in output/RequiredModules when it is there, the same
+    # one the build uses, rather than whichever version the machine has installed.
+    $requiredModules = Join-Path $RepoRoot 'output' | Join-Path -ChildPath 'RequiredModules'
     $pesterCommand = @"
 `$env:CWAA_TEST_LOAD_METHOD = '$Mode'
+if (Test-Path -LiteralPath '$($requiredModules -replace "'","''")') { `$env:PSModulePath = '$($requiredModules -replace "'","''")' + [IO.Path]::PathSeparator + `$env:PSModulePath }
 `$config = New-PesterConfiguration
 `$config.Run.Path = '$($TestPath -replace "'","''")'
 `$config.Filter.ExcludeTag = @($excludeTagArg)
@@ -105,16 +109,23 @@ $moduleExitCode = Invoke-PesterInProcess -Mode 'Module' -Label 'Mode 1/2: Module
 if (-not $SkipBuild) {
     Write-Host "`n  Rebuilding module (Sampler/ModuleBuilder)..." -ForegroundColor Gray
     $buildScript = Join-Path $RepoRoot 'build.ps1'
-    if (Test-Path $buildScript) {
-        & $buildScript -Tasks build
-        if ($LASTEXITCODE -ne 0) {
-            Write-Host "  WARNING: Build exited with code $LASTEXITCODE" -ForegroundColor Red
-        } else {
-            Write-Host "  Build completed." -ForegroundColor Green
-        }
-    } else {
-        Write-Host "  WARNING: Build script not found at '$buildScript'" -ForegroundColor Red
+    # A failed build must fail the run: testing the previous build output would report on
+    # code that is no longer in source/. build.ps1 throws on failure (InvokeBuild).
+    if (-not (Test-Path $buildScript)) {
+        Write-Host "  ERROR: Build script not found at '$buildScript'" -ForegroundColor Red
+        exit 1
     }
+    $global:LASTEXITCODE = 0
+    try { & $buildScript -Tasks build | Out-Host }
+    catch {
+        Write-Host "  ERROR: Build failed: $_" -ForegroundColor Red
+        exit 1
+    }
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "  ERROR: Build exited with code $LASTEXITCODE" -ForegroundColor Red
+        exit 1
+    }
+    Write-Host "  Build completed." -ForegroundColor Green
 }
 
 # ============================================

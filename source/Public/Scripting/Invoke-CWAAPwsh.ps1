@@ -27,7 +27,8 @@ function Invoke-CWAAPwsh {
         be told apart and also counts as an error; redirect it inside the scriptblock
         (2>&1) if a tool writes progress to stderr. On error, Result holds the stderr text
         (or stdout when stderr is empty) and Data holds ExitCode=<n> and, when stderr
-        replaced it, the stdout text as Output=<text>, always last.
+        replaced it, the stdout text as Output=<text>, always last. PowerShell errors are
+        reported as the error message only, without the script line that raised them.
         ANSI color sequences are stripped from captured output.
 
         For both parameter sets the exit code follows pwsh -File semantics: an explicit
@@ -159,13 +160,22 @@ function Invoke-CWAAPwsh {
                 }
             }
 
+            # The child reports its own errors as the message only. Left to the host, an error
+            # is printed with the source line that raised it, which can hold a value the
+            # caller wrote into the script. A terminating error goes through the trap (exit 1);
+            # other error records are taken off the merged error stream.
+            # Progress is silenced because a Windows PowerShell child writes progress records
+            # to stderr as CLIXML, which cannot be mixed with the plain error lines.
+            $commandPrefix = '$global:LASTEXITCODE = 0; $__cwaaOk = $true; $ProgressPreference = ''SilentlyContinue''; ' +
+                'trap { [Console]::Error.WriteLine("$_"); exit 1 }; & { '
             # Match pwsh -File: $? is false only after an explicit non-zero exit or an
             # error, so a handled error or leftover native exit code on the last line is ignored.
-            # (A terminating error already exits 1.)
-            $exitSuffix = '; if ($?) { exit 0 } elseif ($LASTEXITCODE) { exit $LASTEXITCODE } else { exit 1 }'
+            $commandSuffix = '; $script:__cwaaOk = $? } 2>&1 | ForEach-Object { ' +
+                'if ($_ -is [System.Management.Automation.ErrorRecord]) { [Console]::Error.WriteLine("$_") } else { $_ } }; ' +
+                'if ($__cwaaOk) { exit 0 } elseif ($LASTEXITCODE) { exit $LASTEXITCODE } else { exit 1 }'
 
             if ($PSCmdlet.ParameterSetName -eq 'ScriptBlock') {
-                $commandText = "`$global:LASTEXITCODE = 0; & {`n$($ScriptBlock.ToString())`n}$exitSuffix"
+                $commandText = "$commandPrefix& {`n$($ScriptBlock.ToString())`n}$commandSuffix"
             }
             else {
                 # Pass the file and its parameters as PowerShell literals inside an encoded
@@ -182,7 +192,7 @@ function Invoke-CWAAPwsh {
                 }
                 $resolvedFilePath = $resolvedFile.ProviderPath
                 $commandParts = New-Object System.Collections.Generic.List[string]
-                $commandParts.Add("`$global:LASTEXITCODE = 0; & $(& $quoteLiteral $resolvedFilePath)")
+                $commandParts.Add("$commandPrefix& $(& $quoteLiteral $resolvedFilePath)")
                 if ($Parameters) {
                     foreach ($key in $Parameters.Keys) {
                         # \A and \z: '$' would also accept a trailing newline, which ends the statement
@@ -217,7 +227,7 @@ function Invoke-CWAAPwsh {
                         }
                     }
                 }
-                $commandText = ($commandParts -join ' ') + $exitSuffix
+                $commandText = ($commandParts -join ' ') + $commandSuffix
             }
 
             # -EncodedCommand expects Base64 of Unicode (UTF-16LE) bytes.

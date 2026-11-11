@@ -40,12 +40,14 @@ function Invoke-CWAAScript {
 
         An optional URL parameter allows fetching and executing a remote script. The URL
         must use https:// (the agent runs as SYSTEM, so plain HTTP is rejected). The
-        downloaded content must be non-empty text.
+        downloaded content must not be empty. It is read as UTF-8 unless it starts with a
+        byte order mark for another Unicode encoding. The remote script runs in the caller's
+        scope, as a scriptblock passed to -ScriptBlock does.
     .PARAMETER ScriptBlock
         The PowerShell scriptblock to execute.
     .PARAMETER URL
         URL to a remote PowerShell script. When specified, the script is downloaded via
-        Invoke-RestMethod and executed instead of the ScriptBlock parameter. Must use
+        Invoke-WebRequest and executed instead of the ScriptBlock parameter. Must use
         https://.
     .PARAMETER EnableLogging
         When specified, initializes a log file via Initialize-CWAAScriptLog before execution.
@@ -146,22 +148,34 @@ function Invoke-CWAAScript {
                         Try { [Net.ServicePointManager]::SecurityProtocol = [int]$previousProtocol -bor 3072 }
                         Catch { Write-Debug "Invoke-CWAAScript: Could not enable TLS 1.2: $($_.Exception.Message)" }
                     }
-                    $remoteScript = Invoke-RestMethod -Uri $URL -ErrorAction Stop
+                    $response = Invoke-WebRequest -Uri $URL -UseBasicParsing -ErrorAction Stop
                 }
                 Finally { [Net.ServicePointManager]::SecurityProtocol = $previousProtocol }
-                $isText = $remoteScript -is [string]
-                $typeName = if ($null -eq $remoteScript) { 'nothing' } else { $remoteScript.GetType().Name }
-                # Windows PowerShell keeps a UTF-8 byte order mark in the downloaded text (as
-                # U+FEFF, or as three Latin-1 characters when the server sends no charset),
-                # which would otherwise be parsed as part of the first command name.
-                $remoteScript = $remoteScript -replace '\A(\uFEFF|\u00EF\u00BB\u00BF)', ''
-                if (-not $isText -or [string]::IsNullOrWhiteSpace($remoteScript)) {
-                    throw "Remote script at '$URL' was empty or not text (received $typeName)."
+                # Decode the raw bytes here rather than trusting the text PowerShell built:
+                # Windows PowerShell reads a response without a charset as Latin-1 and leaves a
+                # byte order mark in the text. Scripts are UTF-8 unless a byte order mark says
+                # otherwise, and the reader drops the mark.
+                $contentStream = $response.RawContentStream
+                if (-not $contentStream) { throw "Remote script at '$URL' returned no content." }
+                $null = $contentStream.Seek(0, [System.IO.SeekOrigin]::Begin)
+                $reader = New-Object System.IO.StreamReader($contentStream, [System.Text.Encoding]::UTF8, $true)
+                $remoteScript = $reader.ReadToEnd()
+                if ([string]::IsNullOrWhiteSpace($remoteScript)) {
+                    throw "Remote script at '$URL' was empty."
                 }
-                $executionBlock = [scriptblock]::Create($remoteScript)
+                # Report a syntax error before anything runs
+                $null = [scriptblock]::Create($remoteScript)
+                # A block made by [scriptblock]::Create is not tied to any scope and would run
+                # inside this module, hiding the caller's variables and preferences and exposing
+                # the module's private state. Run it through a block created in the caller's
+                # session state instead, so it behaves as -ScriptBlock does.
+                $runnerFactory = [scriptblock]::Create('{ & ([scriptblock]::Create($args[0])) }')
+                $executionBlock = @($PSCmdlet.SessionState.InvokeCommand.InvokeScript($PSCmdlet.SessionState, $runnerFactory, @()))[0]
+                $executionArguments = @($remoteScript)
             }
             else {
                 $executionBlock = $ScriptBlock
+                $executionArguments = @()
             }
 
             # Success output is tagged before the error stream is merged in, so an error
@@ -170,7 +184,7 @@ function Invoke-CWAAScript {
             # with try/catch or suppressed with -ErrorAction SilentlyContinue never do.
             # The one-iteration loop contains an unlabeled break/continue.
             foreach ($null in 1) {
-                & { & $executionBlock | ForEach-Object { New-Object -TypeName PSObject -Property @{ '__CWAAScriptOutput' = $_ } } } 2>&1 |
+                & { & $executionBlock @executionArguments | ForEach-Object { New-Object -TypeName PSObject -Property @{ '__CWAAScriptOutput' = $_ } } } 2>&1 |
                     ForEach-Object {
                         if ($_ -is [System.Management.Automation.ErrorRecord]) {
                             # Native command stderr is output, not failure (judge natives by exit code)
@@ -238,6 +252,10 @@ function Invoke-CWAAScript {
                     # Unwound by exit or a labeled break/continue: still report, as a failure
                     $scriptOutput.Status = 'Error'
                     $scriptOutput.Result = 'The script left Invoke-CWAAScript early through exit or a break/continue to a label outside it.'
+                    if ($scriptOutput.LogPath) {
+                        Try { Write-CWAAScriptLog -Message "Script execution failed: $($scriptOutput.Result)" -Level ERROR -LogPath $scriptOutput.LogPath -ErrorAction Stop }
+                        Catch { $dataParts += "LogWriteFailed=$($_.Exception.Message)" }
+                    }
                 }
                 # Output= is free text, so it always goes last in Data. Formatting can throw
                 # (it may be what failed), and nothing here may stop the output line below.

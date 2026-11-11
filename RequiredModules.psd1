@@ -10,8 +10,8 @@
     # Versions use NuGet range syntax (passed to Save-PSResource -Version):
     #   '[6.2.0,7.0.0)'  = 6.2.0 or newer, below 7.0.0 (newest match wins)
     # Modules whose next major/minor release is likely to break the build are
-    # bounded; low-risk tooling floats on 'latest'. Tests/Assert-RequiredModuleVersion.ps1
-    # fails the build if a resolved version falls outside its range.
+    # bounded; low-risk tooling floats on 'latest'. The Assert_RequiredModule_Versions
+    # task (.build/required-modules.ps1) fails the build if a resolved version falls outside its range.
 
     # Bounded: breaking changes have landed (or would land) in these
     Pester                = '[6.2.0,7.0.0)'
