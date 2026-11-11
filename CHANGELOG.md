@@ -10,21 +10,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Script helpers** for scripts run from ConnectWise Automate: `Initialize-CWAAScriptLog`, `Write-CWAAScriptLog`, `New-CWAAScriptOutput`, `ConvertTo-CWAAScriptOutput`, `Invoke-CWAAScript`, `Invoke-CWAAPwsh`, and `New-CWAARemoteMonitor`. See `Examples/ScriptHelper-*.ps1`. Output values are kept to one line (line breaks become ` / `, pipes become `/`). `Invoke-CWAAPwsh` only runs pwsh.exe from Program Files, the PowerShellCore registry install locations, or `-PwshPath`, never from PATH; it reports stderr output as `Status=Error`.
+- Aliases for the Script helpers that keep the names from the legacy `CW-Automate-ScriptHelper.ps1`: `Initialize-AutomateLogging`, `Write-AutomateLog`, `New-AutomateOutput`, `ConvertTo-AutomateOutput`, `Invoke-CWAScript`, `Invoke-LTPwsh`, and `New-CWARemoteMonitor`. Scripts that still dot-source the old helper file after importing the module will replace these names with the old definitions.
+- Event ID 4023, written by `Register-CWAAHealthCheckTask` when the scheduled task is missing right after it was created.
+
+### Security
+
+- `Invoke-CWAAScript -URL` only accepts `https://` URLs. TLS 1.2 is added for the download when the process setting lacks it, and the previous setting is restored afterwards.
+- `Initialize-CWAAScriptLog` refuses a log directory whose path passes through a junction or symbolic link, and creates each log file exclusively instead of appending to an existing file. The default log directory is `%windir%\LTSVC\logs`.
+- `Invoke-CWAAPwsh` never searches `PATH` for pwsh.exe (see Added). Parameter values passed with `-Parameters` are visible on the pwsh.exe command line, so do not pass secrets that way.
 
 ### Changed
 
+- `Register-CWAAHealthCheckTask -Force` on a task that already exists now returns `Updated = $true` (and logs "updated") instead of `Created = $true`. `Created` is only true when no task existed before.
+- `Register-CWAAHealthCheckTask` writes the task definition to a uniquely named temporary file instead of a fixed `CWAAHealthCheckTask.xml`, because the file holds the installer token.
+- Dependabot pull requests now target `develop`, the pre-commit hook (`.githooks/pre-commit`) works on Windows and runs `Invoke-QuickTest.ps1`, and `Tests/Invoke-AllTests.ps1` uses the pinned Pester in both modes and fails when the build fails.
 - Build and test tooling synced with the GitHub-Template (Nov 2026): Pester 6, Sampler 0.120, PSResourceGet dependency resolution with version ranges in `RequiredModules.psd1`, and a new `Assert_RequiredModule_Versions` build task. Build tooling now requires PowerShell 7.6+; the module itself still supports PowerShell 3.0+.
-- Markdown command help is now generated with Microsoft.PowerShell.PlatyPS 1.x (`./build.ps1 -Tasks docs`) into `Docs/Help/ConnectWiseAutomateAgent/`. `Docs/Help/ConnectWiseAutomateAgent.md` remains the hand-written function index.
+- Markdown command help is now generated with Microsoft.PowerShell.PlatyPS 1.x (`./build.ps1 -Tasks docs`) into `Docs/Help/ConnectWiseAutomateAgent/`. `Docs/Help/ConnectWiseAutomateAgent.md` remains the hand-written function index. The per-function pages moved from `Docs/Help/<Function>.md` to `Docs/Help/ConnectWiseAutomateAgent/<Function>.md`, so links to the old paths no longer resolve.
 - CI hardening: actions pinned to commit SHAs (checkout v7, upload-artifact v7, download-artifact v8) and kept current by Dependabot, read-only default permissions, no `${{ }}` interpolation inside scripts, publish concurrency, `Publish-PSResource`, and builds on `fix/`, `chore/`, `docs/` and `feature/` branches. Publishing now fails on a duplicate PSGallery version instead of silently skipping (re-runs still skip).
 - `Invoke-QuickTest.ps1` now uses the pinned modules in `output/RequiredModules`, always tests `source/`, fails on failed blocks/containers or zero tests, and always emits JSON in `-OutputFormat Structured`.
 - `test-local.ps1` now runs tests through the build pipeline (same configuration as CI), also checks tooling scripts for analyzer errors, and restores `PSModulePath` afterwards.
+
+### Removed
+
+- The `publish` build workflow (`./build.ps1 -Tasks publish`). Publishing to the PowerShell Gallery happens only in CI.
+- The `Pester_if_Code_Coverage_Under_Threshold` build task.
+- The stale MAML help file (`en-US/ConnectWiseAutomateAgent-help.xml`) and the manifest's `HelpInfoURI`. Nothing generated the file any more and it did not cover the Script helpers. `Get-Help` is unchanged: it reads the comment-based help in each function.
 
 ### Fixed
 
 - Pester configuration in `build.yaml` used the `Script` key, which Sampler ignores; test discovery could fall back to a lowercase `tests` path on case-sensitive runners.
 - Per-function and per-alias export tests in `ConnectWiseAutomateAgent.Module.Tests.ps1` were silently generating zero test cases because their data was defined after discovery.
 - `Register-CWAAHealthCheckTask` now recreates the scheduled task when `-IntervalHours`, `-Server`, or `-LocationID` change, not only when `-InstallerToken` changes.
-- `Register-CWAAHealthCheckTask` now verifies the scheduled task actually exists after registration and logs an error if it doesn't (e.g. removed by AV/policy immediately after creation).
+- `Register-CWAAHealthCheckTask` now verifies the scheduled task actually exists after registration and logs an error (event ID 4023) if it doesn't (e.g. removed by AV/policy immediately after creation).
 - `Register-CWAAHealthCheckTask` now correctly writes to the Windows Event Log on registration failure even when the caller has set `$ErrorActionPreference = 'Stop'`. The event is written first and the error then follows the caller's `-ErrorAction`, so `-ErrorAction Stop` callers can catch the failure.
 - `Register-CWAAHealthCheckTask` now replaces an existing task in place (`schtasks /CREATE /F`) instead of deleting it first, so a failed update no longer leaves the machine without a health check task.
 - `Register-CWAAHealthCheckTask` no longer returns `Updated = $true` when nothing was updated (`-WhatIf`, a failed create, or a failed verification).

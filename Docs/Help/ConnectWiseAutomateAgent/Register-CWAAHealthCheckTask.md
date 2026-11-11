@@ -39,9 +39,19 @@ The task runs as SYSTEM with highest privileges, includes a random delay equal t
 interval to stagger execution across multiple machines, and has a 1-hour execution timeout.
 
 If the task already exists and its configuration (InstallerToken, Server, LocationID, or
-IntervalHours) has changed, the task is recreated to match.
-Use -Force to recreate
-unconditionally.
+IntervalHours) has changed, the task is replaced in place to match.
+Use -Force to
+replace it unconditionally.
+A failed replacement leaves the existing task as it was.
+
+Returns an object with TaskName, Created and Updated.
+Created is true when a new task
+was registered and Updated when an existing one was replaced (including with -Force);
+both are false when nothing changed, with -WhatIf, or on failure.
+A failure is written
+to the Application event log (4022 when the task could not be created, 4023 when it
+was created but is missing afterwards) and reported as an error that follows
+-ErrorAction.
 
 A backup of the current agent configuration is created before task registration
 via New-CWAABackup.
@@ -258,11 +268,11 @@ This cmdlet supports the common parameters: -Debug, -ErrorAction, -ErrorVariable
 
 ### System.String[]
 
-{{ Fill in the Description }}
+Bound from the pipeline by property name: `-Server`.
 
 ### System.Int32
 
-{{ Fill in the Description }}
+Bound from the pipeline by property name: `-LocationID`.
 
 ## OUTPUTS
 

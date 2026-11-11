@@ -31,8 +31,8 @@ Install-CWAA -Server 'automate.example.com' -InstallerToken 'MyToken' -LocationI
 For environments without PowerShell Gallery access, use the version-locked `.psm1` from [GitHub Releases](https://github.com/christaylorcodes/ConnectWiseAutomateAgent/releases):
 
 ```powershell
-# Pin to a specific version — replace v1.0.0 with your tested version
-Invoke-RestMethod 'https://github.com/christaylorcodes/ConnectWiseAutomateAgent/releases/download/v1.0.0/ConnectWiseAutomateAgent.psm1' | Invoke-Expression
+# Pin to a specific version — replace v2.2.0 with your tested version
+Invoke-RestMethod 'https://github.com/christaylorcodes/ConnectWiseAutomateAgent/releases/download/v2.2.0/ConnectWiseAutomateAgent.psm1' | Invoke-Expression
 Install-CWAA -Server 'automate.example.com' -InstallerToken 'MyToken' -LocationID 1
 ```
 
@@ -100,9 +100,54 @@ Install-LTService -Server 'automate.example.com' -InstallerToken 'MyToken' -Loca
 
 List all aliases: `Get-Alias -Definition *-CWAA*`
 
+### I use CW-Automate-ScriptHelper.ps1. Do I still need it?
+
+No. Its functions are now part of the module as the Script helpers, and the old names are kept as aliases:
+
+| ScriptHelper name (alias) | Module function |
+| --- | --- |
+| `Initialize-AutomateLogging` | `Initialize-CWAAScriptLog` |
+| `Write-AutomateLog` | `Write-CWAAScriptLog` |
+| `New-AutomateOutput` | `New-CWAAScriptOutput` |
+| `ConvertTo-AutomateOutput` | `ConvertTo-CWAAScriptOutput` |
+| `Invoke-CWAScript` | `Invoke-CWAAScript` |
+| `Invoke-LTPwsh` | `Invoke-CWAAPwsh` |
+| `New-CWARemoteMonitor` | `New-CWAARemoteMonitor` |
+
+Import the module instead of dot-sourcing the old file. If a script does both, whichever loads last defines those names. See [ScriptHelper-AutomateTemplate.ps1](../Examples/ScriptHelper-AutomateTemplate.ps1) for a starting point.
+
 ### Will my existing scripts break after upgrading?
 
 No, with one exception: `Redo-CWAA` (aliased as `Redo-LTService`) changed `-LocationID` from `[string]` to `[int]`. If you pass `''` (empty string) where `$null` is intended, it may now fail. See [Migration Guide](Migration.md#breaking-changes) for details.
+
+---
+
+## Scripts Run From Automate
+
+### How do I return a result that an Automate script step can parse?
+
+Wrap the work in `Invoke-CWAAScript`. It always returns exactly one line in the form `Status=...|Result=...|LogPath=...|Data=...`, with `Status=Error` if the scriptblock throws or writes an error:
+
+```powershell
+Invoke-CWAAScript -ScriptBlock { (Get-Service LTService).Status } -EnableLogging
+# Status=Success|Result=Running|LogPath=C:\Windows\LTSVC\logs\...|Data=
+```
+
+To build the line yourself, use `New-CWAAScriptOutput` and `ConvertTo-CWAAScriptOutput`. See [ScriptHelper-BasicUsage.ps1](../Examples/ScriptHelper-BasicUsage.ps1).
+
+### How do I run PowerShell 7 code when Automate only starts Windows PowerShell?
+
+Use `Invoke-CWAAPwsh`. It starts pwsh.exe from its Program Files install (or `-PwshPath`), runs the scriptblock or script file, and returns the same one-line result:
+
+```powershell
+Invoke-CWAAPwsh -ScriptBlock { $PSVersionTable.PSVersion.ToString() }
+```
+
+Variables from the calling session are not available inside the scriptblock; write values into it literally, or use `-FilePath` with `-Parameters`. See [ScriptHelper-PwshLauncher.ps1](../Examples/ScriptHelper-PwshLauncher.ps1) and [Security Model](Security.md#script-helpers).
+
+### How do I put a PowerShell check into a remote monitor?
+
+`New-CWAARemoteMonitor -ScriptBlock { ... }` returns a `powershell.exe` command line with the scriptblock encoded, ready to paste into the monitor. It errors if the result is longer than the 8191 characters the monitor field accepts.
 
 ---
 
@@ -114,6 +159,7 @@ No, with one exception: `Redo-CWAA` (aliased as `Redo-LTService`) changed `-Loca
 | --- | --- | --- |
 | Agent errors | `C:\Windows\LTSVC\errors.txt` | `Get-CWAAError` |
 | Probe errors | `C:\Windows\LTSVC\Probes\*.txt` | `Get-CWAAProbeError` |
+| Script helper logs | `C:\Windows\LTSVC\logs\<Name>_<timestamp>.log` | Path is returned in the `LogPath` field |
 | Module events | Windows Application Event Log | `Get-WinEvent -FilterHashtable @{ LogName='Application'; ProviderName='ConnectWiseAutomateAgent' }` |
 
 ### How do I check if the agent is healthy?
@@ -166,7 +212,7 @@ Update-Module ConnectWiseAutomateAgent -AllowPrerelease
 Yes. The module is published on the PowerShell Gallery and can be installed non-interactively. Pin to a specific version for reproducible builds:
 
 ```powershell
-Install-Module ConnectWiseAutomateAgent -RequiredVersion '1.0.0' -Force -Scope AllUsers
+Install-Module ConnectWiseAutomateAgent -RequiredVersion '2.2.0' -Force -Scope AllUsers
 ```
 
 Note that most functions require administrator privileges and a Windows target. Functions that read agent state (`Get-CWAAInfo`, `Test-CWAAHealth`) are most useful in CI/CD for validation steps.
@@ -177,11 +223,11 @@ Note that most functions require administrator privileges and a Windows target. 
 
 ```powershell
 # PowerShell Gallery — pin to a specific version
-Install-Module ConnectWiseAutomateAgent -RequiredVersion '1.0.0'
-Import-Module ConnectWiseAutomateAgent -RequiredVersion '1.0.0'
+Install-Module ConnectWiseAutomateAgent -RequiredVersion '2.2.0'
+Import-Module ConnectWiseAutomateAgent -RequiredVersion '2.2.0'
 
 # Direct download — use a version-locked GitHub Release URL
-Invoke-RestMethod 'https://github.com/christaylorcodes/ConnectWiseAutomateAgent/releases/download/v1.0.0/ConnectWiseAutomateAgent.psm1' | Invoke-Expression
+Invoke-RestMethod 'https://github.com/christaylorcodes/ConnectWiseAutomateAgent/releases/download/v2.2.0/ConnectWiseAutomateAgent.psm1' | Invoke-Expression
 ```
 
 Update the version number deliberately after validating new releases in a test environment. All example scripts in this repository use version-locked patterns by default.

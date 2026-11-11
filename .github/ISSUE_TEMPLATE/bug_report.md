@@ -30,7 +30,7 @@ assignees: ''
 <!-- Please complete the following information -->
 
 - **OS**: [e.g., Windows 11, Windows Server 2022]
-- **Module Version**: [e.g., 1.0.0]
+- **Module Version**: [e.g., 2.2.0]
 - **PowerShell Version**: [e.g., 5.1, 7.4.0]
 - **Loading Method**: [Gallery (Install-Module) or Direct Download (Invoke-Expression)]
 - **Automate Server Version** (if applicable): [e.g., v200.197]

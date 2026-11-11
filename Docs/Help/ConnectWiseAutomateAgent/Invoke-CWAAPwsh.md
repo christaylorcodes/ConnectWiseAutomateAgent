@@ -70,6 +70,8 @@ be told apart and also counts as an error; redirect it inside the scriptblock
 On error, Result holds the stderr text
 (or stdout when stderr is empty) and Data holds ExitCode=<n> and, when stderr
 replaced it, the stdout text as Output=<text>, always last.
+PowerShell errors are
+reported as the error message only, without the script line that raised them.
 ANSI color sequences are stripped from captured output.
 
 For both parameter sets the exit code follows pwsh -File semantics: an explicit

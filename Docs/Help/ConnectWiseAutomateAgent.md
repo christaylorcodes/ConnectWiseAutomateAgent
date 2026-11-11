@@ -1,16 +1,8 @@
----
-Module Name: ConnectWiseAutomateAgent
-Module Guid: 37424fc5-48d4-4d15-8b19-e1c2bf4bab67
-Download Help Link: https://raw.githubusercontent.com/christaylorcodes/ConnectWiseAutomateAgent/main/source/en-US/ConnectWiseAutomateAgent-help.xml
-Help Version: 1.0.0.0
-Locale: en-US
----
-
 # ConnectWiseAutomateAgent Module
 
 PowerShell module for managing the ConnectWise Automate (formerly LabTech) Windows agent. Install, configure, troubleshoot, and manage the Automate agent on Windows systems.
 
-> Every agent-management function below has a legacy `LT` alias (e.g., `Install-CWAA` = `Install-LTService`). Run `Get-Alias -Definition *-CWAA*` to see them all.
+> Every agent-management function below has a legacy `LT` alias (e.g., `Install-CWAA` = `Install-LTService`). The [Script Helpers](#script-helpers) use their legacy ScriptHelper names as aliases instead. Run `Get-Alias -Definition *-CWAA*` to see them all.
 
 ## Install & Uninstall
 

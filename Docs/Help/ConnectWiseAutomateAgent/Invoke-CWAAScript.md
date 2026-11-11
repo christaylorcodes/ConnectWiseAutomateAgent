@@ -83,7 +83,11 @@ An optional URL parameter allows fetching and executing a remote script.
 The URL
 must use https:// (the agent runs as SYSTEM, so plain HTTP is rejected).
 The
-downloaded content must be non-empty text.
+downloaded content must not be empty.
+It is read as UTF-8 unless it starts with a
+byte order mark for another Unicode encoding.
+The remote script runs in the caller's
+scope, as a scriptblock passed to -ScriptBlock does.
 
 ## EXAMPLES
 
@@ -202,7 +206,7 @@ HelpMessage: ''
 
 URL to a remote PowerShell script.
 When specified, the script is downloaded via
-Invoke-RestMethod and executed instead of the ScriptBlock parameter.
+Invoke-WebRequest and executed instead of the ScriptBlock parameter.
 Must use
 https://.
 

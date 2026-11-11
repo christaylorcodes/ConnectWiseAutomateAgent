@@ -66,7 +66,4 @@
 
     }
 
-    # HelpInfo URI of this module
-    HelpInfoURI       = 'https://raw.githubusercontent.com/christaylorcodes/ConnectWiseAutomateAgent/main/source/en-US/ConnectWiseAutomateAgent-help.xml'
-
 }

@@ -87,7 +87,7 @@ Install-Module 'ConnectWiseAutomateAgent' -AllowPrerelease
 For deployment scripts, automated tasks, and anything running unattended on endpoints, pin to a specific version you have tested:
 
 ```powershell
-Install-Module 'ConnectWiseAutomateAgent' -RequiredVersion '1.0.0'
+Install-Module 'ConnectWiseAutomateAgent' -RequiredVersion '2.2.0'
 ```
 
 This prevents untested updates from rolling out to production machines. Update the version number deliberately after validating new releases in a test environment.
@@ -102,10 +102,10 @@ For environments without PowerShell Gallery access, the compiled `.psm1` module 
 
 ```powershell
 # Pin to a specific version for reproducible deployments
-Invoke-RestMethod 'https://github.com/christaylorcodes/ConnectWiseAutomateAgent/releases/download/v1.0.0/ConnectWiseAutomateAgent.psm1' | Invoke-Expression
+Invoke-RestMethod 'https://github.com/christaylorcodes/ConnectWiseAutomateAgent/releases/download/v2.2.0/ConnectWiseAutomateAgent.psm1' | Invoke-Expression
 ```
 
-> **Tip:** Browse all versions on the [Releases](https://github.com/christaylorcodes/ConnectWiseAutomateAgent/releases) page. Replace `v1.0.0` with your desired version tag.
+> **Tip:** Browse all versions on the [Releases](https://github.com/christaylorcodes/ConnectWiseAutomateAgent/releases) page. Replace `v2.2.0` with your desired version tag.
 >
 > **Note:** This downloads and executes code at runtime. Use `Install-Module` when the Gallery is available. Version-locked URLs are strongly preferred for production because they are immutable after release.
 
@@ -128,7 +128,7 @@ From there, jump straight to the [Examples](Examples/) for ready-to-use scripts,
 
 ## Backward Compatibility
 
-Every function has a legacy `LT` alias (`Install-CWAA` = `Install-LTService`, etc.) so existing LabTech-era scripts keep working. Run `Get-Alias -Definition *-CWAA*` to see them all.
+Every agent-management function has a legacy `LT` alias (`Install-CWAA` = `Install-LTService`, etc.) so existing LabTech-era scripts keep working. The Script helpers instead keep their names from the legacy `CW-Automate-ScriptHelper.ps1` as aliases (`Write-CWAAScriptLog` = `Write-AutomateLog`, `Invoke-CWAAScript` = `Invoke-CWAScript`, etc.). Run `Get-Alias -Definition *-CWAA*` to see them all.
 
 ## Documentation
 
@@ -139,7 +139,7 @@ _Hand-written documentation covering architecture and concepts._
 | Guide | Description |
 | --- | --- |
 | [Architecture](Docs/Architecture.md) | Module initialization, installation, health check, proxy, uninstall, and system interaction diagrams |
-| [Migration Guide](Docs/Migration.md) | Upgrading from 0.1.4.0 to 1.0.0, function-to-alias mapping, breaking changes |
+| [Migration Guide](Docs/Migration.md) | Upgrading from 0.1.4.0 to 2.0.0, function-to-alias mapping, breaking changes |
 | [Security Model](Docs/Security.md) | SSL certificate validation, TripleDES encryption, credential redaction, authentication methods |
 | [Common Parameters](Docs/CommonParameters.md) | Shared parameters (-Server, -LocationID, -InstallerToken, etc.) with cross-reference tables |
 | [Troubleshooting](Docs/Troubleshooting.md) | Symptom-based diagnostic guide with resolution steps |
@@ -153,7 +153,7 @@ _Generated from source code comment-based help via [PlatyPS](https://github.com/
 | --- | --- |
 | [Function Reference](Docs/Help/ConnectWiseAutomateAgent.md) | All 37 functions organized by category with descriptions |
 | [Individual Function Docs](Docs/Help/ConnectWiseAutomateAgent/) | One file per function -- parameters, examples, and syntax |
-| `Get-Help <function>` | In-session help compiled from the same source (MAML XML) |
+| `Get-Help <function>` | In-session help, read from the same comment-based help |
 
 ### Tutorials & Blog Posts
 
@@ -204,7 +204,7 @@ If you're an AI assistant helping a user with this module, start here:
 | [Examples/](Examples/) | Ready-to-use scripts covering common deployment and troubleshooting scenarios |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Development setup, coding standards, and PR workflow for code changes |
 
-Key things to know: every `CWAA` function has a legacy `LT` alias (e.g., `Install-CWAA` = `Install-LTService`). The module requires Windows + PowerShell 3.0+ + admin privileges. `InstallerToken` is the preferred auth method over `ServerPassword`.
+Key things to know: every agent-management `CWAA` function has a legacy `LT` alias (e.g., `Install-CWAA` = `Install-LTService`); the Script helpers use their legacy ScriptHelper names as aliases instead (e.g., `Invoke-CWAAScript` = `Invoke-CWAScript`). The module requires Windows + PowerShell 3.0+ + admin privileges. `InstallerToken` is the preferred auth method over `ServerPassword`.
 
 ## [Donate](https://github.com/christaylorcodes/GitHub-Template/blob/main/DONATE.md)
 

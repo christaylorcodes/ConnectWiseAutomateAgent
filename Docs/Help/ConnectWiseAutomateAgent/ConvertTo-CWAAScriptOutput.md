@@ -98,7 +98,7 @@ This cmdlet supports the common parameters: -Debug, -ErrorAction, -ErrorVariable
 
 ### System.Object
 
-{{ Fill in the Description }}
+You can pipe a value to `-InputObject`.
 
 ## OUTPUTS
 

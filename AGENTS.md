@@ -58,7 +58,7 @@ ConnectWiseAutomateAgent/
   source/
     ConnectWiseAutomateAgent.psd1     # Module manifest
     ConnectWiseAutomateAgent.psm1     # Root module (auto-loads subdirectories)
-    en-US/                            # Localized help (MAML XML)
+    en-US/                            # about_ help topic (Get-Help for functions uses comment-based help)
     Private/                          # Internal helper functions (not exported)
       Initialize/                     # Module bootstrapping
     Public/                           # Exported functions (one file per function)
@@ -109,6 +109,8 @@ The build uses [Sampler](https://github.com/gaelcolas/Sampler) with ModuleBuilde
 - `./build.ps1 -Tasks docs` -- builds the module and regenerates `Docs/Help/ConnectWiseAutomateAgent/` with Microsoft.PowerShell.PlatyPS 1.x. Files are regenerated from scratch and validated; remaining `{{ ... }}` placeholders are listed so they can be filled in via comment-based help.
 - `Assert_RequiredModule_Versions` runs at the start of `build` and `test` and fails if a dependency is missing, duplicated, or outside its range.
 - Publishing is done by CI (`.github/workflows/ci.yml`), not a build task.
+- The version is calculated by GitVersion at build time (`GitVersion.yml`): `develop` produces `X.Y.0-alphaNNNN` prereleases, `main` produces stable versions. `ModuleVersion` and `Prerelease` in the source manifest are placeholders; never edit them. Use `+semver: major|minor|patch` in a commit message to force a bump. See [CONTRIBUTING.md](CONTRIBUTING.md#versioning).
+- Release notes come from `CHANGELOG.md`: the build labels the `[Unreleased]` section with the version being built and uses it for the manifest's `ReleaseNotes` and the GitHub Release body. Keep release content under `[Unreleased]` until the release is published; rename the heading to the version afterwards.
 - Custom tasks live in `.build/` and are referenced from `build.yaml`.
 
 ### CI/CD
@@ -121,7 +123,7 @@ CI runs build + a consolidated smoke test (PSScriptAnalyzer + Pester on one runn
 
 **SSL Callback Persistence.** The SSL certificate validation callback is compiled via `Add-Type` in `Initialize-CWAANetworking`. Because compiled .NET types cannot be unloaded from an AppDomain, the callback persists for the lifetime of the PowerShell process -- even across module re-imports.
 
-**Dual-Mode Testing.** The module ships as both a PSGallery module and a single `.ps1` file. Both loading methods must be tested. See `Get-Help .\Tests\TestBootstrap.ps1` for details on load methods.
+**Dual-Mode Testing.** The module ships as both a PSGallery module and a single compiled `.psm1` file attached to each GitHub Release. Both loading methods must be tested. See `Get-Help .\Tests\TestBootstrap.ps1` for details on load methods.
 
 **.psm1 Module Scoping.** PowerShell treats `.psm1` files differently from `.ps1` when dot-sourced. Dot-sourcing a `.psm1` applies module-scoping rules that make functions invisible to `Get-Command` and the `Function:` drive -- even in the global scope. This means `. .\Module.psm1` does not make functions callable the way `. .\Script.ps1` does. To execute `.psm1` content without module scoping, read the file as a string and execute via `Invoke-Expression` or `[scriptblock]::Create()`. The cross-version tests use the scriptblock approach for this reason.
 

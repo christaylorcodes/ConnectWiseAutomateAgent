@@ -6,7 +6,7 @@
 
 .DESCRIPTION
     Tests the documentation folder layout, auto-generated function reference,
-    and MAML help.
+    and in-session help files.
 
     Supports dual-mode testing via $env:CWAA_TEST_LOAD_METHOD.
 
@@ -93,10 +93,11 @@ Describe 'Documentation Structure' {
         }
     }
 
-    Context 'MAML help' {
-        It 'has a compiled MAML XML help file' {
+    Context 'In-session help' {
+        It 'does not ship a MAML XML help file (Get-Help uses comment-based help)' {
+            # A stale MAML file would silently go out of date: nothing generates it
             $mamlPath = Join-Path $ModuleRoot 'source\en-US\ConnectWiseAutomateAgent-help.xml'
-            $mamlPath | Should -Exist
+            $mamlPath | Should -Not -Exist
         }
 
         It 'has an about help topic' {

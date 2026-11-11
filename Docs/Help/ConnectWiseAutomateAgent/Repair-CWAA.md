@@ -259,11 +259,11 @@ This cmdlet supports the common parameters: -Debug, -ErrorAction, -ErrorVariable
 
 ### System.String
 
-{{ Fill in the Description }}
+Bound from the pipeline by property name: `-Server`.
 
 ### System.Int32
 
-{{ Fill in the Description }}
+Bound from the pipeline by property name: `-LocationID`.
 
 ## OUTPUTS
 
