@@ -61,7 +61,8 @@ function Invoke-MainLogic {
 
     # Create output object and initialize logging
     $output = New-CWAAScriptOutput
-    $output.LogPath = Initialize-CWAAScriptLog -LogName 'ServiceCheck'
+    # -ErrorAction Stop: a failed log init lands in the catch below with its real cause
+    $output.LogPath = Initialize-CWAAScriptLog -LogName 'ServiceCheck' -ErrorAction Stop
 
     Write-CWAAScriptLog -Message "Script v$ScriptVersion started" -LogPath $output.LogPath
     Write-CWAAScriptLog -Message "Checking service: $Service" -LogPath $output.LogPath
@@ -71,7 +72,8 @@ function Invoke-MainLogic {
     $svc = Get-Service $Service -ErrorAction SilentlyContinue
 
     if (-not $svc) {
-        $output.Status = 'Error'
+        # 'Failed': the check ran but found a problem. 'Error' is for unexpected exceptions.
+        $output.Status = 'Failed'
         $output.Result = "Service '$Service' not found"
         Write-CWAAScriptLog -Message $output.Result -Level ERROR -LogPath $output.LogPath
         return $output.ToString()

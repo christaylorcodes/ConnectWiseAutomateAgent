@@ -6,6 +6,9 @@ function Write-CWAAScriptLog {
         Appends a formatted, timestamped entry to the log file specified by LogPath.
         Entries follow the format: [yyyy-MM-dd HH:mm:ss] [LEVEL] Message
 
+        Continuation lines of a multi-line message are indented by four spaces, so message
+        text can never start a line that looks like a new [timestamp] [LEVEL] entry.
+
         Use Initialize-CWAAScriptLog to create the log file first. This function performs
         synchronous file writes via Add-Content with no external module dependency.
     .PARAMETER Message
@@ -50,12 +53,15 @@ function Write-CWAAScriptLog {
     Process {
         Try {
             $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-            $logEntry = "[$timestamp] [$Level] $Message"
+            # Indent continuation lines so a message cannot forge a separate log entry
+            $safeMessage = $Message.TrimEnd() -replace '\r\n|\r|\n', "$([Environment]::NewLine)    "
+            $logEntry = "[$timestamp] [$Level] $safeMessage"
             Add-Content -LiteralPath $LogPath -Value $logEntry -Encoding UTF8 -ErrorAction Stop
             Write-Debug "Write-CWAAScriptLog: $logEntry"
         }
         Catch {
-            Write-Error "Failed to write to log file '$LogPath'. Error: $($_.Exception.Message)"
+            $wrapped = New-Object System.Exception("Failed to write to log file '$LogPath'. Error: $($_.Exception.Message)", $_.Exception)
+            Write-Error -Exception $wrapped -Category $_.CategoryInfo.Category -TargetObject $LogPath
         }
     }
 

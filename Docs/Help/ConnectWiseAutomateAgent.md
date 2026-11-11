@@ -84,7 +84,7 @@ PowerShell module for managing the ConnectWise Automate (formerly LabTech) Windo
 
 ## Script Helpers
 
-Helpers for writing scripts that run from ConnectWise Automate. Their aliases follow the Automate script naming (e.g., `Write-AutomateLog`) rather than the `LT` prefix.
+Helpers for writing scripts that run from ConnectWise Automate. Their aliases preserve the names from the legacy CW-Automate-ScriptHelper.ps1 (e.g., `Write-AutomateLog`, `Invoke-CWAScript`, `Invoke-LTPwsh`).
 
 | Function | Description |
 | --- | --- |

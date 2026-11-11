@@ -8,12 +8,19 @@ function Invoke-CWAAScript {
         initializes a log file, executes the scriptblock, captures the result, and returns
         the pipe-delimited output string that Automate expects.
 
-        If the scriptblock throws or writes any non-terminating error, the output Status is set to Error and the exception
-        message(s) are captured in Result. The function always returns a formatted output string
-        and never throws to the caller.
+        If the scriptblock throws or writes any non-terminating error, the output Status is
+        set to Error, the error message(s) are captured in Result, and any output produced
+        before the failure is kept in Data as Output=<text>. Errors are collected, not
+        re-emitted, so the formatted string is the only output. Once parameters are bound,
+        the function always returns a formatted output string and does not throw.
+
+        Calling exit inside the scriptblock ends the whole PowerShell host immediately and
+        bypasses this wrapper, so no formatted output is returned. Use throw (or set a
+        Failed status) to signal failure instead.
 
         An optional URL parameter allows fetching and executing a remote script. The URL
-        must use https:// (the agent runs as SYSTEM, so plain HTTP is rejected).
+        must use https:// (the agent runs as SYSTEM, so plain HTTP is rejected). The
+        downloaded content must be non-empty text.
     .PARAMETER ScriptBlock
         The PowerShell scriptblock to execute.
     .PARAMETER URL
@@ -22,10 +29,15 @@ function Invoke-CWAAScript {
         https://.
     .PARAMETER EnableLogging
         When specified, initializes a log file via Initialize-CWAAScriptLog before execution.
-        The log path is included in the output object.
+        The log path is included in the output object. Failures are written to the log with
+        their script stack trace. If the log cannot be created, the scriptblock still runs:
+        LogPath is left empty and Data records LogInitFailed=<message>.
     .PARAMETER LogDirectory
         The directory for the log file. Only used when EnableLogging is specified.
         Defaults to the agent log directory (the Initialize-CWAAScriptLog default).
+    .PARAMETER LogName
+        The base name for the log file. Only used when EnableLogging is specified.
+        Defaults to the name of the script or function that called Invoke-CWAAScript.
     .EXAMPLE
         Invoke-CWAAScript -ScriptBlock { Get-Service LTService | Select-Object -ExpandProperty Status }
         # Returns: Status=Success|Result=Running|LogPath=|Data=
@@ -33,8 +45,8 @@ function Invoke-CWAAScript {
         Invoke-CWAAScript -ScriptBlock { Get-Service InvalidService -ErrorAction Stop } -EnableLogging
         # Returns: Status=Error|Result=<error message>|LogPath=C:\Windows\LTSvc\logs\...
     .EXAMPLE
-        Invoke-CWAAScript -URL 'https://example.com/myscript.ps1' -EnableLogging
-        Downloads and executes the remote script with logging enabled.
+        Invoke-CWAAScript -URL 'https://example.com/myscript.ps1' -EnableLogging -LogName 'MyScript'
+        Downloads and executes the remote script, logging to MyScript_<timestamp>.log.
     .NOTES
         Author: Chris Taylor
         Alias: Invoke-CWAScript
@@ -57,7 +69,10 @@ function Invoke-CWAAScript {
         [switch]$EnableLogging,
 
         [Parameter()]
-        [string]$LogDirectory
+        [string]$LogDirectory,
+
+        [Parameter()]
+        [string]$LogName
     )
 
     Begin {
@@ -66,51 +81,84 @@ function Invoke-CWAAScript {
 
     Process {
         $scriptOutput = New-CWAAScriptOutput
+        $dataParts = @()
+        # Collected as it streams, so output produced before a terminating error is kept
+        $result = New-Object System.Collections.Generic.List[object]
 
-        Try {
-            # Initialize logging if requested
-            if ($EnableLogging) {
+        # Initialize logging if requested. Logging is diagnostic only, so a failure here is
+        # recorded in Data and the script still runs.
+        if ($EnableLogging) {
+            Try {
+                if (-not $LogName) {
+                    # Name the log after our caller, not after this wrapper
+                    $callStack = Get-PSCallStack
+                    if ($callStack.Count -gt 1) { $LogName = ([string]$callStack[1].Command) -replace '\.ps1$', '' }
+                }
                 $logParams = @{ ErrorAction = 'Stop' }
+                if ($LogName) { $logParams.LogName = $LogName }
                 if ($PSBoundParameters.ContainsKey('LogDirectory')) { $logParams.LogDirectory = $LogDirectory }
-                $scriptOutput.LogPath = Initialize-CWAAScriptLog @logParams
+                $scriptOutput.LogPath = [string](Initialize-CWAAScriptLog @logParams)
                 Write-Debug "Invoke-CWAAScript: Logging initialized at '$($scriptOutput.LogPath)'."
             }
+            Catch {
+                $scriptOutput.LogPath = ''
+                $dataParts += "LogInitFailed=$($_.Exception.Message)"
+                Write-Debug "Invoke-CWAAScript: Log initialization failed: $($_.Exception.Message)"
+            }
+        }
 
+        Try {
             # Determine what to execute
             if ($PSCmdlet.ParameterSetName -eq 'URL') {
                 Write-Debug "Invoke-CWAAScript: Fetching remote script from '$URL'."
                 # Windows PowerShell 5.1 may not offer TLS 1.2 by default
                 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
                 $remoteScript = Invoke-RestMethod -Uri $URL -ErrorAction Stop
+                if ($remoteScript -isnot [string] -or [string]::IsNullOrWhiteSpace($remoteScript)) {
+                    $typeName = if ($null -eq $remoteScript) { 'nothing' } else { $remoteScript.GetType().Name }
+                    throw "Remote script at '$URL' was empty or not text (received $typeName)."
+                }
                 $executionBlock = [scriptblock]::Create($remoteScript)
             }
             else {
                 $executionBlock = $ScriptBlock
             }
 
-            # Execute the scriptblock and capture output
+            # Execute the scriptblock and capture output.
             # -ErrorAction on Invoke-Command does not reach errors written inside the scriptblock,
-            # so collect them and treat any as a failure.
+            # so collect them via -ErrorVariable (discarding the stream copy) and treat any as a failure.
             $scriptErrors = $null
-            $result = Invoke-Command -ScriptBlock $executionBlock -ErrorVariable scriptErrors
+            Invoke-Command -ScriptBlock $executionBlock -ErrorVariable scriptErrors 2>$null |
+                ForEach-Object { $result.Add($_) }
             if ($scriptErrors) {
                 throw (($scriptErrors | ForEach-Object { $_.ToString() }) -join '; ')
             }
-            $scriptOutput.Result = ($result | Out-String).TrimEnd()
+            $scriptOutput.Result = ($result | Out-String -Width 4096).Trim()
 
             Write-Debug "Invoke-CWAAScript: Execution completed successfully."
         }
         Catch {
             $scriptOutput.Status = 'Error'
             $scriptOutput.Result = $_.Exception.Message
+            $partialOutput = ($result | Out-String -Width 4096).Trim()
+            if ($partialOutput) { $dataParts += "Output=$partialOutput" }
 
             Write-Debug "Invoke-CWAAScript: Execution failed. Error: $($_.Exception.Message)"
 
-            # Log the error if logging was initialized
+            # Best-effort: a failed log write must not escape and lose the formatted output
             if ($scriptOutput.LogPath) {
-                Write-CWAAScriptLog -Message "Script execution failed: $($_.Exception.Message)" -Level ERROR -LogPath $scriptOutput.LogPath
+                $logMessage = "Script execution failed: $($_.Exception.Message)"
+                if ($_.ScriptStackTrace) { $logMessage += "`n$($_.ScriptStackTrace)" }
+                Try {
+                    Write-CWAAScriptLog -Message $logMessage -Level ERROR -LogPath $scriptOutput.LogPath -ErrorAction Stop
+                }
+                Catch {
+                    $dataParts += "LogWriteFailed=$($_.Exception.Message)"
+                }
             }
         }
+
+        $scriptOutput.Data = $dataParts -join '; '
 
         # Always return the formatted output string
         ConvertTo-CWAAScriptOutput -InputObject $scriptOutput

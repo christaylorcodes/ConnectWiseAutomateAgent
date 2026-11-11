@@ -8,7 +8,13 @@ function Initialize-CWAAScriptLog {
 
         Default log directory is the standard Automate agent log location
         (the logs folder under the agent install path, $env:windir\LTSvc\logs by default). The log filename is derived from the calling script or
-        function name with a timestamp suffix.
+        function name with a millisecond timestamp suffix (Name_yyyyMMdd-HHmmss-fff.log).
+
+        The file is created exclusively: if a file (or link) already exists at that path the
+        call fails rather than appending to it. On failure a non-terminating error is written
+        and nothing is returned; use -ErrorAction Stop to make failures terminating.
+
+        Logs under the agent folder are typically readable by local users. Do not log secrets.
 
         This replaces Initialize-AutomateLogging from the legacy CW-Automate-ScriptHelper.ps1
         which depended on the PSGallery Logging module. All logging is now synchronous file
@@ -62,23 +68,27 @@ function Initialize-CWAAScriptLog {
             if (-not $LogName) { $LogName = 'CWAAScript' }
 
             # Ensure log directory exists
-            if (-not (Test-Path -Path $LogDirectory)) {
-                $null = New-Item -Path $LogDirectory -ItemType Directory -Force
+            if (-not (Test-Path -LiteralPath $LogDirectory)) {
+                $null = New-Item -Path $LogDirectory -ItemType Directory -Force -ErrorAction Stop
                 Write-Debug "Initialize-CWAAScriptLog: Created log directory '$LogDirectory'."
             }
 
-            # Build timestamped filename
-            $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+            # Build timestamped filename (milliseconds keep runs in the same second apart)
+            $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
             $logFileName = "${LogName}_${timestamp}.log"
             $logFilePath = Join-Path -Path $LogDirectory -ChildPath $logFileName
 
-            # Writing the header creates the file
+            # Create the file exclusively so a pre-planted file or link at the predictable
+            # name is never appended to, then write the header
+            $providerPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($logFilePath)
+            [System.IO.File]::Open($providerPath, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write).Dispose()
             Write-CWAAScriptLog -Message "Log initialized: $LogName" -LogPath $logFilePath -ErrorAction Stop
 
             $logFilePath
         }
         Catch {
-            Write-Error "Failed to initialize script log in '$LogDirectory'. Error: $($_.Exception.Message)"
+            $wrapped = New-Object System.Exception("Failed to initialize script log in '$LogDirectory'. Error: $($_.Exception.Message)", $_.Exception)
+            Write-Error -Exception $wrapped -Category $_.CategoryInfo.Category -TargetObject $LogDirectory
         }
     }
 

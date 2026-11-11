@@ -44,13 +44,14 @@ Invoke-CWAAScript -ScriptBlock {
 
 # --- Example 3: Script with logging ------------------------------------------
 #
-# Enable logging to create a retrievable log file on the endpoint.
-# Automate can pull the log file using the LogPath in the output.
+# Enable logging to create a log file on the endpoint. The log is named after
+# the calling script (or -LogName) and records the start and any failure with
+# its stack trace. Automate can pull the file using the LogPath in the output.
 
-Invoke-CWAAScript -EnableLogging -ScriptBlock {
+Invoke-CWAAScript -EnableLogging -LogName 'PatchInstall' -ScriptBlock {
     'Patch installation completed successfully'
 }
-# Output: Status=Success|Result=Patch installation completed...|LogPath=C:\Windows\LTSvc\logs\...|Data=
+# Output: Status=Success|Result=Patch installation completed...|LogPath=C:\Windows\LTSvc\logs\PatchInstall_...|Data=
 
 # --- Example 4: Manual logging with Write-CWAAScriptLog ----------------------
 #
@@ -68,7 +69,7 @@ Write-CWAAScriptLog -Message "Freed $freedMB MB of disk space" -LogPath $output.
 
 $output.Result = "Freed $freedMB MB"
 $output.ToString()
-# Output: Status=Success|Result=Freed 150 MB|LogPath=C:\Windows\LTSvc\logs\DiskCleanup_20260211-143000.log|Data=
+# Output: Status=Success|Result=Freed 150 MB|LogPath=C:\Windows\LTSvc\logs\DiskCleanup_20260211-143000-123.log|Data=
 
 # --- Example 5: Returning structured data ------------------------------------
 #
@@ -121,6 +122,13 @@ ConvertTo-CWAAScriptOutput -InputObject ([ordered]@{
 #
 # Invoke-CWAAScript can fetch and execute a remote script directly.
 # Useful for running scripts hosted in a GitHub repo without pre-deploying them.
+# The script runs as SYSTEM, so only use URLs you control. (Placeholder URL:
+# uncomment and replace before running.)
 
-Invoke-CWAAScript -URL 'https://raw.githubusercontent.com/org/repo/main/scripts/remediation.ps1' -EnableLogging
+# Invoke-CWAAScript -URL 'https://raw.githubusercontent.com/org/repo/main/scripts/remediation.ps1' -EnableLogging
 # Output: Status=Success|Result=<script output>|LogPath=C:\Windows\LTSvc\logs\...|Data=
+
+# --- Note: do not call exit inside Invoke-CWAAScript -------------------------
+#
+# exit ends the whole PowerShell host and bypasses the wrapper, so no
+# Status=... line is returned. Use throw for failures instead.

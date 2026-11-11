@@ -91,6 +91,8 @@ ConnectWiseAutomateAgent/
 
 Every function uses the `CWAA` prefix (e.g., `Install-CWAA`) but also declares an `LT` alias (e.g., `Install-LTService`) for backward compatibility with the legacy LabTech naming. Aliases are declared both in function `[Alias()]` attributes and in the manifest's `AliasesToExport`.
 
+Exception: the Script helpers in `source/Public/Scripting/` carry their names from the legacy `CW-Automate-ScriptHelper.ps1` as aliases instead (e.g., `Write-AutomateLog`, `Invoke-CWAScript`, `Invoke-LTPwsh`).
+
 ### Build Pipeline
 
 The build uses [Sampler](https://github.com/gaelcolas/Sampler) with ModuleBuilder and Invoke-Build. Configuration lives in `build.yaml`.
@@ -145,12 +147,12 @@ For git commit style and the full contributing guide, see [CONTRIBUTING.md](CONT
 ## Adding New Functions
 
 1. Create `Verb-CWAA<Noun>.ps1` in the appropriate `source/Public/` subdirectory
-2. Add `[Alias('Verb-LT<LegacyNoun>')]` in the function declaration
+2. Add `[Alias('Verb-LT<LegacyNoun>')]` in the function declaration (Script helpers use their legacy ScriptHelper name instead)
 3. Build the module: `./build.ps1 -Tasks build` -- ModuleBuilder auto-populates `FunctionsToExport` and `AliasesToExport` in the manifest (no manual manifest update needed)
 
 When modifying existing functions:
 
-- Maintain the `LT` alias
+- Maintain the `LT` alias (or the legacy ScriptHelper alias for Script helpers)
 - Rebuild: `./build.ps1 -Tasks build`
 - Consider 32-bit/64-bit WOW64 behavior for registry/file operations
 

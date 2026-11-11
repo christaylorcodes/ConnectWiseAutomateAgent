@@ -11,6 +11,10 @@ function ConvertTo-CWAAScriptOutput {
         All note properties (objects) or keys (hashtables/dictionaries) are serialized in order.
         A CWAAScriptOutput object (from New-CWAAScriptOutput) yields Status, Result, LogPath, Data.
         Plain hashtables have no guaranteed key order; use [ordered]@{} when order matters.
+
+        Values are trimmed and sanitized so they cannot break the single-line format: line
+        breaks become ' / ' and pipe characters become '/'. A value therefore can never
+        inject an extra field (such as a second Status=) into the output.
     .PARAMETER InputObject
         The object to serialize. Accepts PSCustomObject, CWAAScriptOutput, hashtable, or [ordered] dictionary.
     .EXAMPLE
@@ -18,8 +22,11 @@ function ConvertTo-CWAAScriptOutput {
         ConvertTo-CWAAScriptOutput -InputObject $output
         # Returns: Status=Success|Result=Completed|LogPath=|Data=
     .EXAMPLE
-        ConvertTo-CWAAScriptOutput -InputObject @{ Status = 'Error'; Result = 'Disk full' }
+        ConvertTo-CWAAScriptOutput -InputObject ([ordered]@{ Status = 'Error'; Result = 'Disk full' })
         # Returns: Status=Error|Result=Disk full
+    .EXAMPLE
+        ConvertTo-CWAAScriptOutput -InputObject ([ordered]@{ Status = 'Success'; Result = "line1`nline2|x" })
+        # Returns: Status=Success|Result=line1 / line2/x
     .NOTES
         Author: Chris Taylor
         Alias: ConvertTo-AutomateOutput
@@ -46,7 +53,12 @@ function ConvertTo-CWAAScriptOutput {
         else {
             $InputObject.PSObject.Properties | Where-Object { $_.MemberType -eq 'NoteProperty' }
         }
-        ($pairs | ForEach-Object { "$($_.Name)=$($_.Value)" }) -join '|'
+        # One line, one field per '|': strip line breaks and pipes from values so the
+        # Automate parser cannot be confused or spoofed by script output.
+        ($pairs | ForEach-Object {
+                $value = "$($_.Value)".Trim() -replace '\r\n|\r|\n', ' / ' -replace '\|', '/'
+                "$($_.Name)=$value"
+            }) -join '|'
     }
 
     End {

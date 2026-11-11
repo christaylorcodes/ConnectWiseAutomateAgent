@@ -42,25 +42,30 @@ Invoke-CWAAPwsh -ScriptBlock {
         if ($svc) { "$_ = $($svc.Status)" }
         else { "$_ = NotFound" }
     } -ThrottleLimit 4
-    $results -join ', '
+    ($results | Sort-Object) -join ', '
 }
-# Output: Status=Success|Result=LTService = Running, LTSvcMon = Running, ...|LogPath=|Data=
+# Output (-Parallel does not preserve order, so results are sorted):
+# Status=Success|Result=LTService = Running, LTSvcMon = Running, ...|LogPath=|Data=
 
 # --- Example 3: Running a PS7 script file with parameters --------------------
 #
-# Point to a .ps1 file and pass parameters as a hashtable.
+# Point to a .ps1 file and pass parameters as a hashtable. Strings, numbers and
+# booleans/switches are supported ($true becomes -Force:$true).
 # Useful when you have a PS7 script already written.
 
 # Invoke-CWAAPwsh -FilePath 'C:\Scripts\Invoke-Remediation.ps1' -Parameters @{
 #     ComputerName = $env:COMPUTERNAME
-#     Force        = 'true'
+#     OutputDir    = 'C:\Temp\Remediation\'
+#     Force        = $true
 # }
 
 # --- Example 4: Custom pwsh path ---------------------------------------------
 #
 # If pwsh.exe is installed in a non-standard location, specify it explicitly.
+# pwsh is never taken from PATH. Use a folder only administrators can write to,
+# because Automate scripts usually run as SYSTEM.
 
-# Invoke-CWAAPwsh -ScriptBlock { 'Hello from custom pwsh' } -PwshPath 'D:\Tools\PowerShell\7\pwsh.exe'
+# Invoke-CWAAPwsh -ScriptBlock { 'Hello from custom pwsh' } -PwshPath 'C:\Program Files\PowerShell\7-preview\pwsh.exe'
 
 # --- Example 5: Full Automate deployment pattern -----------------------------
 #
@@ -81,6 +86,8 @@ Invoke-CWAAPwsh -ScriptBlock {
 # --- Example 6: Combining Invoke-CWAAScript with Invoke-CWAAPwsh ------------
 #
 # Use Invoke-CWAAScript to wrap the entire flow with automatic error handling.
+# Invoke-CWAAPwsh never throws: it returns Status=Error, so check for that and
+# throw to make the outer Invoke-CWAAScript report the failure.
 
 Invoke-CWAAScript -EnableLogging -ScriptBlock {
     $ps7Output = Invoke-CWAAPwsh -ScriptBlock {
@@ -88,7 +95,8 @@ Invoke-CWAAScript -EnableLogging -ScriptBlock {
         $isServer = (Get-CimInstance Win32_OperatingSystem).ProductType -ne 1 ? 'Server' : 'Workstation'
         "This machine is a $isServer running PS $($PSVersionTable.PSVersion)"
     }
+    if ($ps7Output -match '^Status=Error\|Result=([^|]*)') { throw "PowerShell 7 step failed: $($matches[1])" }
     # Invoke-CWAAPwsh returns pipe-delimited output; extract just the result
-    if ($ps7Output -match 'Result=(.+?)(\||$)') { $matches[1] }
+    if ($ps7Output -match 'Result=([^|]*)') { $matches[1] }
     else { $ps7Output }
 }

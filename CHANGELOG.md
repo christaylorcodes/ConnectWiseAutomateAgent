@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Script helpers** for scripts run from ConnectWise Automate: `Initialize-CWAAScriptLog`, `Write-CWAAScriptLog`, `New-CWAAScriptOutput`, `ConvertTo-CWAAScriptOutput`, `Invoke-CWAAScript`, `Invoke-CWAAPwsh`, and `New-CWAARemoteMonitor`. See `Examples/ScriptHelper-*.ps1`.
+- **Script helpers** for scripts run from ConnectWise Automate: `Initialize-CWAAScriptLog`, `Write-CWAAScriptLog`, `New-CWAAScriptOutput`, `ConvertTo-CWAAScriptOutput`, `Invoke-CWAAScript`, `Invoke-CWAAPwsh`, and `New-CWAARemoteMonitor`. See `Examples/ScriptHelper-*.ps1`. Output values are kept to one line (line breaks become ` / `, pipes become `/`). `Invoke-CWAAPwsh` only runs pwsh.exe from Program Files, the PowerShellCore registry install locations, or `-PwshPath`, never from PATH; it reports stderr output as `Status=Error`.
 - `Scripts/Update-PlatyPSDocs.ps1` post-processes PlatyPS output in `Docs/Help` (fills the ProgressAction placeholder and empty RELATED LINKS).
 
 ### Changed
