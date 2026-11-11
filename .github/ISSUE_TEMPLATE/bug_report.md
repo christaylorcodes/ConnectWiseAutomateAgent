@@ -41,5 +41,10 @@ assignees: ''
 ## Possible Solution
 <!-- Optional: Suggest a fix or reason for the bug -->
 
+## Checklist
+
+- [ ] I have searched existing issues to ensure this is not a duplicate
+- [ ] I have tested with the latest version
+
 ## Related Issues
 <!-- Optional: Link to related issues -->

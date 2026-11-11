@@ -146,12 +146,12 @@ _Hand-written documentation covering architecture and concepts._
 
 ### Function Reference (Auto-Generated)
 
-_Generated from source code comment-based help via [PlatyPS](https://github.com/PowerShell/platyPS). Regenerate with `./build.ps1 -Tasks build`._
+_Generated from source code comment-based help via [PlatyPS](https://github.com/PowerShell/platyPS). Regenerate with `./build.ps1 -Tasks docs`._
 
 | Resource | Description |
 | --- | --- |
 | [Function Reference](Docs/Help/ConnectWiseAutomateAgent.md) | All 30 functions organized by category with descriptions |
-| [Individual Function Docs](Docs/Help/) | One file per function -- parameters, examples, and syntax |
+| [Individual Function Docs](Docs/Help/ConnectWiseAutomateAgent/) | One file per function -- parameters, examples, and syntax |
 | `Get-Help <function>` | In-session help compiled from the same source (MAML XML) |
 
 ### Tutorials & Blog Posts
@@ -196,7 +196,7 @@ If you're an AI assistant helping a user with this module, start here:
 | --- | --- |
 | [AGENTS.md](AGENTS.md) | Architecture, build commands, coding conventions, testing workflow, AI contribution workflow, security considerations |
 | [Docs/Help/ConnectWiseAutomateAgent.md](Docs/Help/ConnectWiseAutomateAgent.md) | Complete function reference with links to per-function documentation (parameters, examples, syntax) |
-| [Docs/Help/](Docs/Help/) | Individual function docs -- one file per function (e.g., `Docs/Help/Install-CWAA.md`) |
+| [Docs/Help/ConnectWiseAutomateAgent/](Docs/Help/ConnectWiseAutomateAgent/) | Individual function docs, generated from comment-based help by `./build.ps1 -Tasks docs` -- one file per function (e.g., `Docs/Help/ConnectWiseAutomateAgent/Install-CWAA.md`) |
 | [Examples/](Examples/) | Ready-to-use scripts covering common deployment and troubleshooting scenarios |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Development setup, coding standards, and PR workflow for code changes |
 

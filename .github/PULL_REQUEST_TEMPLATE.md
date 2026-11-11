@@ -23,6 +23,7 @@
 - [ ] Code follows project conventions ([AGENTS.md](../AGENTS.md))
 - [ ] Tests cover new/changed behavior
 - [ ] PSScriptAnalyzer reports zero errors
+- [ ] CHANGELOG.md updated (if applicable)
 - [ ] Documentation updated (if applicable)
 - [ ] Module built (`./build.ps1 -Tasks build`)
 

@@ -1,0 +1,265 @@
+# Git Attributes Configuration
+# https://git-scm.com/docs/gitattributes
+
+# Set default behavior to automatically normalize line endings
+* text=auto
+
+###############################
+# Text Files (Auto-normalize) #
+###############################
+
+# Source code
+*.c       text diff=c
+*.cpp     text diff=cpp
+*.cs      text diff=csharp
+*.css     text diff=css
+*.go      text diff=golang
+*.h       text diff=c
+*.hpp     text diff=cpp
+*.html    text diff=html
+*.java    text diff=java
+*.js      text diff=javascript
+*.jsx     text diff=javascript
+*.json    text
+*.php     text diff=php
+*.pl      text diff=perl
+*.ps1     text eol=crlf diff=powershell
+*.psm1    text eol=crlf diff=powershell
+*.psd1    text eol=crlf
+*.py      text diff=python
+*.rb      text diff=ruby
+*.rs      text diff=rust
+*.ts      text diff=typescript
+*.tsx     text diff=typescript
+*.xml     text
+
+# Scripts
+*.bash    text eol=lf
+*.sh      text eol=lf
+*.fish    text eol=lf
+*.zsh     text eol=lf
+*.bat     text eol=crlf
+*.cmd     text eol=crlf
+
+# Documentation
+*.markdown   text diff=markdown
+*.md         text diff=markdown
+*.mdx        text diff=markdown
+*.txt        text
+*.adoc       text
+*.textile    text
+*.mustache   text
+*.rst        text
+*.org        text
+
+# Config files
+*.cnf        text
+*.conf       text
+*.config     text
+*.ini        text
+*.toml       text
+*.yaml       text
+*.yml        text
+.editorconfig text
+.gitattributes text
+.gitconfig   text
+.gitignore   text
+
+# Special files
+AUTHORS      text
+CHANGELOG    text
+CHANGES      text
+CONTRIBUTING text
+COPYING      text
+COPYRIGHT    text
+INSTALL      text
+LICENSE      text
+NEWS         text
+README       text
+TODO         text
+
+# Templates
+*.dot        text
+*.ejs        text
+*.erb        text
+*.haml       text
+*.handlebars text
+*.hbs        text
+*.hbt        text
+*.jade       text
+*.latte      text
+*.njk        text
+*.phtml      text
+*.svelte     text
+*.tmpl       text
+*.tpl        text
+*.twig       text
+*.vue        text
+
+# Data formats
+*.csv        text
+*.sql        text
+*.tsv        text
+
+# Graphics
+*.ai         binary
+*.bmp        binary
+*.eps        binary
+*.gif        binary
+*.gifv       binary
+*.ico        binary
+*.jng        binary
+*.jp2        binary
+*.jpg        binary
+*.jpeg       binary
+*.jpx        binary
+*.jxr        binary
+*.pdf        binary
+*.png        binary
+*.psb        binary
+*.psd        binary
+*.svg        text
+*.svgz       binary
+*.tif        binary
+*.tiff       binary
+*.wbmp       binary
+*.webp       binary
+
+# Audio
+*.kar        binary
+*.m4a        binary
+*.mid        binary
+*.midi       binary
+*.mp3        binary
+*.ogg        binary
+*.ra         binary
+
+# Video
+*.3gpp       binary
+*.3gp        binary
+*.as         binary
+*.asf        binary
+*.asx        binary
+*.avi        binary
+*.fla        binary
+*.flv        binary
+*.m4v        binary
+*.mng        binary
+*.mov        binary
+*.mp4        binary
+*.mpeg       binary
+*.mpg        binary
+*.ogv        binary
+*.swc        binary
+*.swf        binary
+*.webm       binary
+
+# Archives
+*.7z         binary
+*.gz         binary
+*.jar        binary
+*.rar        binary
+*.tar        binary
+*.zip        binary
+
+# Fonts
+*.ttf        binary
+*.eot        binary
+*.otf        binary
+*.woff       binary
+*.woff2      binary
+
+# Executables
+*.exe        binary
+*.dll        binary
+*.so         binary
+*.dylib      binary
+*.app        binary
+
+# Documents
+*.doc        binary
+*.docx       binary
+*.xls        binary
+*.xlsx       binary
+*.ppt        binary
+*.pptx       binary
+*.odt        binary
+*.ods        binary
+*.odp        binary
+
+# PowerShell specific
+*.ps1xml     text eol=crlf
+*.pssc       text eol=crlf
+*.psrc       text eol=crlf
+*.cdxml      text eol=crlf
+
+# Package manager files
+package-lock.json text -diff
+yarn.lock         text -diff
+Gemfile.lock      text -diff
+Pipfile.lock      text -diff
+composer.lock     text -diff
+Cargo.lock        text -diff
+
+# Build output (mark as binary to avoid diff)
+*.exe            binary
+*.dll            binary
+*.nupkg          binary
+*.snupkg         binary
+*.tgz            binary
+
+####################
+# Diff Exclusions  #
+####################
+
+# Don't show diffs for generated/compiled files
+*.min.js         -diff
+*.min.css        -diff
+*.map            -diff
+
+# Don't show diffs for images
+*.png            -diff
+*.jpg            -diff
+*.jpeg           -diff
+*.gif            -diff
+
+####################
+# Merge Strategies #
+####################
+
+# For changelog files, prefer our version during merges
+CHANGELOG*       merge=union
+
+# For package manager lock files, prefer manual merge
+package-lock.json merge=binary
+yarn.lock         merge=binary
+
+####################
+# Linguist         #
+####################
+
+# Documentation
+Docs/**           linguist-documentation
+*.md              linguist-documentation
+
+# Vendored code
+vendor/**         linguist-vendored
+third-party/**    linguist-vendored
+# Sampler bootstrap scripts (copied from Sampler, not maintained here)
+/build.ps1               linguist-vendored
+/Resolve-Dependency.ps1  linguist-vendored
+
+# Generated code
+*.generated.*     linguist-generated
+
+####################
+# Export Ignore    #
+####################
+# Files to exclude from export archives (git archive)
+
+.gitattributes   export-ignore
+.gitignore       export-ignore
+.editorconfig    export-ignore
+.github          export-ignore
+Tests            export-ignore
+*.test.*         export-ignore

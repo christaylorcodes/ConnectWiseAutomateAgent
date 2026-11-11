@@ -1,5 +1,8 @@
 # PR Validation workflow
 # Checks that PRs include changelog updates and runs basic validation.
+#
+# Security note: never interpolate ${{ github.* }} values directly into a run:
+# script. Pass them through env: instead.
 
 name: PR Validation
 
@@ -7,19 +10,25 @@ on:
   pull_request:
     branches: [main, develop]
 
+permissions:
+  contents: read
+
 jobs:
   validate:
     name: PR Checks
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Check CHANGELOG updated
         shell: pwsh
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
-          $changedFiles = git diff --name-only origin/${{ github.base_ref }}...HEAD
+          $changedFiles = git diff --name-only "origin/$env:BASE_REF...HEAD"
           if ($changedFiles -contains 'CHANGELOG.md') {
               Write-Host "CHANGELOG.md has been updated." -ForegroundColor Green
           } else {
@@ -44,8 +53,8 @@ jobs:
           $summary = @"
           ## PR Validation Summary
 
-          - Version is driven by the module manifest (source/ConnectWiseAutomateAgent.psd1)
+          - Version is calculated by GitVersion from branch and history (see GitVersion.yml)
+          - develop publishes a prerelease; main publishes a stable release
           - Remember to update CHANGELOG.md with your changes
-          - Prerelease tag in manifest controls whether publish goes to prerelease or stable
           "@
           $summary >> $env:GITHUB_STEP_SUMMARY
