@@ -588,6 +588,19 @@ Describe 'Test-CWAAHealth' {
 
 Describe 'Register-CWAAHealthCheckTask' {
 
+    BeforeAll {
+        # Builds the schtasks /QUERY /XML output for an existing health-check task.
+        # Defaults match what Register-CWAAHealthCheckTask builds for -InstallerToken 'abc123'
+        # with no Server/LocationID and the default IntervalHours (6 -> PT6H).
+        function New-TestTaskXml {
+            param(
+                [string]$RepairArguments = "-InstallerToken 'abc123'",
+                [string]$Interval = 'PT6H'
+            )
+            "<Task><Actions><Exec><Arguments>-NoProfile -WindowStyle Hidden -Command `"Import-Module ConnectWiseAutomateAgent; Repair-CWAA $RepairArguments`"</Arguments></Exec></Actions><Triggers><TimeTrigger><Repetition><Interval>$Interval</Interval></Repetition></TimeTrigger></Triggers></Task>"
+        }
+    }
+
     Context 'when task does not exist' {
         It 'creates a new scheduled task and returns Created=$true' {
             $result = InModuleScope 'ConnectWiseAutomateAgent' {
@@ -611,14 +624,10 @@ Describe 'Register-CWAAHealthCheckTask' {
 
     Context 'when task exists with matching configuration' {
         It 'skips recreation and returns Created=$false, Updated=$false' {
-            $result = InModuleScope 'ConnectWiseAutomateAgent' {
+            $result = InModuleScope 'ConnectWiseAutomateAgent' -Parameters @{ TaskXml = (New-TestTaskXml) } {
+                param($TaskXml)
                 Mock schtasks {
-                    if ($args -contains '/QUERY') {
-                        # Arguments contains the exact command Register-CWAAHealthCheckTask would build for
-                        # -InstallerToken 'abc123' with no Server/LocationID, and Interval matches the
-                        # default IntervalHours (6 -> PT6H).
-                        return '<Task><Actions><Exec><Arguments>-NoProfile -WindowStyle Hidden -Command "Import-Module ConnectWiseAutomateAgent; Repair-CWAA -InstallerToken ''abc123''"</Arguments></Exec></Actions><Triggers><TimeTrigger><Repetition><Interval>PT6H</Interval></Repetition></TimeTrigger></Triggers></Task>'
-                    }
+                    if ($args -contains '/QUERY') { return $TaskXml }
                 }
 
                 Register-CWAAHealthCheckTask -InstallerToken 'abc123' -Confirm:$false
@@ -628,57 +637,28 @@ Describe 'Register-CWAAHealthCheckTask' {
         }
     }
 
-    Context 'when task exists with matching token but a different interval' {
-        It 'recreates the task' {
-            $result = InModuleScope 'ConnectWiseAutomateAgent' {
-                Mock schtasks {
-                    if ($args -contains '/QUERY' -and $args -contains '/XML') {
-                        # Same command, but interval is PT12H instead of the requested default PT6H.
-                        return '<Task><Actions><Exec><Arguments>-NoProfile -WindowStyle Hidden -Command "Import-Module ConnectWiseAutomateAgent; Repair-CWAA -InstallerToken ''abc123''"</Arguments></Exec></Actions><Triggers><TimeTrigger><Repetition><Interval>PT12H</Interval></Repetition></TimeTrigger></Triggers></Task>'
-                    }
-                    elseif ($args -contains '/DELETE') { return $null }
-                    elseif ($args -contains '/CREATE') { $global:LASTEXITCODE = 0; return 'SUCCESS' }
-                    elseif ($args -contains '/QUERY') { $global:LASTEXITCODE = 0; return 'SUCCESS' }
-                }
-                Mock New-CWAABackup {}
-                Mock Remove-Item {}
-                Mock Write-CWAAEventLog {}
-
-                Register-CWAAHealthCheckTask -InstallerToken 'abc123' -Confirm:$false
+    Context 'when task exists but must be recreated' {
+        It 'recreates the task when <Case>' -ForEach @(
+            @{
+                Case        = 'the token matches but the interval differs (PT12H vs default PT6H)'
+                TaskXmlArgs = @{ Interval = 'PT12H' }
+                Parameters  = @{ InstallerToken = 'abc123' }
             }
-            ($result.Created -or $result.Updated) | Should -BeTrue
-        }
-    }
-
-    Context 'when task exists with matching token/interval but different Server or LocationID' {
-        It 'recreates the task' {
-            $result = InModuleScope 'ConnectWiseAutomateAgent' {
-                Mock schtasks {
-                    if ($args -contains '/QUERY' -and $args -contains '/XML') {
-                        # Existing task was registered for a different LocationID (99, not 42).
-                        return '<Task><Actions><Exec><Arguments>-NoProfile -WindowStyle Hidden -Command "Import-Module ConnectWiseAutomateAgent; Repair-CWAA -Server ''https://automate.example.com'' -LocationID 99 -InstallerToken ''abc123''"</Arguments></Exec></Actions><Triggers><TimeTrigger><Repetition><Interval>PT6H</Interval></Repetition></TimeTrigger></Triggers></Task>'
-                    }
-                    elseif ($args -contains '/DELETE') { return $null }
-                    elseif ($args -contains '/CREATE') { $global:LASTEXITCODE = 0; return 'SUCCESS' }
-                    elseif ($args -contains '/QUERY') { $global:LASTEXITCODE = 0; return 'SUCCESS' }
-                }
-                Mock New-CWAABackup {}
-                Mock Remove-Item {}
-                Mock Write-CWAAEventLog {}
-
-                Register-CWAAHealthCheckTask -Server 'https://automate.example.com' -LocationID 42 -InstallerToken 'abc123' -Confirm:$false
+            @{
+                Case        = 'token/interval match but the LocationID differs (99 vs 42)'
+                TaskXmlArgs = @{ RepairArguments = "-Server 'https://automate.example.com' -LocationID 99 -InstallerToken 'abc123'" }
+                Parameters  = @{ Server = 'https://automate.example.com'; LocationID = 42; InstallerToken = 'abc123' }
             }
-            ($result.Created -or $result.Updated) | Should -BeTrue
-        }
-    }
-
-    Context 'when -Force is used with existing task' {
-        It 'recreates the task' {
-            $result = InModuleScope 'ConnectWiseAutomateAgent' {
+            @{
+                Case        = '-Force is used with a matching task'
+                TaskXmlArgs = @{}
+                Parameters  = @{ InstallerToken = 'abc123'; Force = $true }
+            }
+        ) {
+            $result = InModuleScope 'ConnectWiseAutomateAgent' -Parameters @{ TaskXml = (New-TestTaskXml @TaskXmlArgs); TaskParameters = $Parameters } {
+                param($TaskXml, $TaskParameters)
                 Mock schtasks {
-                    if ($args -contains '/QUERY' -and $args -contains '/XML') {
-                        return '<Task><Actions><Exec><Arguments>-NoProfile -WindowStyle Hidden -Command "Import-Module ConnectWiseAutomateAgent; Repair-CWAA -InstallerToken ''abc123''"</Arguments></Exec></Actions><Triggers><TimeTrigger><Repetition><Interval>PT6H</Interval></Repetition></TimeTrigger></Triggers></Task>'
-                    }
+                    if ($args -contains '/QUERY' -and $args -contains '/XML') { return $TaskXml }
                     elseif ($args -contains '/DELETE') { return $null }
                     elseif ($args -contains '/CREATE') { $global:LASTEXITCODE = 0; return 'SUCCESS' }
                     elseif ($args -contains '/QUERY') { $global:LASTEXITCODE = 0; return 'SUCCESS' }
@@ -687,7 +667,7 @@ Describe 'Register-CWAAHealthCheckTask' {
                 Mock Remove-Item {}
                 Mock Write-CWAAEventLog {}
 
-                Register-CWAAHealthCheckTask -InstallerToken 'abc123' -Force -Confirm:$false
+                Register-CWAAHealthCheckTask @TaskParameters -Confirm:$false
             }
             ($result.Created -or $result.Updated) | Should -BeTrue
         }

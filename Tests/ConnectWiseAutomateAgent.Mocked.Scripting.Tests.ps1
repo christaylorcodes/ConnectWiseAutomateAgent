@@ -355,16 +355,9 @@ Describe 'New-CWAARemoteMonitor' {
         $original = 'Get-Service LTService'
         $result = New-CWAARemoteMonitor -ScriptBlock ([scriptblock]::Create($original))
 
-        # Extract the encoded string from the command
-        if ($result -match "'([A-Za-z0-9+/=]+)'") {
-            $decoded = [System.Text.Encoding]::UTF8.GetString(
-                [System.Convert]::FromBase64String($matches[1])
-            )
-            $decoded | Should -Be $original
-        }
-        else {
-            throw 'Could not extract encoded string from monitor command'
-        }
+        $result -match "'(?<Encoded>[A-Za-z0-9+/=]+)'" | Should -BeTrue -Because 'the command should embed a quoted Base64 string'
+        [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($Matches.Encoded)) |
+            Should -Be $original
     }
 
     It 'stays under the 8191 character limit for short scripts' {
@@ -373,7 +366,6 @@ Describe 'New-CWAARemoteMonitor' {
     }
 
     It 'throws when the encoded output exceeds 8191 characters' {
-        # Generate a scriptblock large enough to exceed the limit
         $longScript = 'A' * 7000
         { New-CWAARemoteMonitor -ScriptBlock ([scriptblock]::Create($longScript)) } |
             Should -Throw '*exceeds*'

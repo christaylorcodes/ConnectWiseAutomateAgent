@@ -153,11 +153,6 @@ function Invoke-CWAAPwsh {
                 Write-Error "PowerShell 7 (pwsh.exe) was not found in Program Files or the PowerShellCore registry install locations.$registryNote Install PowerShell 7 or specify the path using -PwshPath." -ErrorAction Stop
             }
 
-            # Build the pwsh arguments. -OutputFormat Text makes the child write warning, verbose
-            # and host output as plain stdout lines (captured into Result) instead of serialized
-            # records the parent PowerShell would replay to its own host as extra lines.
-            $pwshArguments = @('-NoProfile', '-NonInteractive', '-OutputFormat', 'Text')
-
             # Match pwsh -File: $? is false only after an explicit non-zero exit or an
             # error, so a handled error or leftover native exit code on the last line is ignored.
             # (A terminating error already exits 1.)
@@ -209,9 +204,12 @@ function Invoke-CWAAPwsh {
                 $commandText = ($commandParts -join ' ') + $exitSuffix
             }
 
-            # -EncodedCommand expects Base64 of Unicode (UTF-16LE) bytes
+            # -EncodedCommand expects Base64 of Unicode (UTF-16LE) bytes.
+            # -OutputFormat Text makes the child write warning, verbose and host output as plain
+            # stdout lines (captured into Result) instead of serialized records the parent
+            # PowerShell would replay to its own host as extra lines.
             $encodedScript = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($commandText))
-            $pwshArguments += '-EncodedCommand', $encodedScript
+            $pwshArguments = @('-NoProfile', '-NonInteractive', '-OutputFormat', 'Text', '-EncodedCommand', $encodedScript)
 
             # Execute pwsh and capture all output streams.
             # With an effective ErrorActionPreference of Stop, Windows PowerShell turns the first

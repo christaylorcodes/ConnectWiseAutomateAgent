@@ -56,12 +56,9 @@ function Initialize-CWAAScriptLog {
     Process {
         $created = $false
         Try {
-            # Derive log name from calling context if not specified
             if (-not $LogName) {
                 $callStack = Get-PSCallStack
-                if ($callStack.Count -gt 1) { $LogName = [string]$callStack[1].Command }
-                # Strip .ps1 extension if present
-                $LogName = $LogName -replace '\.ps1$', ''
+                if ($callStack.Count -gt 1) { $LogName = ([string]$callStack[1].Command) -replace '\.ps1$', '' }
             }
 
             # Drop characters that are illegal in file names (e.g. '<ScriptBlock>' from a -Command caller)
@@ -87,7 +84,6 @@ function Initialize-CWAAScriptLog {
             }
             & $assertNoReparsePoint $LogDirectory
 
-            # Ensure log directory exists
             if (-not (Test-Path -LiteralPath $LogDirectory)) {
                 $null = New-Item -Path $LogDirectory -ItemType Directory -Force -ErrorAction Stop
                 Write-Debug "Initialize-CWAAScriptLog: Created log directory '$LogDirectory'."

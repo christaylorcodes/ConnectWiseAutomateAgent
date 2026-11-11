@@ -211,8 +211,9 @@
             Catch {
                 # -ErrorAction Continue ensures the event log call below still runs even when the caller
                 # has set $ErrorActionPreference = 'Stop' (Write-Error would otherwise terminate here).
-                Write-Error "Failed to create scheduled task '$TaskName'. Error: $($_.Exception.Message)" -ErrorAction Continue
-                Write-CWAAEventLog -EventId 4022 -EntryType Error -Message "Failed to create scheduled task '$TaskName'. Error: $($_.Exception.Message)"
+                $failureMessage = "Failed to create scheduled task '$TaskName'. Error: $($_.Exception.Message)"
+                Write-Error $failureMessage -ErrorAction Continue
+                Write-CWAAEventLog -EventId 4022 -EntryType Error -Message $failureMessage
             }
             Finally {
                 # Clean up the temporary XML file

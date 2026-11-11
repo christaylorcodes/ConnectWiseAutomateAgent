@@ -126,7 +126,6 @@ function Invoke-CWAAScript {
                 Write-Debug "Invoke-CWAAScript: Logging initialized at '$($scriptOutput.LogPath)'."
             }
             Catch {
-                $scriptOutput.LogPath = ''
                 $dataParts += "LogInitFailed=$($_.Exception.Message)"
                 Write-Debug "Invoke-CWAAScript: Log initialization failed: $($_.Exception.Message)"
             }
@@ -136,7 +135,6 @@ function Invoke-CWAAScript {
         # exit or a labeled break/continue that unwinds past this function.
         try {
             Try {
-                # Determine what to execute
                 if ($PSCmdlet.ParameterSetName -eq 'URL') {
                     Write-Debug "Invoke-CWAAScript: Fetching remote script from '$URL'."
                     # Windows PowerShell 5.1 may not offer TLS 1.2 by default
@@ -203,7 +201,6 @@ function Invoke-CWAAScript {
 
                 $scriptOutput.Status = 'Error'
                 $scriptOutput.Result = ($failures | ForEach-Object { $_.Message }) -join '; '
-                $partialOutput = ($result | Out-String -Width 4096).Trim()
 
                 Write-Debug "Invoke-CWAAScript: Execution failed. Error: $($scriptOutput.Result)"
 
@@ -220,23 +217,21 @@ function Invoke-CWAAScript {
                         $dataParts += "LogWriteFailed=$($_.Exception.Message)"
                     }
                 }
-
-                # Output= is free text, so it always goes last in Data
-                if ($partialOutput) { $dataParts += "Output=$partialOutput" }
             }
         }
         finally {
-            if (-not $completed -and -not $failed) {
-                # Unwound by exit or a labeled break/continue: still report, as a failure
-                $scriptOutput.Status = 'Error'
-                $scriptOutput.Result = 'The script left Invoke-CWAAScript early through exit or a break/continue to a label outside it.'
+            if (-not $completed) {
+                if (-not $failed) {
+                    # Unwound by exit or a labeled break/continue: still report, as a failure
+                    $scriptOutput.Status = 'Error'
+                    $scriptOutput.Result = 'The script left Invoke-CWAAScript early through exit or a break/continue to a label outside it.'
+                }
+                # Output= is free text, so it always goes last in Data
                 $partialOutput = ($result | Out-String -Width 4096).Trim()
                 if ($partialOutput) { $dataParts += "Output=$partialOutput" }
             }
 
             $scriptOutput.Data = $dataParts -join '; '
-
-            # Always return the formatted output string
             ConvertTo-CWAAScriptOutput -InputObject $scriptOutput
         }
     }

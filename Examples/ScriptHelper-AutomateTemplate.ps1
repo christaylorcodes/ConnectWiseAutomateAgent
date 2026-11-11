@@ -79,15 +79,14 @@ function Invoke-MainLogic {
         return $output.ToString()
     }
 
-    $message = "$Service is $($svc.Status)"
-    $output.Result = $message
+    $output.Result = "$Service is $($svc.Status)"
 
     if ($svc.Status -ne 'Running') {
         $output.Status = 'Failed'
-        Write-CWAAScriptLog -Message $message -Level WARNING -LogPath $output.LogPath
+        Write-CWAAScriptLog -Message $output.Result -Level WARNING -LogPath $output.LogPath
     }
     else {
-        Write-CWAAScriptLog -Message $message -LogPath $output.LogPath
+        Write-CWAAScriptLog -Message $output.Result -LogPath $output.LogPath
     }
 
     # Optional: return structured data for Automate EDFs/variables
@@ -105,7 +104,7 @@ try {
     Invoke-MainLogic -ErrorAction Stop
 }
 catch {
-    # Fallback error output if something fails before the output object is created
+    # Any unexpected exception in Invoke-MainLogic lands here and is reported as Status=Error
     (New-CWAAScriptOutput -Status 'Error' -Result $_.Exception.Message).ToString()
 }
 
