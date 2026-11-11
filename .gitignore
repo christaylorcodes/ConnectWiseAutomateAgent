@@ -1,29 +1,128 @@
-# IDE and editor
-.vscode/
+# ============================================
+# .gitignore - ConnectWiseAutomateAgent
+# ============================================
+
+# ---- Project-Specific ----
+Scratch*.ps1
+output/
+coverage.xml
+testResults.xml
+nul
+# Blog drafts (local only)
+.blog/
+
+# ---- Operating Systems ----
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Linux
+*~
+.fuse_hidden*
+.nfs*
+
+# ---- IDEs and Editors ----
+
+# VS Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# Visual Studio
 .vs/
 *.suo
 *.user
+*.userosscache
+*.sln.docuser
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
 
-# Development scratch files
-Scratch\.ps1
+# JetBrains (Rider, IntelliJ)
+.idea/
+*.iml
+*.iws
+*.ipr
 
-# Claude Code
-.claude/
+# Sublime Text
+*.sublime-workspace
+*.sublime-project
 
-# Build output
-output/
+# Vim
+[._]*.s[a-v][a-z]
+[._]*.sw[a-p]
+[._]s[a-rt-v][a-z]
+[._]ss[a-gi-z]
+[._]sw[a-p]
+Session.vim
+Sessionx.vim
+.netrwhist
+*~
+# ctags index (root only, so folders/files named 'tags' elsewhere are kept)
+/tags
 
-# Build artifacts
-*.log
+# ---- PowerShell ----
+modules/
+*.dll
+*.pdb
+
+# ---- Build Artifacts ----
+bin/
+obj/
+artifacts/
+publish/
 *.nupkg
 
-# OS-generated files
-Thumbs.db
-.DS_Store
-Desktop.ini
+# ---- Security & Secrets ----
+.env
+.env.*
+*.pfx
+*.key
+*.pem
+*.p12
+# Credential/secret files. Kept narrow on purpose: '*secret*' would also ignore
+# legitimate code such as Get-Secret.ps1 or Set-SecretValue.Tests.ps1.
+*credential*.xml
+*credentials*.json
+*.credentials
+*secret*.json
+*secrets*.json
+*.secret
+secrets/
+!.github/SECURITY.md
 
-# Windows reserved name artifact
-nul
+# ---- Claude Code ----
+# Local-only: settings.local.json and the plan.md scratchpad (see CLAUDE.md)
+.claude/
 
-# Blog drafts (local only)
-.blog/
+# ---- Logs & Temp ----
+*.log
+logs/
+temp/
+tmp/
+*.tmp
+*.bak
+*.swp
+
+# ---- Archives ----
+*.zip
+*.tar.gz
+*.rar
+*.7z
