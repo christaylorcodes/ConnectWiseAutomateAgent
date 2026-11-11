@@ -60,9 +60,11 @@ On error, Result holds the stderr text
 replaced it, the stdout text as Output=\<text\>, always last.
 ANSI color sequences are stripped from captured output.
 
-For the FilePath parameter set the exit code follows pwsh -File semantics: an
-explicit exit \<n\> or an unhandled error fails the run, but a leftover non-zero
-exit code from the script's last native command does not.
+For both parameter sets the exit code follows pwsh -File semantics: an explicit
+exit \<n\> or an unhandled error fails the run, but a handled error or a leftover
+non-zero exit code from the last native command does not.
+Warning, verbose and
+Write-Host output from the child is captured into Result as plain text lines.
 
 For the ScriptBlock parameter set, the scriptblock is Base64-encoded using
 Unicode (UTF-16LE) for transport via the -EncodedCommand parameter.

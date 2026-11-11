@@ -69,21 +69,30 @@ function Initialize-CWAAScriptLog {
             $LogName = -join ($LogName.ToCharArray() | Where-Object { $invalidChars -notcontains $_ })
             if (-not $LogName) { $LogName = 'CWAAScript' }
 
+            # Refuse a directory path that runs through a junction or symlink: a planted link
+            # would redirect where this (usually SYSTEM) process creates folders and files.
+            # Checked on the nearest existing folder before creating anything, then again after.
+            $assertNoReparsePoint = {
+                param($path)
+                $existing = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($path)
+                while ($existing -and -not (Test-Path -LiteralPath $existing)) { $existing = Split-Path -Path $existing -Parent }
+                if (-not $existing) { return }
+                $directory = Get-Item -LiteralPath $existing -Force -ErrorAction Stop
+                while ($directory) {
+                    if ($directory.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+                        throw "'$($directory.FullName)' is a junction or symbolic link; refusing to create a log through it."
+                    }
+                    $directory = $directory.Parent
+                }
+            }
+            & $assertNoReparsePoint $LogDirectory
+
             # Ensure log directory exists
             if (-not (Test-Path -LiteralPath $LogDirectory)) {
                 $null = New-Item -Path $LogDirectory -ItemType Directory -Force -ErrorAction Stop
                 Write-Debug "Initialize-CWAAScriptLog: Created log directory '$LogDirectory'."
             }
-
-            # Refuse a directory path that runs through a junction or symlink: a planted link
-            # would redirect where this (usually SYSTEM) process creates and writes the file
-            $directory = Get-Item -LiteralPath $LogDirectory -Force -ErrorAction Stop
-            while ($directory) {
-                if ($directory.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
-                    throw "'$($directory.FullName)' is a junction or symbolic link; refusing to create a log through it."
-                }
-                $directory = $directory.Parent
-            }
+            & $assertNoReparsePoint $LogDirectory
 
             # Build timestamped filename (milliseconds keep runs in the same second apart)
             $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss-fff'

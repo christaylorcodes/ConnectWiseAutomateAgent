@@ -35,7 +35,8 @@ If the scriptblock throws, or an error escapes it to the error stream (for examp
 Write-Error, or a cmdlet error the script did not handle), the output Status is set
 to Error and all error messages are captured in Result, in order.
 Errors the
-scriptblock handles itself (try/catch, -ErrorAction SilentlyContinue) do not count.
+scriptblock handles itself (try/catch, -ErrorAction SilentlyContinue), including
+error records it outputs on purpose (catch { $_ }), do not count.
 Any output produced before the failure is kept in Data as Output=\<text\>, which is
 always the last item in Data.
 Errors are collected, not re-emitted, so the formatted
@@ -43,18 +44,27 @@ string is the only output.
 Once parameters are bound, the function always returns a
 formatted output string and does not throw.
 
+Execution stops at the first terminating error, including statement-terminating
+errors such as a .NET method exception or an unknown command name, which a script
+run on its own would continue past.
+
 stderr from native commands (git, robocopy, installers) is treated as ordinary output,
 not as an error; check $LASTEXITCODE inside the scriptblock to detect native failures.
 On Windows PowerShell 5.1 with $ErrorActionPreference = 'Stop' in the calling script,
 PowerShell itself stops at the first native stderr line, which is reported as Error.
-With $ErrorActionPreference = 'Ignore' in the calling script, errors are hidden from
-this function entirely; avoid Ignore around this call.
+With $ErrorActionPreference = 'SilentlyContinue' or 'Ignore' in the calling script,
+non-terminating errors are hidden from this function and the run can report Success;
+use Continue or Stop around this call.
 
-Calling exit inside the scriptblock ends the whole PowerShell host immediately and
-bypasses this wrapper, so no formatted output is returned.
-Use throw (or set a
-Failed status) to signal failure instead.
-A stray break or continue is contained.
+Only the success output of the scriptblock is captured.
+Write-Host, Write-Warning,
+Write-Verbose and Write-Information output still goes to the host, so Automate sees
+it as extra lines before the Status line.
+
+Leaving the scriptblock through exit, or through break/continue to a label outside
+this call, is reported as Status=Error.
+exit still ends the PowerShell host
+afterwards, so use throw (or set a Failed status) to signal failure instead.
 
 An optional URL parameter allows fetching and executing a remote script.
 The URL
@@ -122,9 +132,10 @@ Accept wildcard characters: False
 When specified, initializes a log file via Initialize-CWAAScriptLog before execution.
 The log path is included in the output object.
 Each failure is written to the log
-with the stack trace of the error.
-If the log cannot be created, the scriptblock
-still runs: LogPath is left empty and Data records LogInitFailed=\<message\>.
+with its stack trace or script location (never the source line text).
+If the log
+cannot be created, the scriptblock still runs: LogPath is left empty and Data
+records LogInitFailed=\<message\>.
 
 ```yaml
 Type: SwitchParameter

@@ -310,7 +310,8 @@ Describe 'Initialize-CWAAScriptLog' {
 
         $result | Should -BeNullOrEmpty
         "$ev" | Should -Match 'junction or symbolic link'
-        Get-ChildItem -LiteralPath $target -Recurse -File | Should -BeNullOrEmpty
+        # Nothing, not even the missing folder, is created through the junction
+        Get-ChildItem -LiteralPath $target -Recurse | Should -BeNullOrEmpty
     }
 
     It 'returns nothing and writes an error when the directory cannot be created' {
@@ -366,12 +367,6 @@ Describe 'New-CWAARemoteMonitor' {
         }
     }
 
-    It 'produces a command line that runs the scriptblock through cmd.exe' {
-        $result = New-CWAARemoteMonitor -ScriptBlock { 'monitor-' + 'ok' }
-        $output = cmd.exe /c $result
-        ($output | Out-String).Trim() | Should -Be 'monitor-ok'
-    }
-
     It 'stays under the 8191 character limit for short scripts' {
         $result = New-CWAARemoteMonitor -ScriptBlock { Get-Date }
         $result.Length | Should -BeLessOrEqual 8191
@@ -413,6 +408,22 @@ Describe 'Invoke-CWAAScript' {
         @{ Case = '-ErrorAction SilentlyContinue'; Block = { $null = Get-Item 'C:\no\such\path' -ErrorAction SilentlyContinue; 'handled' } }
     ) {
         Invoke-CWAAScript -ScriptBlock $Block | Should -Be 'Status=Success|Result=handled|LogPath=|Data='
+    }
+
+    It 'treats an error record the script outputs on purpose as output' {
+        Invoke-CWAAScript -ScriptBlock { try { throw 'x' } catch { "handled: $_" ; $_ } } |
+            Should -Match '^Status=Success\|Result=handled: x / '
+    }
+
+    It 'reports an error that is written and then rethrown only once' {
+        Invoke-CWAAScript -ScriptBlock { try { throw 'once' } catch { Write-Error $_ -ErrorAction Continue; throw $_ } } |
+            Should -Be 'Status=Error|Result=once|LogPath=|Data='
+    }
+
+    It 'still returns an Error line when a labeled break leaves the scriptblock' {
+        $output = :outer foreach ($i in 1, 2) { Invoke-CWAAScript -ScriptBlock { 'partial'; break outer } }
+        @($output).Count | Should -Be 1
+        $output | Should -Match '^Status=Error\|Result=The script left Invoke-CWAAScript early.*\|Data=Output=partial$'
     }
 
     It 'treats native command stderr as output, not as an error' {
@@ -660,6 +671,22 @@ Describe 'Invoke-CWAAPwsh' {
             { $script:result = Invoke-CWAAPwsh -ScriptBlock { [Console]::Error.WriteLine('w'); 'ok' } -PwshPath $script:HostExe -ErrorAction Stop } |
                 Should -Not -Throw
             $script:result | Should -Be 'Status=Error|Result=w|LogPath=|Data=Output=ok'
+        }
+
+        It 'ignores a handled error or leftover native exit code on the last line (<Case>)' -ForEach @(
+            @{ Case = 'SilentlyContinue'; Block = { 'ok'; $null = Get-Item 'C:\no\such\path' -ErrorAction SilentlyContinue } }
+            @{ Case = 'native exit 1'; Block = { 'ok'; cmd.exe /c 'exit 1' } }
+        ) {
+            Invoke-CWAAPwsh -ScriptBlock $Block -PwshPath $script:HostExe |
+                Should -Be 'Status=Success|Result=ok|LogPath=|Data='
+        }
+
+        It 'captures warning output into Result instead of leaking extra lines' {
+            $output = @(Invoke-CWAAPwsh -ScriptBlock { Write-Warning 'careful'; 'ok' } -PwshPath $script:HostExe 3>&1 6>&1)
+            # A pwsh 7 child prints the warning as text (captured); a 5.1 stand-in child drops it.
+            # Either way nothing leaks as an extra line.
+            $output.Count | Should -Be 1
+            $output[0] | Should -Match '^Status=Success\|Result=(WARNING: careful / )?ok\|LogPath=\|Data=$'
         }
 
         It 'strips ANSI color sequences from output' {

@@ -30,9 +30,10 @@ function Invoke-CWAAPwsh {
         replaced it, the stdout text as Output=<text>, always last.
         ANSI color sequences are stripped from captured output.
 
-        For the FilePath parameter set the exit code follows pwsh -File semantics: an
-        explicit exit <n> or an unhandled error fails the run, but a leftover non-zero
-        exit code from the script's last native command does not.
+        For both parameter sets the exit code follows pwsh -File semantics: an explicit
+        exit <n> or an unhandled error fails the run, but a handled error or a leftover
+        non-zero exit code from the last native command does not. Warning, verbose and
+        Write-Host output from the child is captured into Result as plain text lines.
 
         For the ScriptBlock parameter set, the scriptblock is Base64-encoded using
         Unicode (UTF-16LE) for transport via the -EncodedCommand parameter. Only the
@@ -152,11 +153,18 @@ function Invoke-CWAAPwsh {
                 Write-Error "PowerShell 7 (pwsh.exe) was not found in Program Files or the PowerShellCore registry install locations.$registryNote Install PowerShell 7 or specify the path using -PwshPath." -ErrorAction Stop
             }
 
-            # Build the pwsh arguments
-            $pwshArguments = @('-NoProfile', '-NonInteractive')
+            # Build the pwsh arguments. -OutputFormat Text makes the child write warning, verbose
+            # and host output as plain stdout lines (captured into Result) instead of serialized
+            # records the parent PowerShell would replay to its own host as extra lines.
+            $pwshArguments = @('-NoProfile', '-NonInteractive', '-OutputFormat', 'Text')
+
+            # Match pwsh -File: $? is false only after an explicit non-zero exit or an
+            # error, so a handled error or leftover native exit code on the last line is ignored.
+            # (A terminating error already exits 1.)
+            $exitSuffix = '; if ($?) { exit 0 } elseif ($LASTEXITCODE) { exit $LASTEXITCODE } else { exit 1 }'
 
             if ($PSCmdlet.ParameterSetName -eq 'ScriptBlock') {
-                $commandText = $ScriptBlock.ToString()
+                $commandText = "`$global:LASTEXITCODE = 0; & {`n$($ScriptBlock.ToString())`n}$exitSuffix"
             }
             else {
                 # Pass the file and its parameters as PowerShell literals inside an encoded
@@ -198,10 +206,7 @@ function Invoke-CWAAPwsh {
                         }
                     }
                 }
-                # Match pwsh -File: $? is false only after an explicit non-zero exit or an
-                # error, so a leftover exit code from the script's last native command is ignored.
-                # (A terminating error already exits 1.)
-                $commandText = ($commandParts -join ' ') + '; if ($?) { exit 0 } elseif ($LASTEXITCODE) { exit $LASTEXITCODE } else { exit 1 }'
+                $commandText = ($commandParts -join ' ') + $exitSuffix
             }
 
             # -EncodedCommand expects Base64 of Unicode (UTF-16LE) bytes
