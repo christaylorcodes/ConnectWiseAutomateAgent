@@ -13,17 +13,26 @@ function Invoke-CWAAPwsh {
            32-bit host still finds the x64 install
         3. $env:ProgramFiles\PowerShell\7\pwsh.exe
         4. Install locations registered under
-           HKLM:\SOFTWARE\Microsoft\PowerShellCore\InstalledVersions (64-bit registry view)
+           HKLM:\SOFTWARE\Microsoft\PowerShellCore\InstalledVersions (64-bit registry view),
+           accepted only when they are inside Program Files
         The system PATH is deliberately not searched: this often runs as SYSTEM, and a copy of
         the genuine signed pwsh.exe in a user-writable PATH folder would load unsigned DLLs
         planted beside it.
 
         Output is captured and returned as a CWAAScriptOutput-formatted pipe-delimited
         string. The run is reported as Status=Error when pwsh exits non-zero or writes
-        anything to stderr (for example via Write-Error), matching Invoke-CWAAScript. On
-        error, Result holds the stderr text (or stdout when stderr is empty) and Data holds
-        ExitCode=<n> and, when stderr replaced it, the stdout text as Output=<text>.
+        anything to stderr. PowerShell errors in the child (Write-Error, unhandled cmdlet
+        errors) arrive on stderr, so they fail the run as they would in Invoke-CWAAScript.
+        Unlike Invoke-CWAAScript, stderr written by native commands inside the child cannot
+        be told apart and also counts as an error; redirect it inside the scriptblock
+        (2>&1) if a tool writes progress to stderr. On error, Result holds the stderr text
+        (or stdout when stderr is empty) and Data holds ExitCode=<n> and, when stderr
+        replaced it, the stdout text as Output=<text>, always last.
         ANSI color sequences are stripped from captured output.
+
+        For the FilePath parameter set the exit code follows pwsh -File semantics: an
+        explicit exit <n> or an unhandled error fails the run, but a leftover non-zero
+        exit code from the script's last native command does not.
 
         For the ScriptBlock parameter set, the scriptblock is Base64-encoded using
         Unicode (UTF-16LE) for transport via the -EncodedCommand parameter. Only the
@@ -43,11 +52,12 @@ function Invoke-CWAAPwsh {
         strings (including empty strings), numbers, or booleans/switches (passed as
         -Name:$true or -Name:$false). Values are passed as PowerShell literals inside the
         encoded command, so quotes, spaces and trailing backslashes arrive unchanged.
-        $null, arrays, hashtables and other object types are rejected.
+        $null, NaN, infinity, arrays, hashtables and other object types are rejected.
     .PARAMETER PwshPath
         Optional override for the path to pwsh.exe. Use this when pwsh is installed
-        in a non-standard location. The path is trusted as given: make sure the folder is
-        not writable by non-administrators, because this usually runs as SYSTEM.
+        in a non-standard location. The path is resolved to a full path (a bare name is
+        never looked up on PATH) and then trusted as given: make sure the folder is not
+        writable by non-administrators, because this usually runs as SYSTEM.
     .EXAMPLE
         Invoke-CWAAPwsh -ScriptBlock { $PSVersionTable.PSVersion.ToString() }
         Runs the scriptblock under pwsh and returns the version in the Result field, for
@@ -73,7 +83,6 @@ function Invoke-CWAAPwsh {
         [scriptblock]$ScriptBlock,
 
         [Parameter(Mandatory = $true, ParameterSetName = 'FilePath')]
-        [ValidateScript({ Test-Path -LiteralPath $_ -PathType Leaf })]
         [string]$FilePath,
 
         [Parameter(ParameterSetName = 'FilePath')]
@@ -96,34 +105,51 @@ function Invoke-CWAAPwsh {
                 if (-not (Test-Path -LiteralPath $PwshPath -PathType Leaf)) {
                     Write-Error "Specified pwsh.exe path '$PwshPath' does not exist." -ErrorAction Stop
                 }
-                $resolvedPwshPath = $PwshPath
+                # Launch by full path so a bare name is never resolved through PATH
+                $resolvedPwshPath = (Resolve-Path -LiteralPath $PwshPath -ErrorAction Stop).ProviderPath
             }
             else {
+                $programFilesRoots = @($env:ProgramW6432, $env:ProgramFiles) | Where-Object { $_ } | Select-Object -Unique
                 $candidatePaths = New-Object System.Collections.Generic.List[string]
-                foreach ($programFiles in @($env:ProgramW6432, $env:ProgramFiles)) {
-                    if ($programFiles) { $candidatePaths.Add([System.IO.Path]::Combine($programFiles, 'PowerShell\7\pwsh.exe')) }
+                foreach ($programFiles in $programFilesRoots) {
+                    $candidatePaths.Add([System.IO.Path]::Combine($programFiles, 'PowerShell\7\pwsh.exe'))
                 }
+                $registryNote = ''
                 Try {
                     $hklm = [Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::LocalMachine, [Microsoft.Win32.RegistryView]::Registry64)
                     $versionsKey = $hklm.OpenSubKey('SOFTWARE\Microsoft\PowerShellCore\InstalledVersions')
                     if ($versionsKey) {
                         foreach ($versionName in $versionsKey.GetSubKeyNames()) {
-                            $versionKey = $versionsKey.OpenSubKey($versionName)
-                            $installLocation = $versionKey.GetValue('InstallLocation')
-                            $versionKey.Close()
-                            if ($installLocation) { $candidatePaths.Add([System.IO.Path]::Combine([string]$installLocation, 'pwsh.exe')) }
+                            Try {
+                                $versionKey = $versionsKey.OpenSubKey($versionName)
+                                if (-not $versionKey) { continue }
+                                $installLocation = [string]$versionKey.GetValue('InstallLocation')
+                                $versionKey.Close()
+                                if (-not $installLocation -or -not [System.IO.Path]::IsPathRooted($installLocation)) { continue }
+                                $candidate = [System.IO.Path]::GetFullPath([System.IO.Path]::Combine($installLocation, 'pwsh.exe'))
+                                # Only trust registered locations inside Program Files (admin-only folders)
+                                $insideProgramFiles = $programFilesRoots | Where-Object {
+                                    $candidate.StartsWith($_.TrimEnd('\') + '\', [System.StringComparison]::OrdinalIgnoreCase)
+                                }
+                                if ($insideProgramFiles) { $candidatePaths.Add($candidate) }
+                                else { Write-Debug "Invoke-CWAAPwsh: Ignoring registered pwsh location outside Program Files: '$candidate'." }
+                            }
+                            Catch { Write-Debug "Invoke-CWAAPwsh: Skipping PowerShellCore registry entry '$versionName': $($_.Exception.Message)" }
                         }
                         $versionsKey.Close()
                     }
                     $hklm.Close()
                 }
-                Catch { Write-Debug "Invoke-CWAAPwsh: Could not read PowerShellCore install locations from the registry: $($_.Exception.Message)" }
+                Catch {
+                    $registryNote = " (The registry lookup failed: $($_.Exception.Message))"
+                    Write-Debug "Invoke-CWAAPwsh: Could not read PowerShellCore install locations from the registry: $($_.Exception.Message)"
+                }
 
                 $resolvedPwshPath = $candidatePaths | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
             }
 
             if (-not $resolvedPwshPath) {
-                Write-Error "PowerShell 7 (pwsh.exe) was not found in Program Files or the PowerShellCore registry install locations. Install PowerShell 7 or specify the path using -PwshPath." -ErrorAction Stop
+                Write-Error "PowerShell 7 (pwsh.exe) was not found in Program Files or the PowerShellCore registry install locations.$registryNote Install PowerShell 7 or specify the path using -PwshPath." -ErrorAction Stop
             }
 
             # Build the pwsh arguments
@@ -137,12 +163,16 @@ function Invoke-CWAAPwsh {
                 # command. Native argument passing on Windows PowerShell 5.1 mangles embedded
                 # quotes and trailing backslashes, and lets a value inject extra arguments.
                 $quoteLiteral = { param($text) "'" + ($text -replace "['\u2018\u2019\u201A\u201B]", '$0$0') + "'" }
+                if (-not (Test-Path -LiteralPath $FilePath -PathType Leaf)) {
+                    Write-Error "Script file '$FilePath' was not found." -ErrorAction Stop
+                }
                 $resolvedFilePath = (Resolve-Path -LiteralPath $FilePath -ErrorAction Stop).ProviderPath
                 $commandParts = New-Object System.Collections.Generic.List[string]
                 $commandParts.Add("`$global:LASTEXITCODE = 0; & $(& $quoteLiteral $resolvedFilePath)")
                 if ($Parameters) {
                     foreach ($key in $Parameters.Keys) {
-                        if ("$key" -notmatch '^[A-Za-z_][A-Za-z0-9_]*$') {
+                        # \A and \z: '$' would also accept a trailing newline, which ends the statement
+                        if ("$key" -notmatch '\A[A-Za-z_][A-Za-z0-9_]*\z') {
                             Write-Error "Parameter name '$key' is not a valid PowerShell parameter name." -ErrorAction Stop
                         }
                         $value = $Parameters[$key]
@@ -156,6 +186,10 @@ function Invoke-CWAAPwsh {
                         elseif ($typeCode -eq [System.TypeCode]::String -or $typeCode -eq [System.TypeCode]::Char) {
                             $commandParts.Add("-$key $(& $quoteLiteral ([string]$value))")
                         }
+                        elseif (($typeCode -eq [System.TypeCode]::Double -or $typeCode -eq [System.TypeCode]::Single) -and
+                            ([double]::IsNaN($value) -or [double]::IsInfinity($value))) {
+                            Write-Error "Parameter '$key' is NaN or infinity, which cannot be passed to pwsh." -ErrorAction Stop
+                        }
                         elseif ($typeCode -ge [System.TypeCode]::SByte -and $typeCode -le [System.TypeCode]::Decimal) {
                             $commandParts.Add("-$key $(([System.IConvertible]$value).ToString([System.Globalization.CultureInfo]::InvariantCulture))")
                         }
@@ -164,8 +198,10 @@ function Invoke-CWAAPwsh {
                         }
                     }
                 }
-                # Propagate the script's exit code (a terminating error already exits 1)
-                $commandText = ($commandParts -join ' ') + '; exit $LASTEXITCODE'
+                # Match pwsh -File: $? is false only after an explicit non-zero exit or an
+                # error, so a leftover exit code from the script's last native command is ignored.
+                # (A terminating error already exits 1.)
+                $commandText = ($commandParts -join ' ') + '; if ($?) { exit 0 } elseif ($LASTEXITCODE) { exit $LASTEXITCODE } else { exit 1 }'
             }
 
             # -EncodedCommand expects Base64 of Unicode (UTF-16LE) bytes

@@ -27,8 +27,10 @@ Default log directory is the standard Automate agent log location
 The log filename is derived from the calling script or
 function name with a millisecond timestamp suffix (Name_yyyyMMdd-HHmmss-fff.log).
 
-The file is created exclusively: if a file (or link) already exists at that path the
-call fails rather than appending to it.
+The returned path is absolute.
+The file is created exclusively: if a file (or link)
+already exists at that path the call fails rather than appending to it, and a log
+directory whose path runs through a junction or symbolic link is refused.
 On failure a non-terminating error is written
 and nothing is returned; use -ErrorAction Stop to make failures terminating.
 

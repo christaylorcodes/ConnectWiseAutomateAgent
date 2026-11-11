@@ -74,6 +74,11 @@ Describe 'ConvertTo-CWAAScriptOutput' {
         $obj = [PSCustomObject]@{ Status = 'Success'; Result = "line1`r`nline2`nline3`r" }
         ConvertTo-CWAAScriptOutput -InputObject $obj | Should -Be 'Status=Success|Result=line1 / line2 / line3'
     }
+
+    It 'collapses Unicode line separators (U+2028, U+2029, U+0085)' {
+        $obj = [PSCustomObject]@{ Result = "a$([char]0x2028)b$([char]0x2029)c$([char]0x0085)d" }
+        ConvertTo-CWAAScriptOutput -InputObject $obj | Should -Be 'Result=a / b / c / d'
+    }
 }
 
 # =============================================================================
@@ -176,6 +181,12 @@ Describe 'Write-CWAAScriptLog' {
         $lines[1] | Should -Be '    [2000-01-01 00:00:00] [ERROR] forged'
     }
 
+    It 'accepts an empty message' {
+        $path = Join-Path $TestDrive 'empty.log'
+        Write-CWAAScriptLog -Message '' -LogPath $path
+        Get-Content -LiteralPath $path | Should -Match '\[INFO\] $'
+    }
+
     It 'writes one line per pipeline input' {
         $path = Join-Path $TestDrive 'pipeline.log'
         'a', 'b' | Write-CWAAScriptLog -LogPath $path
@@ -276,6 +287,32 @@ Describe 'Initialize-CWAAScriptLog' {
         Get-Content -LiteralPath $existing | Should -Be 'planted'
     }
 
+    It 'returns an absolute path for a relative LogDirectory' {
+        Push-Location $TestDrive
+        try {
+            $result = Initialize-CWAAScriptLog -LogDirectory 'relative-logs'
+        }
+        finally {
+            Pop-Location
+        }
+        [System.IO.Path]::IsPathRooted($result) | Should -BeTrue
+        $result | Should -BeLike "$TestDrive\relative-logs\*"
+        Test-Path -LiteralPath $result | Should -BeTrue
+    }
+
+    It 'refuses a log directory reached through a junction' {
+        $target = Join-Path $TestDrive 'junction-target'
+        $null = New-Item -Path $target -ItemType Directory
+        $junction = Join-Path $TestDrive 'junction'
+        $null = New-Item -Path $junction -ItemType Junction -Value $target
+
+        $result = Initialize-CWAAScriptLog -LogDirectory (Join-Path $junction 'logs') -ErrorVariable ev -ErrorAction SilentlyContinue
+
+        $result | Should -BeNullOrEmpty
+        "$ev" | Should -Match 'junction or symbolic link'
+        Get-ChildItem -LiteralPath $target -Recurse -File | Should -BeNullOrEmpty
+    }
+
     It 'returns nothing and writes an error when the directory cannot be created' {
         $file = Join-Path $TestDrive 'afile'
         Set-Content -LiteralPath $file -Value 'x'
@@ -368,6 +405,29 @@ Describe 'Invoke-CWAAScript' {
         $output.Count | Should -Be 1
         $output[0] | Should -BeOfType [string]
         $output[0] | Should -Be 'Status=Error|Result=soft failure|LogPath=|Data=Output=before / after'
+    }
+
+    It 'returns Success when the scriptblock handles its own errors (<Case>)' -ForEach @(
+        @{ Case = 'try/catch around throw'; Block = { try { throw 'x' } catch { 'handled' } } }
+        @{ Case = 'try/catch around -ErrorAction Stop'; Block = { try { Get-Item 'C:\no\such\path' -ErrorAction Stop } catch { 'handled' } } }
+        @{ Case = '-ErrorAction SilentlyContinue'; Block = { $null = Get-Item 'C:\no\such\path' -ErrorAction SilentlyContinue; 'handled' } }
+    ) {
+        Invoke-CWAAScript -ScriptBlock $Block | Should -Be 'Status=Success|Result=handled|LogPath=|Data='
+    }
+
+    It 'treats native command stderr as output, not as an error' {
+        Invoke-CWAAScript -ScriptBlock { cmd.exe /c '1>&2 echo progress'; 'done' } |
+            Should -Be 'Status=Success|Result=progress / done|LogPath=|Data='
+    }
+
+    It 'reports an earlier non-terminating error together with a later throw' {
+        Invoke-CWAAScript -ScriptBlock { Write-Error 'root cause' -ErrorAction Continue; throw 'secondary' } |
+            Should -Be 'Status=Error|Result=root cause; secondary|LogPath=|Data='
+    }
+
+    It 'contains a stray break in the scriptblock' {
+        $output = foreach ($i in 1) { Invoke-CWAAScript -ScriptBlock { 'before'; break } }
+        $output | Should -Be 'Status=Success|Result=before|LogPath=|Data='
     }
 
     It 'keeps output produced before a terminating error' {
@@ -557,8 +617,20 @@ Describe 'Invoke-CWAAPwsh' {
             $result | Should -Match '^Status=Error\|Result=Specified pwsh\.exe path .* does not exist'
         }
 
-        It 'rejects FilePath that does not exist via ValidateScript' {
-            { Invoke-CWAAPwsh -FilePath 'C:\nonexistent\script.ps1' } | Should -Throw
+        It 'resolves a bare -PwshPath against the current folder, never PATH' {
+            Push-Location $TestDrive
+            try {
+                $result = Invoke-CWAAPwsh -ScriptBlock { 'test' } -PwshPath 'pwsh.exe'
+            }
+            finally {
+                Pop-Location
+            }
+            $result | Should -Match '^Status=Error\|Result=Specified pwsh\.exe path .pwsh\.exe. does not exist'
+        }
+
+        It 'returns a Status=Error line when FilePath does not exist' {
+            { $script:result = Invoke-CWAAPwsh -FilePath 'C:\nonexistent\script.ps1' -PwshPath $script:HostExe } | Should -Not -Throw
+            $script:result | Should -Be "Status=Error|Result=Script file 'C:\nonexistent\script.ps1' was not found.|LogPath=|Data="
         }
     }
 
@@ -632,8 +704,20 @@ param([string]$Name, [int]$Count, [switch]$Force, [string]$Dir, [string]$Quote, 
                 Should -Be 'Status=Error|Result=pwsh exited with code 4.|LogPath=|Data=ExitCode=4'
         }
 
+        It 'ignores a leftover exit code from the script''s last native command, like pwsh -File' {
+            $nativeScript = Join-Path $TestDrive 'native.ps1'
+            Set-Content -LiteralPath $nativeScript -Value @'
+'ran'
+cmd.exe /c "exit 3"
+'@
+            Invoke-CWAAPwsh -FilePath $nativeScript -PwshPath $script:HostExe |
+                Should -Be 'Status=Success|Result=ran|LogPath=|Data='
+        }
+
         It 'rejects <Case> without launching pwsh' -ForEach @(
             @{ Case = 'an invalid parameter name'; Parameters = @{ 'bad name' = 'x' }; Pattern = 'not a valid PowerShell parameter name' }
+            @{ Case = 'a parameter name with a trailing newline'; Parameters = @{ "Force`n" = $false }; Pattern = 'not a valid PowerShell parameter name' }
+            @{ Case = 'a NaN value'; Parameters = @{ Count = [double]::NaN }; Pattern = 'NaN or infinity' }
             @{ Case = 'a null value'; Parameters = @{ Name = $null }; Pattern = 'null value' }
             @{ Case = 'an array value'; Parameters = @{ Name = @('a', 'b') }; Pattern = 'unsupported type' }
         ) {

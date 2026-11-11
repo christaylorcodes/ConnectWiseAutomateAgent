@@ -10,8 +10,9 @@ function Initialize-CWAAScriptLog {
         (the logs folder under the agent install path, $env:windir\LTSvc\logs by default). The log filename is derived from the calling script or
         function name with a millisecond timestamp suffix (Name_yyyyMMdd-HHmmss-fff.log).
 
-        The file is created exclusively: if a file (or link) already exists at that path the
-        call fails rather than appending to it. On failure a non-terminating error is written
+        The returned path is absolute. The file is created exclusively: if a file (or link)
+        already exists at that path the call fails rather than appending to it, and a log
+        directory whose path runs through a junction or symbolic link is refused. On failure a non-terminating error is written
         and nothing is returned; use -ErrorAction Stop to make failures terminating.
 
         Logs under the agent folder are typically readable by local users. Do not log secrets.
@@ -53,6 +54,7 @@ function Initialize-CWAAScriptLog {
     }
 
     Process {
+        $created = $false
         Try {
             # Derive log name from calling context if not specified
             if (-not $LogName) {
@@ -73,21 +75,37 @@ function Initialize-CWAAScriptLog {
                 Write-Debug "Initialize-CWAAScriptLog: Created log directory '$LogDirectory'."
             }
 
+            # Refuse a directory path that runs through a junction or symlink: a planted link
+            # would redirect where this (usually SYSTEM) process creates and writes the file
+            $directory = Get-Item -LiteralPath $LogDirectory -Force -ErrorAction Stop
+            while ($directory) {
+                if ($directory.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+                    throw "'$($directory.FullName)' is a junction or symbolic link; refusing to create a log through it."
+                }
+                $directory = $directory.Parent
+            }
+
             # Build timestamped filename (milliseconds keep runs in the same second apart)
             $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
             $logFileName = "${LogName}_${timestamp}.log"
-            $logFilePath = Join-Path -Path $LogDirectory -ChildPath $logFileName
+            # Absolute file-system path: what Automate needs, and the exact file created below
+            $logFilePath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath((Join-Path -Path $LogDirectory -ChildPath $logFileName))
 
             # Create the file exclusively so a pre-planted file or link at the predictable
             # name is never appended to, then write the header
-            $providerPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($logFilePath)
-            [System.IO.File]::Open($providerPath, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write).Dispose()
+            [System.IO.File]::Open($logFilePath, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write).Dispose()
+            $created = $true
             Write-CWAAScriptLog -Message "Log initialized: $LogName" -LogPath $logFilePath -ErrorAction Stop
 
             $logFilePath
         }
         Catch {
-            $wrapped = New-Object System.Exception("Failed to initialize script log in '$LogDirectory'. Error: $($_.Exception.Message)", $_.Exception)
+            # Don't leave an empty log behind when the header write fails
+            if ($created) { Remove-Item -LiteralPath $logFilePath -Force -ErrorAction SilentlyContinue }
+            # Report the underlying .NET error rather than PowerShell's "Exception calling ..." wrapper
+            $cause = $_.Exception
+            if ($cause -is [System.Management.Automation.MethodInvocationException] -and $cause.InnerException) { $cause = $cause.InnerException }
+            $wrapped = New-Object System.Exception("Failed to initialize script log in '$LogDirectory'. Error: $($cause.Message)", $cause)
             Write-Error -Exception $wrapped -Category $_.CategoryInfo.Category -TargetObject $LogDirectory
         }
     }

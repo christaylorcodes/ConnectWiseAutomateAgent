@@ -56,7 +56,7 @@ function ConvertTo-CWAAScriptOutput {
         # One line, one field per '|': strip line breaks and pipes from values so the
         # Automate parser cannot be confused or spoofed by script output.
         ($pairs | ForEach-Object {
-                $value = "$($_.Value)".Trim() -replace '\r\n|\r|\n', ' / ' -replace '\|', '/'
+                $value = "$($_.Value)".Trim() -replace '\r\n|[\r\n\u0085\u2028\u2029]', ' / ' -replace '\|', '/'
                 "$($_.Name)=$value"
             }) -join '|'
     }

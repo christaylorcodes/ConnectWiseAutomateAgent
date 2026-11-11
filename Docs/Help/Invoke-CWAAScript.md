@@ -31,18 +31,30 @@ Automatically creates a CWAAScriptOutput object, optionally
 initializes a log file, executes the scriptblock, captures the result, and returns
 the pipe-delimited output string that Automate expects.
 
-If the scriptblock throws or writes any non-terminating error, the output Status is
-set to Error, the error message(s) are captured in Result, and any output produced
-before the failure is kept in Data as Output=\<text\>.
-Errors are collected, not
-re-emitted, so the formatted string is the only output.
-Once parameters are bound,
-the function always returns a formatted output string and does not throw.
+If the scriptblock throws, or an error escapes it to the error stream (for example
+Write-Error, or a cmdlet error the script did not handle), the output Status is set
+to Error and all error messages are captured in Result, in order.
+Errors the
+scriptblock handles itself (try/catch, -ErrorAction SilentlyContinue) do not count.
+Any output produced before the failure is kept in Data as Output=\<text\>, which is
+always the last item in Data.
+Errors are collected, not re-emitted, so the formatted
+string is the only output.
+Once parameters are bound, the function always returns a
+formatted output string and does not throw.
+
+stderr from native commands (git, robocopy, installers) is treated as ordinary output,
+not as an error; check $LASTEXITCODE inside the scriptblock to detect native failures.
+On Windows PowerShell 5.1 with $ErrorActionPreference = 'Stop' in the calling script,
+PowerShell itself stops at the first native stderr line, which is reported as Error.
+With $ErrorActionPreference = 'Ignore' in the calling script, errors are hidden from
+this function entirely; avoid Ignore around this call.
 
 Calling exit inside the scriptblock ends the whole PowerShell host immediately and
 bypasses this wrapper, so no formatted output is returned.
 Use throw (or set a
 Failed status) to signal failure instead.
+A stray break or continue is contained.
 
 An optional URL parameter allows fetching and executing a remote script.
 The URL
@@ -109,10 +121,10 @@ Accept wildcard characters: False
 ### -EnableLogging
 When specified, initializes a log file via Initialize-CWAAScriptLog before execution.
 The log path is included in the output object.
-Failures are written to the log with
-their script stack trace.
-If the log cannot be created, the scriptblock still runs:
-LogPath is left empty and Data records LogInitFailed=\<message\>.
+Each failure is written to the log
+with the stack trace of the error.
+If the log cannot be created, the scriptblock
+still runs: LogPath is left empty and Data records LogInitFailed=\<message\>.
 
 ```yaml
 Type: SwitchParameter

@@ -8,15 +8,25 @@ function Invoke-CWAAScript {
         initializes a log file, executes the scriptblock, captures the result, and returns
         the pipe-delimited output string that Automate expects.
 
-        If the scriptblock throws or writes any non-terminating error, the output Status is
-        set to Error, the error message(s) are captured in Result, and any output produced
-        before the failure is kept in Data as Output=<text>. Errors are collected, not
-        re-emitted, so the formatted string is the only output. Once parameters are bound,
-        the function always returns a formatted output string and does not throw.
+        If the scriptblock throws, or an error escapes it to the error stream (for example
+        Write-Error, or a cmdlet error the script did not handle), the output Status is set
+        to Error and all error messages are captured in Result, in order. Errors the
+        scriptblock handles itself (try/catch, -ErrorAction SilentlyContinue) do not count.
+        Any output produced before the failure is kept in Data as Output=<text>, which is
+        always the last item in Data. Errors are collected, not re-emitted, so the formatted
+        string is the only output. Once parameters are bound, the function always returns a
+        formatted output string and does not throw.
+
+        stderr from native commands (git, robocopy, installers) is treated as ordinary output,
+        not as an error; check $LASTEXITCODE inside the scriptblock to detect native failures.
+        On Windows PowerShell 5.1 with $ErrorActionPreference = 'Stop' in the calling script,
+        PowerShell itself stops at the first native stderr line, which is reported as Error.
+        With $ErrorActionPreference = 'Ignore' in the calling script, errors are hidden from
+        this function entirely; avoid Ignore around this call.
 
         Calling exit inside the scriptblock ends the whole PowerShell host immediately and
         bypasses this wrapper, so no formatted output is returned. Use throw (or set a
-        Failed status) to signal failure instead.
+        Failed status) to signal failure instead. A stray break or continue is contained.
 
         An optional URL parameter allows fetching and executing a remote script. The URL
         must use https:// (the agent runs as SYSTEM, so plain HTTP is rejected). The
@@ -29,9 +39,9 @@ function Invoke-CWAAScript {
         https://.
     .PARAMETER EnableLogging
         When specified, initializes a log file via Initialize-CWAAScriptLog before execution.
-        The log path is included in the output object. Failures are written to the log with
-        their script stack trace. If the log cannot be created, the scriptblock still runs:
-        LogPath is left empty and Data records LogInitFailed=<message>.
+        The log path is included in the output object. Each failure is written to the log
+        with the stack trace of the error. If the log cannot be created, the scriptblock
+        still runs: LogPath is left empty and Data records LogInitFailed=<message>.
     .PARAMETER LogDirectory
         The directory for the log file. Only used when EnableLogging is specified.
         Defaults to the agent log directory (the Initialize-CWAAScriptLog default).
@@ -82,8 +92,10 @@ function Invoke-CWAAScript {
     Process {
         $scriptOutput = New-CWAAScriptOutput
         $dataParts = @()
-        # Collected as it streams, so output produced before a terminating error is kept
+        # Collected as they stream, so output and errors produced before a terminating error are kept
         $result = New-Object System.Collections.Generic.List[object]
+        $scriptErrors = New-Object System.Collections.Generic.List[object]
+        $raisedCollectedErrors = $false
 
         # Initialize logging if requested. Logging is diagnostic only, so a failure here is
         # recorded in Data and the script still runs.
@@ -124,38 +136,60 @@ function Invoke-CWAAScript {
                 $executionBlock = $ScriptBlock
             }
 
-            # Execute the scriptblock and capture output.
-            # -ErrorAction on Invoke-Command does not reach errors written inside the scriptblock,
-            # so collect them via -ErrorVariable (discarding the stream copy) and treat any as a failure.
-            $scriptErrors = $null
-            Invoke-Command -ScriptBlock $executionBlock -ErrorVariable scriptErrors 2>$null |
-                ForEach-Object { $result.Add($_) }
-            if ($scriptErrors) {
-                throw (($scriptErrors | ForEach-Object { $_.ToString() }) -join '; ')
+            # Merge the error stream and classify records as they arrive. Only errors that
+            # escape the scriptblock reach the stream: errors it handles with try/catch or
+            # suppresses with -ErrorAction SilentlyContinue do not count as failures.
+            # The one-iteration loop contains a stray break/continue in the scriptblock.
+            foreach ($null in 1) {
+                & $executionBlock 2>&1 | ForEach-Object {
+                    if ($_ -is [System.Management.Automation.ErrorRecord]) {
+                        # Native command stderr is output, not failure (judge natives by exit code)
+                        if ($_.FullyQualifiedErrorId -like 'NativeCommandError*') { $result.Add("$_") }
+                        else { $scriptErrors.Add($_) }
+                    }
+                    else { $result.Add($_) }
+                }
+            }
+            if ($scriptErrors.Count) {
+                $raisedCollectedErrors = $true
+                throw (($scriptErrors | ForEach-Object { "$_" }) -join '; ')
             }
             $scriptOutput.Result = ($result | Out-String -Width 4096).Trim()
 
             Write-Debug "Invoke-CWAAScript: Execution completed successfully."
         }
         Catch {
-            $scriptOutput.Status = 'Error'
-            $scriptOutput.Result = $_.Exception.Message
-            $partialOutput = ($result | Out-String -Width 4096).Trim()
-            if ($partialOutput) { $dataParts += "Output=$partialOutput" }
+            # Report every error in order: those collected before a terminating error, then it
+            $failures = @()
+            foreach ($record in $scriptErrors) {
+                $failures += @{ Message = "$record"; Trace = if ($record.ScriptStackTrace) { $record.ScriptStackTrace } else { $record.InvocationInfo.PositionMessage } }
+            }
+            if (-not $raisedCollectedErrors) {
+                $failures += @{ Message = $_.Exception.Message; Trace = $_.ScriptStackTrace }
+            }
 
-            Write-Debug "Invoke-CWAAScript: Execution failed. Error: $($_.Exception.Message)"
+            $scriptOutput.Status = 'Error'
+            $scriptOutput.Result = ($failures | ForEach-Object { $_.Message }) -join '; '
+            $partialOutput = ($result | Out-String -Width 4096).Trim()
+
+            Write-Debug "Invoke-CWAAScript: Execution failed. Error: $($scriptOutput.Result)"
 
             # Best-effort: a failed log write must not escape and lose the formatted output
             if ($scriptOutput.LogPath) {
-                $logMessage = "Script execution failed: $($_.Exception.Message)"
-                if ($_.ScriptStackTrace) { $logMessage += "`n$($_.ScriptStackTrace)" }
                 Try {
-                    Write-CWAAScriptLog -Message $logMessage -Level ERROR -LogPath $scriptOutput.LogPath -ErrorAction Stop
+                    foreach ($failure in $failures) {
+                        $logMessage = "Script execution failed: $($failure.Message)"
+                        if ($failure.Trace) { $logMessage += "`n$($failure.Trace)" }
+                        Write-CWAAScriptLog -Message $logMessage -Level ERROR -LogPath $scriptOutput.LogPath -ErrorAction Stop
+                    }
                 }
                 Catch {
                     $dataParts += "LogWriteFailed=$($_.Exception.Message)"
                 }
             }
+
+            # Output= is free text, so it always goes last in Data
+            if ($partialOutput) { $dataParts += "Output=$partialOutput" }
         }
 
         $scriptOutput.Data = $dataParts -join '; '

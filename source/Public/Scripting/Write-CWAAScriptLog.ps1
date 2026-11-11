@@ -36,6 +36,7 @@ function Write-CWAAScriptLog {
     [Alias('Write-AutomateLog')]
     Param(
         [Parameter(Mandatory = $true, Position = 0, ValueFromPipeline = $true)]
+        [AllowEmptyString()]
         [string]$Message,
 
         [Parameter()]
@@ -54,7 +55,8 @@ function Write-CWAAScriptLog {
         Try {
             $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
             # Indent continuation lines so a message cannot forge a separate log entry
-            $safeMessage = $Message.TrimEnd() -replace '\r\n|\r|\n', "$([Environment]::NewLine)    "
+            # (includes the Unicode line/paragraph separators and NEL some viewers break on)
+            $safeMessage = $Message.TrimEnd() -replace '\r\n|[\r\n\u0085\u2028\u2029]', "$([Environment]::NewLine)    "
             $logEntry = "[$timestamp] [$Level] $safeMessage"
             Add-Content -LiteralPath $LogPath -Value $logEntry -Encoding UTF8 -ErrorAction Stop
             Write-Debug "Write-CWAAScriptLog: $logEntry"

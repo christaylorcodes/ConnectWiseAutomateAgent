@@ -40,7 +40,8 @@ The 64-bit Program Files install ($env:ProgramW6432\PowerShell\7\pwsh.exe), so a
 $env:ProgramFiles\PowerShell\7\pwsh.exe
 4.
 Install locations registered under
-   HKLM:\SOFTWARE\Microsoft\PowerShellCore\InstalledVersions (64-bit registry view)
+   HKLM:\SOFTWARE\Microsoft\PowerShellCore\InstalledVersions (64-bit registry view),
+   accepted only when they are inside Program Files
 The system PATH is deliberately not searched: this often runs as SYSTEM, and a copy of
 the genuine signed pwsh.exe in a user-writable PATH folder would load unsigned DLLs
 planted beside it.
@@ -48,11 +49,20 @@ planted beside it.
 Output is captured and returned as a CWAAScriptOutput-formatted pipe-delimited
 string.
 The run is reported as Status=Error when pwsh exits non-zero or writes
-anything to stderr (for example via Write-Error), matching Invoke-CWAAScript.
-On
-error, Result holds the stderr text (or stdout when stderr is empty) and Data holds
-ExitCode=\<n\> and, when stderr replaced it, the stdout text as Output=\<text\>.
+anything to stderr.
+PowerShell errors in the child (Write-Error, unhandled cmdlet
+errors) arrive on stderr, so they fail the run as they would in Invoke-CWAAScript.
+Unlike Invoke-CWAAScript, stderr written by native commands inside the child cannot
+be told apart and also counts as an error; redirect it inside the scriptblock
+(2\>&1) if a tool writes progress to stderr.
+On error, Result holds the stderr text
+(or stdout when stderr is empty) and Data holds ExitCode=\<n\> and, when stderr
+replaced it, the stdout text as Output=\<text\>, always last.
 ANSI color sequences are stripped from captured output.
+
+For the FilePath parameter set the exit code follows pwsh -File semantics: an
+explicit exit \<n\> or an unhandled error fails the run, but a leftover non-zero
+exit code from the script's last native command does not.
 
 For the ScriptBlock parameter set, the scriptblock is Base64-encoded using
 Unicode (UTF-16LE) for transport via the -EncodedCommand parameter.
@@ -129,7 +139,7 @@ strings (including empty strings), numbers, or booleans/switches (passed as
 -Name:$true or -Name:$false).
 Values are passed as PowerShell literals inside the
 encoded command, so quotes, spaces and trailing backslashes arrive unchanged.
-$null, arrays, hashtables and other object types are rejected.
+$null, NaN, infinity, arrays, hashtables and other object types are rejected.
 
 ```yaml
 Type: Hashtable
@@ -147,8 +157,9 @@ Accept wildcard characters: False
 Optional override for the path to pwsh.exe.
 Use this when pwsh is installed
 in a non-standard location.
-The path is trusted as given: make sure the folder is
-not writable by non-administrators, because this usually runs as SYSTEM.
+The path is resolved to a full path (a bare name is
+never looked up on PATH) and then trusted as given: make sure the folder is not
+writable by non-administrators, because this usually runs as SYSTEM.
 
 ```yaml
 Type: String
