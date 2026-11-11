@@ -110,8 +110,8 @@ Author: Chris Taylor
 
 ## RELATED LINKS
 
-[Repair-CWAA](../Repair-CWAA.md)
+[Repair-CWAA](../ConnectWiseAutomateAgent/Repair-CWAA.md)
 
-[Register-CWAAHealthCheckTask](../Register-CWAAHealthCheckTask.md)
+[Register-CWAAHealthCheckTask](../ConnectWiseAutomateAgent/Register-CWAAHealthCheckTask.md)
 
-[Install-CWAA](../Install-CWAA.md)
+[Install-CWAA](../ConnectWiseAutomateAgent/Install-CWAA.md)

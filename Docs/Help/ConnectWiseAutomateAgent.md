@@ -77,8 +77,8 @@ PowerShell module for managing the ConnectWise Automate (formerly LabTech) Windo
 
 | Function | Description |
 | --- | --- |
-| [ConvertFrom-CWAASecurity](ConvertFrom-CWAASecurity.md) | Decodes a Base64-encoded string using TripleDES decryption. |
-| [ConvertTo-CWAASecurity](ConvertTo-CWAASecurity.md) | Encodes a string using TripleDES encryption compatible with Automate operations. |
+| [ConvertFrom-CWAASecurity](ConnectWiseAutomateAgent/ConvertFrom-CWAASecurity.md) | Decodes a Base64-encoded string using TripleDES decryption. |
+| [ConvertTo-CWAASecurity](ConnectWiseAutomateAgent/ConvertTo-CWAASecurity.md) | Encodes a string using TripleDES encryption compatible with Automate operations. |
 | [Invoke-CWAACommand](ConnectWiseAutomateAgent/Invoke-CWAACommand.md) | Sends a service command to the ConnectWise Automate agent. |
 | [Test-CWAAPort](ConnectWiseAutomateAgent/Test-CWAAPort.md) | Tests connectivity to TCP ports required by the ConnectWise Automate agent. |
 

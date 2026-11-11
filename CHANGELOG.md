@@ -25,7 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Per-function and per-alias export tests in `ConnectWiseAutomateAgent.Module.Tests.ps1` were silently generating zero test cases because their data was defined after discovery.
 - `Register-CWAAHealthCheckTask` now recreates the scheduled task when `-IntervalHours`, `-Server`, or `-LocationID` change, not only when `-InstallerToken` changes.
 - `Register-CWAAHealthCheckTask` now verifies the scheduled task actually exists after registration and logs an error if it doesn't (e.g. removed by AV/policy immediately after creation).
-- `Register-CWAAHealthCheckTask` now correctly writes to the Windows Event Log on registration failure even when the caller has set `$ErrorActionPreference = 'Stop'`.
+- `Register-CWAAHealthCheckTask` now correctly writes to the Windows Event Log on registration failure even when the caller has set `$ErrorActionPreference = 'Stop'`. The event is written first and the error then follows the caller's `-ErrorAction`, so `-ErrorAction Stop` callers can catch the failure.
+- `Register-CWAAHealthCheckTask` now replaces an existing task in place (`schtasks /CREATE /F`) instead of deleting it first, so a failed update no longer leaves the machine without a health check task.
+- `Register-CWAAHealthCheckTask` no longer returns `Updated = $true` when nothing was updated (`-WhatIf`, a failed create, or a failed verification).
 
 ## [2.1.0] - 2026-06-17
 

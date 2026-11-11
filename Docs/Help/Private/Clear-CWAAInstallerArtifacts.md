@@ -59,6 +59,6 @@ Author: Chris Taylor
 
 ## RELATED LINKS
 
-[Install-CWAA](../Install-CWAA.md)
+[Install-CWAA](../ConnectWiseAutomateAgent/Install-CWAA.md)
 
-[Redo-CWAA](../Redo-CWAA.md)
+[Redo-CWAA](../ConnectWiseAutomateAgent/Redo-CWAA.md)

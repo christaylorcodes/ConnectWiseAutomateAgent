@@ -650,16 +650,27 @@ Describe 'Register-CWAAHealthCheckTask' {
                 Parameters  = @{ Server = 'https://automate.example.com'; LocationID = 42; InstallerToken = 'abc123' }
             }
             @{
+                Case        = 'the token differs by a suffix (abc1234 vs abc123)'
+                TaskXmlArgs = @{ RepairArguments = "-InstallerToken 'abc1234'" }
+                Parameters  = @{ InstallerToken = 'abc123' }
+            }
+            @{
+                Case        = 'the Server differs'
+                TaskXmlArgs = @{ RepairArguments = "-Server 'https://old.example.com' -LocationID 42 -InstallerToken 'abc123'" }
+                Parameters  = @{ Server = 'https://automate.example.com'; LocationID = 42; InstallerToken = 'abc123' }
+            }
+            @{
+                # -Force on a matching task is reported as a creation, not an update
                 Case        = '-Force is used with a matching task'
                 TaskXmlArgs = @{}
                 Parameters  = @{ InstallerToken = 'abc123'; Force = $true }
+                Forced      = $true
             }
         ) {
             $result = InModuleScope 'ConnectWiseAutomateAgent' -Parameters @{ TaskXml = (New-TestTaskXml @TaskXmlArgs); TaskParameters = $Parameters } {
                 param($TaskXml, $TaskParameters)
                 Mock schtasks {
                     if ($args -contains '/QUERY' -and $args -contains '/XML') { return $TaskXml }
-                    elseif ($args -contains '/DELETE') { return $null }
                     elseif ($args -contains '/CREATE') { $global:LASTEXITCODE = 0; return 'SUCCESS' }
                     elseif ($args -contains '/QUERY') { $global:LASTEXITCODE = 0; return 'SUCCESS' }
                 }
@@ -668,8 +679,55 @@ Describe 'Register-CWAAHealthCheckTask' {
                 Mock Write-CWAAEventLog {}
 
                 Register-CWAAHealthCheckTask @TaskParameters -Confirm:$false
+
+                # Replaced in place: a failed create must not leave the machine without a task
+                Should -Invoke schtasks -Times 1 -Exactly -ParameterFilter { $args -contains '/CREATE' -and $args -contains '/F' }
+                Should -Not -Invoke schtasks -ParameterFilter { $args -contains '/DELETE' }
             }
-            ($result.Created -or $result.Updated) | Should -BeTrue
+            $result.Created | Should -Be ([bool]$Forced)
+            $result.Updated | Should -Be (-not $Forced)
+        }
+
+        It 'reports Created=$false, Updated=$false and logs event <EventId> when <Case>' -ForEach @(
+            @{ Case = 'the replacement cannot be created'; CreateExit = 1; VerifyExit = 0; EventId = 4022 }
+            @{ Case = 'the replacement is missing on verification'; CreateExit = 0; VerifyExit = 1; EventId = 4023 }
+        ) {
+            $result = InModuleScope 'ConnectWiseAutomateAgent' -Parameters @{ TaskXml = (New-TestTaskXml -Interval 'PT12H'); CreateExit = $CreateExit; VerifyExit = $VerifyExit; ExpectedEventId = $EventId } {
+                param($TaskXml, $CreateExit, $VerifyExit, $ExpectedEventId)
+                Mock schtasks {
+                    if ($args -contains '/QUERY' -and $args -contains '/XML') { return $TaskXml }
+                    elseif ($args -contains '/CREATE') { $global:LASTEXITCODE = $CreateExit; return 'CREATE' }
+                    elseif ($args -contains '/QUERY') { $global:LASTEXITCODE = $VerifyExit; return 'VERIFY' }
+                }
+                Mock New-CWAABackup {}
+                Mock Remove-Item {}
+                Mock Write-CWAAEventLog {}
+
+                Register-CWAAHealthCheckTask -InstallerToken 'abc123' -Confirm:$false -ErrorAction SilentlyContinue
+
+                Should -Invoke Write-CWAAEventLog -Times 1 -Exactly -ParameterFilter { $EventId -eq $ExpectedEventId } -Because 'the failure is logged once'
+                Should -Not -Invoke Write-CWAAEventLog -ParameterFilter { $EventId -eq 4020 }
+                Should -Not -Invoke schtasks -ParameterFilter { $args -contains '/DELETE' }
+            }
+            $result.Created | Should -BeFalse
+            $result.Updated | Should -BeFalse
+        }
+
+        It 'changes nothing and reports Created=$false, Updated=$false with -WhatIf' {
+            $result = InModuleScope 'ConnectWiseAutomateAgent' -Parameters @{ TaskXml = (New-TestTaskXml -Interval 'PT12H') } {
+                param($TaskXml)
+                Mock schtasks { if ($args -contains '/QUERY' -and $args -contains '/XML') { return $TaskXml } }
+                Mock New-CWAABackup {}
+                Mock Write-CWAAEventLog {}
+
+                Register-CWAAHealthCheckTask -InstallerToken 'abc123' -WhatIf
+
+                Should -Not -Invoke schtasks -ParameterFilter { $args -contains '/CREATE' -or $args -contains '/DELETE' }
+                Should -Not -Invoke New-CWAABackup
+                Should -Not -Invoke Write-CWAAEventLog
+            }
+            $result.Created | Should -BeFalse
+            $result.Updated | Should -BeFalse
         }
     }
 
@@ -734,6 +792,23 @@ Describe 'Register-CWAAHealthCheckTask' {
                 Register-CWAAHealthCheckTask -InstallerToken 'abc123' -Confirm:$false -ErrorAction SilentlyContinue
 
                 Should -Invoke Write-CWAAEventLog -ParameterFilter { $EventId -eq 4022 }
+            }
+        }
+
+        It 'writes the failure event log and then throws for a caller using -ErrorAction Stop' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock schtasks {
+                    if ($args -contains '/QUERY' -and $args -contains '/XML') { throw 'Task not found' }
+                    elseif ($args -contains '/CREATE') { $global:LASTEXITCODE = 1; return 'FAILURE' }
+                }
+                Mock New-CWAABackup {}
+                Mock Remove-Item {}
+                Mock Write-CWAAEventLog {}
+
+                { Register-CWAAHealthCheckTask -InstallerToken 'abc123' -Confirm:$false -ErrorAction Stop } |
+                    Should -Throw '*Failed to create scheduled task*'
+
+                Should -Invoke Write-CWAAEventLog -Times 1 -Exactly -ParameterFilter { $EventId -eq 4022 }
             }
         }
     }

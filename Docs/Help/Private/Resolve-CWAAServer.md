@@ -80,8 +80,8 @@ Author: Chris Taylor
 
 ## RELATED LINKS
 
-[Install-CWAA](../Install-CWAA.md)
+[Install-CWAA](../ConnectWiseAutomateAgent/Install-CWAA.md)
 
-[Uninstall-CWAA](../Uninstall-CWAA.md)
+[Uninstall-CWAA](../ConnectWiseAutomateAgent/Uninstall-CWAA.md)
 
-[Update-CWAA](../Update-CWAA.md)
+[Update-CWAA](../ConnectWiseAutomateAgent/Update-CWAA.md)

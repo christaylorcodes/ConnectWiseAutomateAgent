@@ -136,13 +136,24 @@ function Invoke-CWAAScript {
         Try {
             if ($PSCmdlet.ParameterSetName -eq 'URL') {
                 Write-Debug "Invoke-CWAAScript: Fetching remote script from '$URL'."
-                # Windows PowerShell 5.1 may not offer TLS 1.2 by default
-                [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
-                $remoteScript = Invoke-RestMethod -Uri $URL -ErrorAction Stop
+                # Windows PowerShell 5.1 may not offer TLS 1.2 by default. The setting is
+                # process-wide, so it is put back after the download. 3072 is Tls12, which has
+                # no named value before .NET 4.5.
+                $previousProtocol = [Net.ServicePointManager]::SecurityProtocol
+                Try {
+                    Try { [Net.ServicePointManager]::SecurityProtocol = $previousProtocol -bor 3072 }
+                    Catch { Write-Debug "Invoke-CWAAScript: Could not enable TLS 1.2: $($_.Exception.Message)" }
+                    $remoteScript = Invoke-RestMethod -Uri $URL -ErrorAction Stop
+                }
+                Finally { [Net.ServicePointManager]::SecurityProtocol = $previousProtocol }
                 if ($remoteScript -isnot [string] -or [string]::IsNullOrWhiteSpace($remoteScript)) {
                     $typeName = if ($null -eq $remoteScript) { 'nothing' } else { $remoteScript.GetType().Name }
                     throw "Remote script at '$URL' was empty or not text (received $typeName)."
                 }
+                # Windows PowerShell keeps a UTF-8 byte order mark in the downloaded text (as
+                # U+FEFF, or as three Latin-1 characters when the server sends no charset),
+                # which would otherwise be parsed as part of the first command name.
+                $remoteScript = $remoteScript -replace '\A(\uFEFF|\u00EF\u00BB\u00BF)', ''
                 $executionBlock = [scriptblock]::Create($remoteScript)
             }
             else {
@@ -224,8 +235,10 @@ function Invoke-CWAAScript {
                     $scriptOutput.Status = 'Error'
                     $scriptOutput.Result = 'The script left Invoke-CWAAScript early through exit or a break/continue to a label outside it.'
                 }
-                # Output= is free text, so it always goes last in Data
-                $partialOutput = ($result | Out-String -Width 4096).Trim()
+                # Output= is free text, so it always goes last in Data. Formatting can throw
+                # (it may be what failed), and nothing here may stop the output line below.
+                Try { $partialOutput = ($result | Out-String -Width 4096).Trim() }
+                Catch { $partialOutput = "<could not be formatted: $($_.Exception.Message)>" }
                 if ($partialOutput) { $dataParts += "Output=$partialOutput" }
             }
 

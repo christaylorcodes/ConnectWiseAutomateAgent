@@ -108,6 +108,10 @@ function Invoke-CWAAPwsh {
                 }
                 # Launch by full path so a bare name is never resolved through PATH
                 $resolvedPwshPath = (Resolve-Path -LiteralPath $PwshPath -ErrorAction Stop).ProviderPath
+                # Anything else (a .ps1, a .cmd) would run in or through this process instead
+                if ([System.IO.Path]::GetExtension($resolvedPwshPath) -ne '.exe') {
+                    Write-Error "Specified pwsh.exe path '$PwshPath' is not an executable (.exe)." -ErrorAction Stop
+                }
             }
             else {
                 $programFilesRoots = @($env:ProgramW6432, $env:ProgramFiles) | Where-Object { $_ } | Select-Object -Unique
@@ -186,7 +190,12 @@ function Invoke-CWAAPwsh {
                             $commandParts.Add("-${key}:`$$(([bool]$value).ToString().ToLowerInvariant())")
                         }
                         elseif ($typeCode -eq [System.TypeCode]::String -or $typeCode -eq [System.TypeCode]::Char) {
-                            $commandParts.Add("-$key $(& $quoteLiteral ([string]$value))")
+                            # Parenthesized so a value such as '--%' stays a plain string argument
+                            $commandParts.Add("-$key ($(& $quoteLiteral ([string]$value)))")
+                        }
+                        elseif ($value -is [enum]) {
+                            # An enum reports its underlying integer type code but formats as its name
+                            Write-Error "Parameter '$key' has unsupported type '$($value.GetType().FullName)'. Only strings, numbers and booleans are supported." -ErrorAction Stop
                         }
                         elseif (($typeCode -eq [System.TypeCode]::Double -or $typeCode -eq [System.TypeCode]::Single) -and
                             ([double]::IsNaN($value) -or [double]::IsInfinity($value))) {

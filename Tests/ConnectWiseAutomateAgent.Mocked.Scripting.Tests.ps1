@@ -345,10 +345,10 @@ Describe 'Initialize-CWAAScriptLog' {
 
 Describe 'New-CWAARemoteMonitor' {
 
-    It 'encodes a scriptblock to a Base64 command string' {
-        $result = New-CWAARemoteMonitor -ScriptBlock { Get-Service }
-        $result | Should -Match 'powershell\.exe'
-        $result | Should -Match 'FromBase64String'
+    It 'wraps the Base64 script in a command that decodes and runs it' {
+        $encoded = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes(' Get-Service '))
+        New-CWAARemoteMonitor -ScriptBlock { Get-Service } |
+            Should -Be "`"%windir%\System32\WindowsPowerShell\v1.0\powershell.exe`" `"&{`$C='$encoded';[System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String(`$C))|iex}`""
     }
 
     It 'produces output that decodes back to the original scriptblock' {
@@ -519,6 +519,40 @@ Describe 'Invoke-CWAAScript' {
         }
     }
 
+    It 'runs a remote script that starts with a UTF-8 byte order mark (<Case>)' -ForEach @(
+        @{ Case = 'decoded as U+FEFF'; Bom = [string][char]0xFEFF }
+        @{ Case = 'decoded as Latin-1'; Bom = [string][char]0xEF + [char]0xBB + [char]0xBF }
+    ) {
+        # Not named $Body: the mock would bind Invoke-RestMethod's own -Body parameter over it
+        InModuleScope 'ConnectWiseAutomateAgent' -Parameters @{ Response = "$Bom'RemoteResult'" } {
+            param($Response)
+            Mock Invoke-RestMethod { $Response }
+
+            Invoke-CWAAScript -URL 'https://example.com/bom.ps1' |
+                Should -Be 'Status=Success|Result=RemoteResult|LogPath=|Data='
+        }
+    }
+
+    It 'restores the process-wide TLS setting after a URL fetch' {
+        InModuleScope 'ConnectWiseAutomateAgent' {
+            Mock Invoke-RestMethod { "'x'" }
+            $before = [Net.ServicePointManager]::SecurityProtocol
+
+            $null = Invoke-CWAAScript -URL 'https://example.com/tls.ps1'
+
+            [Net.ServicePointManager]::SecurityProtocol | Should -Be $before
+        }
+    }
+
+    It 'still returns one output line when the script output cannot be formatted' {
+        $unformattable = New-Object PSObject
+        $unformattable | Add-Member -MemberType ScriptMethod -Name ToString -Value { throw 'no string for you' } -Force
+
+        { $script:result = Invoke-CWAAScript -ScriptBlock { 'before'; $unformattable } } | Should -Not -Throw
+        @($script:result).Count | Should -Be 1
+        $script:result | Should -Match '^Status=Error\|'
+    }
+
     It 'returns Error when URL fetch fails' {
         InModuleScope 'ConnectWiseAutomateAgent' {
             Mock Invoke-RestMethod { throw 'Network error' } -ParameterFilter { $Uri -eq 'https://example.com/bad.ps1' }
@@ -530,17 +564,19 @@ Describe 'Invoke-CWAAScript' {
     }
 
     It 'returns Error when the remote script is <Case>' -ForEach @(
-        @{ Case = 'empty'; Body = '' }
-        @{ Case = 'whitespace'; Body = "  `n " }
-        @{ Case = 'not text'; Body = [PSCustomObject]@{ a = 1 } }
+        @{ Case = 'empty'; Response = ''; Received = 'String' }
+        @{ Case = 'whitespace'; Response = "  `n "; Received = 'String' }
+        @{ Case = 'not text'; Response = [PSCustomObject]@{ a = 1 }; Received = 'PSCustomObject' }
     ) {
-        InModuleScope 'ConnectWiseAutomateAgent' -Parameters @{ Body = $Body } {
-            param($Body)
-            Mock Invoke-RestMethod { $Body }
+        # Not named $Body: the mock would bind Invoke-RestMethod's own -Body parameter over it,
+        # and every case would then be the "received nothing" one.
+        InModuleScope 'ConnectWiseAutomateAgent' -Parameters @{ Response = $Response; Received = $Received } {
+            param($Response, $Received)
+            Mock Invoke-RestMethod { , $Response }
 
             $result = Invoke-CWAAScript -URL 'https://example.com/empty.ps1'
 
-            $result | Should -Match '^Status=Error\|Result=Remote script .* was empty or not text'
+            $result | Should -Match "^Status=Error\|Result=Remote script .* was empty or not text \(received $Received\)"
         }
     }
 
@@ -615,7 +651,14 @@ Describe 'Invoke-CWAAPwsh' {
             }
         }
 
-        It 'returns Error when the specified PwshPath does not exist' {
+        It 'returns Error without running anything when PwshPath is not an .exe' {
+        $notExe = Join-Path $TestDrive 'pwsh.ps1'
+        Set-Content -LiteralPath $notExe -Value "'ran in-process'"
+        Invoke-CWAAPwsh -ScriptBlock { 'test' } -PwshPath $notExe |
+            Should -Match '^Status=Error\|Result=.*is not an executable'
+    }
+
+    It 'returns Error when the specified PwshPath does not exist' {
             $result = Invoke-CWAAPwsh -ScriptBlock { 'test' } -PwshPath 'C:\nonexistent\pwsh.exe'
             $result | Should -Match '^Status=Error\|Result=Specified pwsh\.exe path .* does not exist'
         }
@@ -716,6 +759,22 @@ param([string]$Name, [int]$Count, [switch]$Force, [string]$Dir, [string]$Quote, 
                 Should -Be "Status=Success|Result=abc;5;True;C:\My Dir\;say `"hi`" it's;[]|LogPath=|Data="
         }
 
+        It 'passes hostile string values as literal text' {
+            # Typographic quotes also delimit strings in PowerShell; --% is the stop-parsing token
+            $smartQuoted = "a$([char]0x2019); 'INJECTED'; $([char]0x2018)b"
+            $metaCharacters = '$env:USERNAME $(1+1) `t ; & > <'
+            $parameters = @{
+                Name  = $smartQuoted
+                Count = 1.5
+                Force = $false
+                Dir   = '--%'
+                Quote = $metaCharacters
+                Empty = '-NotAParameter'
+            }
+            Invoke-CWAAPwsh -FilePath $script:ParamScript -Parameters $parameters -PwshPath $script:HostExe |
+                Should -Be "Status=Success|Result=$smartQuoted;2;False;--%;$metaCharacters;[-NotAParameter]|LogPath=|Data="
+        }
+
         It 'propagates the script exit code' {
             $exitScript = Join-Path $TestDrive 'exit4.ps1'
             Set-Content -LiteralPath $exitScript -Value 'exit 4'
@@ -739,6 +798,7 @@ cmd.exe /c "exit 3"
             @{ Case = 'a NaN value'; Parameters = @{ Count = [double]::NaN }; Pattern = 'NaN or infinity' }
             @{ Case = 'a null value'; Parameters = @{ Name = $null }; Pattern = 'null value' }
             @{ Case = 'an array value'; Parameters = @{ Name = @('a', 'b') }; Pattern = 'unsupported type' }
+            @{ Case = 'an enum value'; Parameters = @{ Name = [System.IO.FileAttributes]'ReadOnly, Hidden' }; Pattern = 'unsupported type' }
         ) {
             $result = Invoke-CWAAPwsh -FilePath $script:ParamScript -Parameters $Parameters -PwshPath $script:HostExe
             $result | Should -Match "^Status=Error\|Result=.*$Pattern"
