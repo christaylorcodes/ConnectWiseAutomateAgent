@@ -56,8 +56,9 @@ function Invoke-CWAAPwsh {
         $null, NaN, infinity, arrays, hashtables and other object types are rejected.
     .PARAMETER PwshPath
         Optional override for the path to pwsh.exe. Use this when pwsh is installed
-        in a non-standard location. The path is resolved to a full path (a bare name is
-        never looked up on PATH) and then trusted as given: make sure the folder is not
+        in a non-standard location. It must be an .exe file on the file system. The path
+        is resolved to a full path (a bare name is never looked up on PATH) and then
+        trusted as given: make sure the folder is not
         writable by non-administrators, because this usually runs as SYSTEM.
     .EXAMPLE
         Invoke-CWAAPwsh -ScriptBlock { $PSVersionTable.PSVersion.ToString() }
@@ -174,7 +175,12 @@ function Invoke-CWAAPwsh {
                 if (-not (Test-Path -LiteralPath $FilePath -PathType Leaf)) {
                     Write-Error "Script file '$FilePath' was not found." -ErrorAction Stop
                 }
-                $resolvedFilePath = (Resolve-Path -LiteralPath $FilePath -ErrorAction Stop).ProviderPath
+                $resolvedFile = Resolve-Path -LiteralPath $FilePath -ErrorAction Stop
+                # A function: or env: path would reach the child as a bare name and be looked up there
+                if ($resolvedFile.Provider.Name -ne 'FileSystem') {
+                    Write-Error "Script file '$FilePath' is not a file system path." -ErrorAction Stop
+                }
+                $resolvedFilePath = $resolvedFile.ProviderPath
                 $commandParts = New-Object System.Collections.Generic.List[string]
                 $commandParts.Add("`$global:LASTEXITCODE = 0; & $(& $quoteLiteral $resolvedFilePath)")
                 if ($Parameters) {

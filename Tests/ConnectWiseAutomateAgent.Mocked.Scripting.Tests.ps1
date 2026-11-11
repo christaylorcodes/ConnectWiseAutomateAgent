@@ -817,6 +817,15 @@ param([string]$Name, [int]$Count, [switch]$Force, [string]$Dir, [string]$Quote, 
                 Should -Be "Status=Success|Result=$smartQuoted;2;False;--%;$metaCharacters;[-NotAParameter]|LogPath=|Data="
         }
 
+        It 'returns Error when FilePath is not a file system path' {
+            function global:CWAATestFake.ps1 { 'ran by name' }
+            try {
+                Invoke-CWAAPwsh -FilePath 'function:\CWAATestFake.ps1' -PwshPath $script:HostExe |
+                    Should -Match '^Status=Error\|Result=.*is not a file system path'
+            }
+            finally { Remove-Item -LiteralPath 'function:\CWAATestFake.ps1' -ErrorAction SilentlyContinue }
+        }
+
         It 'propagates the script exit code' {
             $exitScript = Join-Path $TestDrive 'exit4.ps1'
             Set-Content -LiteralPath $exitScript -Value 'exit 4'

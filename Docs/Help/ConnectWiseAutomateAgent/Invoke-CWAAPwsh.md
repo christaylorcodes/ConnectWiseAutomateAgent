@@ -166,8 +166,10 @@ HelpMessage: ''
 Optional override for the path to pwsh.exe.
 Use this when pwsh is installed
 in a non-standard location.
-The path is resolved to a full path (a bare name is
-never looked up on PATH) and then trusted as given: make sure the folder is not
+It must be an .exe file on the file system.
+The path
+is resolved to a full path (a bare name is never looked up on PATH) and then
+trusted as given: make sure the folder is not
 writable by non-administrators, because this usually runs as SYSTEM.
 
 ```yaml
