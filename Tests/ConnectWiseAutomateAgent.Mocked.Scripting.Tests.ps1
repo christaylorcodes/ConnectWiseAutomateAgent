@@ -806,23 +806,36 @@ Describe 'Invoke-CWAAPwsh' {
                 Should -Be 'Status=Error|Result=warn|LogPath=|Data=Output=out'
         }
 
-        # The failing source line can hold a value the caller wrote into the script, so it
-        # must not be echoed back: exact matches below leave no room for it.
-        It 'reports an unhandled throw as the error message only' {
-            Invoke-CWAAPwsh -ScriptBlock { $value = 'S3CRET-MARKER'; 'out'; throw "kaboom $($value.Length)" } -PwshPath $script:HostExe |
-                Should -Be 'Status=Error|Result=kaboom 13|LogPath=|Data=ExitCode=1; Output=out'
+        It 'returns table-formatted objects and the output that follows them' {
+            $result = Invoke-CWAAPwsh -ScriptBlock { 'first'; [PSCustomObject]@{ Alpha = 1; Beta = 'two' }; 'last' } -PwshPath $script:HostExe
+            $result | Should -Match '^Status=Success\|Result=first / .*Alpha\s+Beta.* / .*1\s+two.* / last\|LogPath=\|Data=$'
         }
 
-        It 'reports a non-terminating error as the error message only and keeps running' {
-            Invoke-CWAAPwsh -ScriptBlock { $value = 'S3CRET-MARKER'; Write-Error "soft $($value.Length)"; 'after' } -PwshPath $script:HostExe |
-                Should -Be 'Status=Error|Result=soft 13|LogPath=|Data=Output=after'
+        It 'reports an unhandled throw as Error with exit code 1 and keeps earlier output' {
+            $result = Invoke-CWAAPwsh -ScriptBlock { 'out'; throw 'kaboom' } -PwshPath $script:HostExe
+            $result | Should -Match '^Status=Error\|Result=.*kaboom.*\|LogPath=\|Data=ExitCode=1; Output=out$'
         }
 
-        It 'reports an error raised in a script file as the error message only' {
-            $failingScript = Join-Path $TestDrive 'failing.ps1'
-            Set-Content -LiteralPath $failingScript -Value '$value = ''S3CRET-MARKER''; throw "file boom $($value.Length)"'
-            Invoke-CWAAPwsh -FilePath $failingScript -PwshPath $script:HostExe |
-                Should -Be 'Status=Error|Result=file boom 13|LogPath=|Data=ExitCode=1'
+        # Nothing is wrapped around the script, so it runs as it would on its own
+        It 'keeps running after a non-terminating or statement-terminating error (<Case>)' -ForEach @(
+            @{ Case = 'Write-Error'; Block = { 'before'; Write-Error 'soft'; 'after' }; Message = 'soft' }
+            @{ Case = '.NET method exception'; Block = { 'before'; [int]::Parse('x'); 'after' }; Message = 'Parse' }
+        ) {
+            $result = Invoke-CWAAPwsh -ScriptBlock $Block -PwshPath $script:HostExe
+            $result | Should -Match "^Status=Error\|Result=.*$Message.*\|LogPath=\|Data=Output=before / after$"
+        }
+
+        It 'succeeds when the script handles an error itself (<Case>)' -ForEach @(
+            @{ Case = 'try/catch'; Block = { try { throw 'x' } catch { 'handled' } } }
+            @{ Case = 'SilentlyContinue'; Block = { $ErrorActionPreference = 'SilentlyContinue'; 'a'; [int]::Parse('x'); 'after' } }
+        ) {
+            Invoke-CWAAPwsh -ScriptBlock $Block -PwshPath $script:HostExe |
+                Should -Match '^Status=Success\|Result=(handled|a / after)\|LogPath=\|Data=$'
+        }
+
+        It 'succeeds when native stderr is redirected into the output inside the script' {
+            Invoke-CWAAPwsh -ScriptBlock { cmd.exe /c 'echo err 1>&2' 2>&1 | ForEach-Object { "$_".Trim() }; 'after' } -PwshPath $script:HostExe |
+                Should -Be 'Status=Success|Result=err / after|LogPath=|Data='
         }
 
         It 'does not throw on stderr when the caller uses -ErrorAction Stop' {

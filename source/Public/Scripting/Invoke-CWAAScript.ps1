@@ -52,7 +52,8 @@ function Invoke-CWAAScript {
     .PARAMETER EnableLogging
         When specified, initializes a log file via Initialize-CWAAScriptLog before execution.
         The log path is included in the output object. Each failure is written to the log
-        with its stack trace or script location (never the source line text). If the log
+        with its stack trace or script location, not the source line text (the exception is
+        a syntax error in a -URL script, whose message quotes the offending line). If the log
         cannot be created, the scriptblock still runs: LogPath is left empty and Data
         records LogInitFailed=<message>.
     .PARAMETER LogDirectory
@@ -164,14 +165,23 @@ function Invoke-CWAAScript {
                     throw "Remote script at '$URL' was empty."
                 }
                 # Report a syntax error before anything runs
-                $null = [scriptblock]::Create($remoteScript)
+                $unboundBlock = [scriptblock]::Create($remoteScript)
                 # A block made by [scriptblock]::Create is not tied to any scope and would run
                 # inside this module, hiding the caller's variables and preferences and exposing
                 # the module's private state. Run it through a block created in the caller's
                 # session state instead, so it behaves as -ScriptBlock does.
-                $runnerFactory = [scriptblock]::Create('{ & ([scriptblock]::Create($args[0])) }')
-                $executionBlock = @($PSCmdlet.SessionState.InvokeCommand.InvokeScript($PSCmdlet.SessionState, $runnerFactory, @()))[0]
-                $executionArguments = @($remoteScript)
+                Try {
+                    $runnerFactory = [scriptblock]::Create('{ & ([scriptblock]::Create($args[0])) }')
+                    $executionBlock = @($PSCmdlet.SessionState.InvokeCommand.InvokeScript($PSCmdlet.SessionState, $runnerFactory, @()))[0]
+                    if ($null -eq $executionBlock) { throw 'No runner block was returned.' }
+                    $executionArguments = @($remoteScript)
+                }
+                Catch {
+                    # A host that cannot do this still runs the script, inside the module's scope
+                    Write-Debug "Invoke-CWAAScript: Could not bind the remote script to the caller's scope: $($_.Exception.Message)"
+                    $executionBlock = $unboundBlock
+                    $executionArguments = @()
+                }
             }
             else {
                 $executionBlock = $ScriptBlock

@@ -113,7 +113,8 @@ Downloads and executes the remote script, logging to MyScript_<timestamp>.log.
 When specified, initializes a log file via Initialize-CWAAScriptLog before execution.
 The log path is included in the output object.
 Each failure is written to the log
-with its stack trace or script location (never the source line text).
+with its stack trace or script location, not the source line text (the exception is
+a syntax error in a -URL script, whose message quotes the offending line).
 If the log
 cannot be created, the scriptblock still runs: LogPath is left empty and Data
 records LogInitFailed=<message>.

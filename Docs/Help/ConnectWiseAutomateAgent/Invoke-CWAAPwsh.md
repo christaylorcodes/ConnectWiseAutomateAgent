@@ -70,8 +70,8 @@ be told apart and also counts as an error; redirect it inside the scriptblock
 On error, Result holds the stderr text
 (or stdout when stderr is empty) and Data holds ExitCode=<n> and, when stderr
 replaced it, the stdout text as Output=<text>, always last.
-PowerShell errors are
-reported as the error message only, without the script line that raised them.
+Error text is what pwsh
+itself prints, which can include the script line that raised the error.
 ANSI color sequences are stripped from captured output.
 
 For both parameter sets the exit code follows pwsh -File semantics: an explicit
@@ -89,8 +89,9 @@ Write values literally into the
 scriptblock, or use the FilePath parameter set with -Parameters instead.
 
 The encoded command, including any parameter values, appears on the pwsh.exe command
-line, which process auditing and EDR tools record.
-Do not pass secrets this way.
+line, which process auditing and EDR tools record, and a failing line of the script
+can be echoed in Result.
+Do not pass secrets this way or write them into the script.
 
 ## EXAMPLES
 

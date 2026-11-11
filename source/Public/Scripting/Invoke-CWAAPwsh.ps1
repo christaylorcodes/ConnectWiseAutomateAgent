@@ -27,8 +27,8 @@ function Invoke-CWAAPwsh {
         be told apart and also counts as an error; redirect it inside the scriptblock
         (2>&1) if a tool writes progress to stderr. On error, Result holds the stderr text
         (or stdout when stderr is empty) and Data holds ExitCode=<n> and, when stderr
-        replaced it, the stdout text as Output=<text>, always last. PowerShell errors are
-        reported as the error message only, without the script line that raised them.
+        replaced it, the stdout text as Output=<text>, always last. Error text is what pwsh
+        itself prints, which can include the script line that raised the error.
         ANSI color sequences are stripped from captured output.
 
         For both parameter sets the exit code follows pwsh -File semantics: an explicit
@@ -43,7 +43,8 @@ function Invoke-CWAAPwsh {
         scriptblock, or use the FilePath parameter set with -Parameters instead.
 
         The encoded command, including any parameter values, appears on the pwsh.exe command
-        line, which process auditing and EDR tools record. Do not pass secrets this way.
+        line, which process auditing and EDR tools record, and a failing line of the script
+        can be echoed in Result. Do not pass secrets this way or write them into the script.
     .PARAMETER ScriptBlock
         A PowerShell scriptblock to encode and execute under pwsh.exe.
     .PARAMETER FilePath
@@ -160,18 +161,21 @@ function Invoke-CWAAPwsh {
                 }
             }
 
-            # The child reports its own errors as the message only. Left to the host, an error
-            # is printed with the source line that raised it, which can hold a value the
-            # caller wrote into the script. A terminating error goes through the trap (exit 1);
-            # other error records are taken off the merged error stream.
-            # Progress is silenced because a Windows PowerShell child writes progress records
-            # to stderr as CLIXML, which cannot be mixed with the plain error lines.
-            $commandPrefix = '$global:LASTEXITCODE = 0; $__cwaaOk = $true; $ProgressPreference = ''SilentlyContinue''; ' +
-                'trap { [Console]::Error.WriteLine("$_"); exit 1 }; & { '
+            # The script's output is formatted to text inside the child before it exits. Left to
+            # the host, table-formatted objects are still waiting in the formatter when exit
+            # runs and are lost, along with everything output after them.
+            # No trap, try/catch or error redirection is put around the script: any of those
+            # would change which of its statements run.
+            # Out-String is loaded up front with progress silenced for that step only: loading
+            # its module in a Windows PowerShell child writes a progress record to stderr.
+            $commandPrefix = '& { $ProgressPreference = ''SilentlyContinue''; $null = '''' | Out-String }; ' +
+                '$global:LASTEXITCODE = 0; $__cwaaOk = $true; & { '
             # Match pwsh -File: $? is false only after an explicit non-zero exit or an
             # error, so a handled error or leftover native exit code on the last line is ignored.
-            $commandSuffix = '; $script:__cwaaOk = $? } 2>&1 | ForEach-Object { ' +
-                'if ($_ -is [System.Management.Automation.ErrorRecord]) { [Console]::Error.WriteLine("$_") } else { $_ } }; ' +
+            # (A terminating error already exits 1.)
+            # -Stream passes each line on as it is produced, so output written before a throw
+            # or exit is kept.
+            $commandSuffix = '; $script:__cwaaOk = $? } | Out-String -Stream -Width 4096; ' +
                 'if ($__cwaaOk) { exit 0 } elseif ($LASTEXITCODE) { exit $LASTEXITCODE } else { exit 1 }'
 
             if ($PSCmdlet.ParameterSetName -eq 'ScriptBlock') {
