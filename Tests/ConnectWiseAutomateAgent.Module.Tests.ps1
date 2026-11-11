@@ -22,6 +22,90 @@
 BeforeDiscovery {
     $script:IsBuiltModuleMode = ($env:CWAA_TEST_LOAD_METHOD -eq 'BuiltModule')
     $script:IsModuleMode = -not $script:IsBuiltModuleMode
+
+    # Lists live in discovery so -ForEach can generate one test per item (data defined in
+    # BeforeAll is not visible at discovery; Pester 5 silently generated zero tests here).
+    $script:ExpectedFunctions = @(
+        'Hide-CWAAAddRemove'
+        'Rename-CWAAAddRemove'
+        'Show-CWAAAddRemove'
+        'Install-CWAA'
+        'Redo-CWAA'
+        'Uninstall-CWAA'
+        'Update-CWAA'
+        'Get-CWAAError'
+        'Get-CWAALogLevel'
+        'Get-CWAAProbeError'
+        'Set-CWAALogLevel'
+        'Get-CWAAProxy'
+        'Set-CWAAProxy'
+        'Restart-CWAA'
+        'Start-CWAA'
+        'Stop-CWAA'
+        'Get-CWAAInfo'
+        'Get-CWAAInfoBackup'
+        'Get-CWAASettings'
+        'New-CWAABackup'
+        'Reset-CWAA'
+        'ConvertFrom-CWAASecurity'
+        'ConvertTo-CWAASecurity'
+        'Invoke-CWAACommand'
+        'Test-CWAAPort'
+        'Test-CWAAServerConnectivity'
+        'Test-CWAAHealth'
+        'Repair-CWAA'
+        'Register-CWAAHealthCheckTask'
+        'Unregister-CWAAHealthCheckTask'
+        'ConvertTo-CWAAScriptOutput'
+        'Initialize-CWAAScriptLog'
+        'Invoke-CWAAPwsh'
+        'Invoke-CWAAScript'
+        'New-CWAARemoteMonitor'
+        'New-CWAAScriptOutput'
+        'Write-CWAAScriptLog'
+    )
+
+    $script:ExpectedAliases = @(
+        'Hide-LTAddRemove'
+        'Rename-LTAddRemove'
+        'Show-LTAddRemove'
+        'Install-LTService'
+        'Redo-LTService'
+        'Reinstall-CWAA'
+        'Reinstall-LTService'
+        'Uninstall-LTService'
+        'Update-LTService'
+        'Get-LTErrors'
+        'Get-LTLogging'
+        'Get-LTProbeErrors'
+        'Set-LTLogging'
+        'Get-LTProxy'
+        'Set-LTProxy'
+        'Restart-LTService'
+        'Start-LTService'
+        'Stop-LTService'
+        'Get-LTServiceInfo'
+        'Get-LTServiceInfoBackup'
+        'Get-LTServiceSettings'
+        'New-LTServiceBackup'
+        'Reset-LTService'
+        'ConvertFrom-LTSecurity'
+        'ConvertTo-LTSecurity'
+        'Invoke-LTServiceCommand'
+        'Test-LTPorts'
+        'Test-LTServerConnectivity'
+        'Test-LTHealth'
+        'Repair-LTService'
+        'Register-LTHealthCheckTask'
+        'Unregister-LTHealthCheckTask'
+        'ConvertTo-AutomateOutput'
+        'Initialize-AutomateLogging'
+        'Invoke-CWAScript'
+        'Invoke-LTPwsh'
+        'New-AutomateOutput'
+        'New-CWARemoteMonitor'
+        'Write-AutomateLog'
+    )
 }
 
 BeforeAll {
@@ -165,47 +249,8 @@ Describe 'Module: ConnectWiseAutomateAgent' {
         }
     }
 
-    Context 'Exported Functions' {
+    Context 'Exported Functions' -ForEach @(@{ ExpectedFunctions = $script:ExpectedFunctions }) {
         BeforeAll {
-            $ExpectedFunctions = @(
-                'Hide-CWAAAddRemove'
-                'Rename-CWAAAddRemove'
-                'Show-CWAAAddRemove'
-                'Install-CWAA'
-                'Redo-CWAA'
-                'Uninstall-CWAA'
-                'Update-CWAA'
-                'Get-CWAAError'
-                'Get-CWAALogLevel'
-                'Get-CWAAProbeError'
-                'Set-CWAALogLevel'
-                'Get-CWAAProxy'
-                'Set-CWAAProxy'
-                'Restart-CWAA'
-                'Start-CWAA'
-                'Stop-CWAA'
-                'Get-CWAAInfo'
-                'Get-CWAAInfoBackup'
-                'Get-CWAASettings'
-                'New-CWAABackup'
-                'Reset-CWAA'
-                'ConvertFrom-CWAASecurity'
-                'ConvertTo-CWAASecurity'
-                'Invoke-CWAACommand'
-                'Test-CWAAPort'
-                'Test-CWAAServerConnectivity'
-                'Test-CWAAHealth'
-                'Repair-CWAA'
-                'Register-CWAAHealthCheckTask'
-                'Unregister-CWAAHealthCheckTask'
-                'ConvertTo-CWAAScriptOutput'
-                'Initialize-CWAAScriptLog'
-                'Invoke-CWAAPwsh'
-                'Invoke-CWAAScript'
-                'New-CWAARemoteMonitor'
-                'New-CWAAScriptOutput'
-                'Write-CWAAScriptLog'
-            )
             $ExportedFunctions = (Get-Module 'ConnectWiseAutomateAgent').ExportedFunctions.Keys
         }
 
@@ -217,54 +262,13 @@ Describe 'Module: ConnectWiseAutomateAgent' {
             $ExportedFunctions.Count | Should -BeGreaterOrEqual $ExpectedFunctions.Count
         }
 
-        It 'exports <_>' -ForEach $ExpectedFunctions {
+        It 'exports <_>' -ForEach $script:ExpectedFunctions {
             $_ | Should -BeIn $ExportedFunctions
         }
     }
 
-    Context 'Exported Aliases' {
+    Context 'Exported Aliases' -ForEach @(@{ ExpectedAliases = $script:ExpectedAliases }) {
         BeforeAll {
-            $ExpectedAliases = @(
-                'Hide-LTAddRemove'
-                'Rename-LTAddRemove'
-                'Show-LTAddRemove'
-                'Install-LTService'
-                'Redo-LTService'
-                'Reinstall-CWAA'
-                'Reinstall-LTService'
-                'Uninstall-LTService'
-                'Update-LTService'
-                'Get-LTErrors'
-                'Get-LTLogging'
-                'Get-LTProbeErrors'
-                'Set-LTLogging'
-                'Get-LTProxy'
-                'Set-LTProxy'
-                'Restart-LTService'
-                'Start-LTService'
-                'Stop-LTService'
-                'Get-LTServiceInfo'
-                'Get-LTServiceInfoBackup'
-                'Get-LTServiceSettings'
-                'New-LTServiceBackup'
-                'Reset-LTService'
-                'ConvertFrom-LTSecurity'
-                'ConvertTo-LTSecurity'
-                'Invoke-LTServiceCommand'
-                'Test-LTPorts'
-                'Test-LTServerConnectivity'
-                'Test-LTHealth'
-                'Repair-LTService'
-                'Register-LTHealthCheckTask'
-                'Unregister-LTHealthCheckTask'
-                'ConvertTo-AutomateOutput'
-                'Initialize-AutomateLogging'
-                'Invoke-CWAScript'
-                'Invoke-LTPwsh'
-                'New-AutomateOutput'
-                'New-CWARemoteMonitor'
-                'Write-AutomateLog'
-            )
             $ExportedAliases = (Get-Module 'ConnectWiseAutomateAgent').ExportedAliases.Keys
         }
 
@@ -276,7 +280,7 @@ Describe 'Module: ConnectWiseAutomateAgent' {
             $ExportedAliases.Count | Should -BeGreaterOrEqual $ExpectedAliases.Count
         }
 
-        It 'exports alias <_>' -ForEach $ExpectedAliases {
+        It 'exports alias <_>' -ForEach $script:ExpectedAliases {
             $_ | Should -BeIn $ExportedAliases
         }
     }

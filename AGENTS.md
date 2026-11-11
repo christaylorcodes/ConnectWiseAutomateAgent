@@ -14,10 +14,10 @@
 
 - **Language**: PowerShell 3.0+ (2.0 with limitations)
 - **Build System**: Sampler/ModuleBuilder/InvokeBuild (`./build.ps1`)
-- **Test Framework**: Pester 5.6+
+- **Test Framework**: Pester 6 (pinned range in `RequiredModules.psd1`)
 - **Linter**: PSScriptAnalyzer
 - **License**: MIT
-- **Platform**: Windows only
+- **Platform**: Windows only (the module targets PowerShell 3.0+; build and test tooling requires PowerShell 7.6+)
 
 ## Quick Start
 
@@ -37,6 +37,9 @@ Import-Module .\source\ConnectWiseAutomateAgent.psd1 -Force
 # Run PSScriptAnalyzer
 Invoke-ScriptAnalyzer -Path source -Recurse -Severity Error,Warning
 
+# Regenerate markdown command help (Docs/Help/ConnectWiseAutomateAgent/)
+./build.ps1 -Tasks docs
+
 # Local pre-push validation (build + analyze + test)
 ./Tests/test-local.ps1
 ```
@@ -49,9 +52,9 @@ Invoke-ScriptAnalyzer -Path source -Recurse -Severity Error,Warning
 ConnectWiseAutomateAgent/
   build.ps1                           # Build entry point (Invoke-Build)
   build.yaml                          # Sampler build configuration
-  RequiredModules.psd1                # Build dependency manifest
+  RequiredModules.psd1                # Build dependency manifest (NuGet version ranges)
   Resolve-Dependency.ps1              # Bootstrap script for build deps
-  .build/                             # Build task definitions
+  .build/                             # Custom build tasks (dependency version check, docs)
   source/
     ConnectWiseAutomateAgent.psd1     # Module manifest
     ConnectWiseAutomateAgent.psm1     # Root module (auto-loads subdirectories)
@@ -75,9 +78,12 @@ ConnectWiseAutomateAgent/
     test-local.ps1                    # Pre-push validation script
   Scripts/
     Invoke-QuickTest.ps1              # Fast targeted test runner for dev loops
-    Update-PlatyPSDocs.ps1            # Post-process PlatyPS output in Docs/Help
+    Update-MarkdownHelp.ps1           # PlatyPS 1.x markdown help generator (run via build.ps1 -Tasks docs)
   Docs/                               # Hand-written guides
-    Help/                             # Auto-generated function reference (PlatyPS)
+    Help/
+      ConnectWiseAutomateAgent.md     # Hand-written categorized function index
+      ConnectWiseAutomateAgent/       # Generated per-function reference (do not hand-edit)
+      Private/                        # Hand-written private helper notes
   Examples/                           # Ready-to-use deployment scripts
 ```
 
@@ -97,11 +103,13 @@ Exception: the Script helpers in `source/Public/Scripting/` carry their names fr
 
 The build uses [Sampler](https://github.com/gaelcolas/Sampler) with ModuleBuilder and Invoke-Build. Configuration lives in `build.yaml`.
 
-- `./build.ps1 -ResolveDependency -Tasks noop` -- first-time setup; installs build dependencies listed in `RequiredModules.psd1`.
+- `./build.ps1 -ResolveDependency -Tasks noop` -- first-time setup; installs build dependencies listed in `RequiredModules.psd1` into `output/RequiredModules` (via PSResourceGet). Re-run from a new PowerShell session after changing versions.
 - `./build.ps1 -Tasks build` -- compiles the module from `source/` into `output/`. ModuleBuilder merges Public/Private functions into a single `.psm1` and auto-populates `FunctionsToExport` and `AliasesToExport` in the manifest.
 - `./build.ps1 -Tasks test` -- runs Pester tests against the built module in `output/`.
-- `./build.ps1 -Tasks publish` -- publishes to PowerShell Gallery.
-- Build tasks are defined in `.build/` and referenced from `build.yaml`.
+- `./build.ps1 -Tasks docs` -- builds the module and regenerates `Docs/Help/ConnectWiseAutomateAgent/` with Microsoft.PowerShell.PlatyPS 1.x. Files are regenerated from scratch and validated; remaining `{{ ... }}` placeholders are listed so they can be filled in via comment-based help.
+- `Assert_RequiredModule_Versions` runs at the start of `build` and `test` and fails if a dependency is missing, duplicated, or outside its range.
+- Publishing is done by CI (`.github/workflows/ci.yml`), not a build task.
+- Custom tasks live in `.build/` and are referenced from `build.yaml`.
 
 ### CI/CD
 
@@ -121,7 +129,7 @@ CI runs build + a consolidated smoke test (PSScriptAnalyzer + Pester on one runn
 
 ## Code Conventions
 
-For the full contributing guide covering development setup, coding standards, and PR workflow, see [CONTRIBUTING.md](CONTRIBUTING.md).
+For the full contributing guide covering development setup, coding standards, and PR workflow, see [CONTRIBUTING.md](CONTRIBUTING.md). General PowerShell guidance shared across projects lives in the template repository: [PowerShell Style Guide](https://github.com/christaylorcodes/GitHub-Template/blob/main/docs/PowerShell-StyleGuide.md) and [PowerShell Deep Review](https://github.com/christaylorcodes/GitHub-Template/blob/main/docs/PowerShell-DeepReview.md). Where they differ, this file wins (for example, this module keeps PowerShell 3.0+ compatibility).
 
 ### Quick Reference
 
@@ -138,7 +146,7 @@ For the full contributing guide covering development setup, coding standards, an
 
 ### Documentation and Commits
 
-Source of truth for docs is comment-based help in `.ps1` files under `source/`. Rebuild documentation after changes using the build pipeline.
+Source of truth for docs is comment-based help in `.ps1` files under `source/`. After changing it, run `./build.ps1 -Tasks docs` and commit the regenerated `Docs/Help/ConnectWiseAutomateAgent/` files. Update the hand-written index (`Docs/Help/ConnectWiseAutomateAgent.md`) when adding or renaming a public function.
 
 **Known pitfall:** Lines starting with `.WORD` (e.g., `.NET`) in comment-based help are parsed as help keywords. Keep such terms mid-line.
 
@@ -149,6 +157,7 @@ For git commit style and the full contributing guide, see [CONTRIBUTING.md](CONT
 1. Create `Verb-CWAA<Noun>.ps1` in the appropriate `source/Public/` subdirectory
 2. Add `[Alias('Verb-LT<LegacyNoun>')]` in the function declaration (Script helpers use their legacy ScriptHelper name instead)
 3. Build the module: `./build.ps1 -Tasks build` -- ModuleBuilder auto-populates `FunctionsToExport` and `AliasesToExport` in the manifest (no manual manifest update needed)
+4. Regenerate docs: `./build.ps1 -Tasks docs`, then add the function to the hand-written index `Docs/Help/ConnectWiseAutomateAgent.md`
 
 When modifying existing functions:
 

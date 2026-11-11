@@ -20,15 +20,17 @@ Open an issue describing what you would like to see and why. Include use cases s
 
 ### Submitting Pull Requests
 
-1. **Fork** the repository and create a branch from `main`.
+1. **Fork** the repository and create a branch from `develop` (pull requests target `develop`; `main` holds stable releases).
 2. **Make your changes** following the coding conventions below.
-3. **Test** your changes:
+3. **Test** your changes (build + analyze + test):
    ```powershell
-   ./build.ps1 -Tasks test
+   ./Tests/test-local.ps1
    ```
 4. **Submit** a pull request with a clear description of what you changed and why.
 
 ## Development Setup
+
+Build and test tooling requires **PowerShell 7.6+**. The module itself supports PowerShell 3.0+.
 
 ```powershell
 # Clone the repository
@@ -41,8 +43,14 @@ cd ConnectWiseAutomateAgent
 # Build the module (output goes to output/)
 ./build.ps1 -Tasks build
 
-# Run all checks (build + analyze + test)
+# Run tests
 ./build.ps1 -Tasks test
+
+# Run all checks (build + analyze + test)
+./Tests/test-local.ps1
+
+# Regenerate markdown command help after changing comment-based help
+./build.ps1 -Tasks docs
 
 # Import from source for quick dev iteration (no build required)
 Import-Module .\source\ConnectWiseAutomateAgent.psd1 -Force
@@ -68,7 +76,7 @@ See [Adding New Functions](AGENTS.md#adding-new-functions) in AGENTS.md for the 
 
 1. Create `Verb-CWAA<Noun>.ps1` in the appropriate `source/Public/` subdirectory
 2. Add the `LT` alias -- ModuleBuilder auto-discovers functions and aliases from `source/Public/`, so no manifest edits are needed for export lists
-3. Rebuild: `./build.ps1 -Tasks build`
+3. Rebuild: `./build.ps1 -Tasks build`. Regenerate docs (`./build.ps1 -Tasks docs`) and add the function to `Docs/Help/ConnectWiseAutomateAgent.md`
 
 ## Versioning
 

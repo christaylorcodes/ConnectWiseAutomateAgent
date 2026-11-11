@@ -10,12 +10,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Script helpers** for scripts run from ConnectWise Automate: `Initialize-CWAAScriptLog`, `Write-CWAAScriptLog`, `New-CWAAScriptOutput`, `ConvertTo-CWAAScriptOutput`, `Invoke-CWAAScript`, `Invoke-CWAAPwsh`, and `New-CWAARemoteMonitor`. See `Examples/ScriptHelper-*.ps1`. Output values are kept to one line (line breaks become ` / `, pipes become `/`). `Invoke-CWAAPwsh` only runs pwsh.exe from Program Files, the PowerShellCore registry install locations, or `-PwshPath`, never from PATH; it reports stderr output as `Status=Error`.
-- `Scripts/Update-PlatyPSDocs.ps1` post-processes PlatyPS output in `Docs/Help` (fills the ProgressAction placeholder and empty RELATED LINKS).
 
 ### Changed
 
+- Build and test tooling synced with the GitHub-Template (Nov 2026): Pester 6, Sampler 0.120, PSResourceGet dependency resolution with version ranges in `RequiredModules.psd1`, and a new `Assert_RequiredModule_Versions` build task. Build tooling now requires PowerShell 7.6+; the module itself still supports PowerShell 3.0+.
+- Markdown command help is now generated with Microsoft.PowerShell.PlatyPS 1.x (`./build.ps1 -Tasks docs`) into `Docs/Help/ConnectWiseAutomateAgent/`. `Docs/Help/ConnectWiseAutomateAgent.md` remains the hand-written function index.
+- CI hardening: actions pinned to commit SHAs (checkout v7, upload-artifact v7, download-artifact v8) and kept current by Dependabot, read-only default permissions, no `${{ }}` interpolation inside scripts, publish concurrency, `Publish-PSResource`, and builds on `fix/`, `chore/`, `docs/` and `feature/` branches. Publishing now fails on a duplicate PSGallery version instead of silently skipping (re-runs still skip).
+- `Invoke-QuickTest.ps1` now uses the pinned modules in `output/RequiredModules`, always tests `source/`, fails on failed blocks/containers or zero tests, and always emits JSON in `-OutputFormat Structured`.
+- `test-local.ps1` now runs tests through the build pipeline (same configuration as CI), also checks tooling scripts for analyzer errors, and restores `PSModulePath` afterwards.
+
 ### Fixed
 
+- Pester configuration in `build.yaml` used the `Script` key, which Sampler ignores; test discovery could fall back to a lowercase `tests` path on case-sensitive runners.
+- Per-function and per-alias export tests in `ConnectWiseAutomateAgent.Module.Tests.ps1` were silently generating zero test cases because their data was defined after discovery.
 - `Register-CWAAHealthCheckTask` now recreates the scheduled task when `-IntervalHours`, `-Server`, or `-LocationID` change, not only when `-InstallerToken` changes.
 - `Register-CWAAHealthCheckTask` now verifies the scheduled task actually exists after registration and logs an error if it doesn't (e.g. removed by AV/policy immediately after creation).
 - `Register-CWAAHealthCheckTask` now correctly writes to the Windows Event Log on registration failure even when the caller has set `$ErrorActionPreference = 'Stop'`.

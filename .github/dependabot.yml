@@ -1,0 +1,20 @@
+# Keeps the SHA-pinned GitHub Actions in .github/workflows current.
+# Dependabot updates both the commit SHA and the trailing "# vX.Y.Z" comment.
+#
+# PowerShell Gallery modules (RequiredModules.psd1) are NOT covered by Dependabot;
+# their version ranges are enforced by the Assert_RequiredModule_Versions build task.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    # Let new releases settle for a week before proposing them
+    cooldown:
+      default-days: 7
+    groups:
+      github-actions:
+        patterns:
+          - '*'
+    commit-message:
+      prefix: ci

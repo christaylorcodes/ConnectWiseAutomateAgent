@@ -22,15 +22,18 @@ BuildWorkflow:
 
   build:
     - Clean
+    - Assert_RequiredModule_Versions
     - Build_ModuleOutput_ModuleBuilder
     - Create_changelog_release_output
 
   test:
+    - Assert_RequiredModule_Versions
     - Pester_Tests_Stop_On_Fail
-    - Pester_if_Code_Coverage_Under_Threshold
 
-  publish:
-    - publish_module_to_gallery
+  docs:
+    - Clean
+    - Build_Module_ModuleBuilder
+    - Generate_Markdown_Help
 
 ####################################################
 #       Sampler Pipeline Configuration             #
@@ -61,18 +64,40 @@ TaskHeader: |
 ####################################################
 
 Pester:
-  Script:
-    - Tests
-  ExcludeTag:
-    - Live
-    - Integration
-  Tag:
-  OutputFile: output/testResults/testResults.xml
-  OutputFormat: NUnitXml
-  PassThru: true
-  CodeCoverageThreshold: 0
-  CodeCoverageOutputFile: output/testResults/JaCoCo_coverage.xml
-  CodeCoverageOutputFileEncoding: ascii
+  Configuration:
+    Run:
+      Path:
+        - Tests
+      ExcludePath:
+    Filter:
+      Tag:
+      ExcludeTag:
+        - Live
+        - Integration
+    Output:
+      Verbosity:
+    CodeCoverage:
+      Path:
+      OutputFormat:
+      CoveragePercentTarget: 0
+      OutputPath: JaCoCo_coverage.xml  # relative to output/testResults
+      OutputEncoding: ascii
+      ExcludeTests:
+    TestResult:
+      OutputFormat: NUnitXml
+      OutputPath:
+      OutputEncoding:
+      TestSuiteName:
+  ExcludeFromCodeCoverage:
+
+####################################################
+#       PlatyPS / Documentation Configuration      #
+####################################################
+
+# Generated markdown command help (./build.ps1 -Tasks docs, task Generate_Markdown_Help in
+# .build/docs.ps1, using Microsoft.PowerShell.PlatyPS 1.x). Files go to <HelpSourceFolder>/<module name>/.
+# No MAML is produced: Get-Help uses the comment-based help in the built module.
+HelpSourceFolder: Docs/Help
 
 ####################################################
 #       PSScriptAnalyzer Configuration            #
@@ -83,3 +108,8 @@ PSScriptAnalyzer:
   Settings: .PSScriptAnalyzerSettings.psd1
   ExcludeRule:
   IncludeRule:
+
+ChangelogConfig:
+  UpdateChangelogOnPrerelease: false
+  FilterByPath:
+    - source/
