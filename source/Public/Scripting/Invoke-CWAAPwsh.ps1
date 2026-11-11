@@ -107,9 +107,11 @@ function Invoke-CWAAPwsh {
                     Write-Error "Specified pwsh.exe path '$PwshPath' does not exist." -ErrorAction Stop
                 }
                 # Launch by full path so a bare name is never resolved through PATH
-                $resolvedPwshPath = (Resolve-Path -LiteralPath $PwshPath -ErrorAction Stop).ProviderPath
-                # Anything else (a .ps1, a .cmd) would run in or through this process instead
-                if ([System.IO.Path]::GetExtension($resolvedPwshPath) -ne '.exe') {
+                $resolvedPwsh = Resolve-Path -LiteralPath $PwshPath -ErrorAction Stop
+                $resolvedPwshPath = $resolvedPwsh.ProviderPath
+                # Anything else (a .ps1, a .cmd, a function: or variable: path) would run in or
+                # through this process, or be looked up by name
+                if ($resolvedPwsh.Provider.Name -ne 'FileSystem' -or [System.IO.Path]::GetExtension($resolvedPwshPath) -ne '.exe') {
                     Write-Error "Specified pwsh.exe path '$PwshPath' is not an executable (.exe)." -ErrorAction Stop
                 }
             }

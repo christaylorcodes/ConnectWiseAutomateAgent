@@ -138,22 +138,26 @@ function Invoke-CWAAScript {
                 Write-Debug "Invoke-CWAAScript: Fetching remote script from '$URL'."
                 # Windows PowerShell 5.1 may not offer TLS 1.2 by default. The setting is
                 # process-wide, so it is put back after the download. 3072 is Tls12, which has
-                # no named value before .NET 4.5.
+                # no named value before .NET 4.5. A value of 0 is SystemDefault, which already
+                # follows the operating system and must not be narrowed to TLS 1.2 only.
                 $previousProtocol = [Net.ServicePointManager]::SecurityProtocol
                 Try {
-                    Try { [Net.ServicePointManager]::SecurityProtocol = $previousProtocol -bor 3072 }
-                    Catch { Write-Debug "Invoke-CWAAScript: Could not enable TLS 1.2: $($_.Exception.Message)" }
+                    if ([int]$previousProtocol -ne 0 -and -not ([int]$previousProtocol -band 3072)) {
+                        Try { [Net.ServicePointManager]::SecurityProtocol = [int]$previousProtocol -bor 3072 }
+                        Catch { Write-Debug "Invoke-CWAAScript: Could not enable TLS 1.2: $($_.Exception.Message)" }
+                    }
                     $remoteScript = Invoke-RestMethod -Uri $URL -ErrorAction Stop
                 }
                 Finally { [Net.ServicePointManager]::SecurityProtocol = $previousProtocol }
-                if ($remoteScript -isnot [string] -or [string]::IsNullOrWhiteSpace($remoteScript)) {
-                    $typeName = if ($null -eq $remoteScript) { 'nothing' } else { $remoteScript.GetType().Name }
-                    throw "Remote script at '$URL' was empty or not text (received $typeName)."
-                }
+                $isText = $remoteScript -is [string]
+                $typeName = if ($null -eq $remoteScript) { 'nothing' } else { $remoteScript.GetType().Name }
                 # Windows PowerShell keeps a UTF-8 byte order mark in the downloaded text (as
                 # U+FEFF, or as three Latin-1 characters when the server sends no charset),
                 # which would otherwise be parsed as part of the first command name.
                 $remoteScript = $remoteScript -replace '\A(\uFEFF|\u00EF\u00BB\u00BF)', ''
+                if (-not $isText -or [string]::IsNullOrWhiteSpace($remoteScript)) {
+                    throw "Remote script at '$URL' was empty or not text (received $typeName)."
+                }
                 $executionBlock = [scriptblock]::Create($remoteScript)
             }
             else {

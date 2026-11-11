@@ -210,6 +210,8 @@
             Finally {
                 # Clean up the temporary XML file
                 Remove-Item -Path $taskFilePath -Force -ErrorAction SilentlyContinue
+                # Put back for the next pipeline record, which captures it again
+                $ErrorActionPreference = $callerErrorAction
             }
 
             if ($failureEventId) {

@@ -643,21 +643,25 @@ Describe 'Register-CWAAHealthCheckTask' {
                 Case        = 'the token matches but the interval differs (PT12H vs default PT6H)'
                 TaskXmlArgs = @{ Interval = 'PT12H' }
                 Parameters  = @{ InstallerToken = 'abc123' }
+                Forced      = $false
             }
             @{
                 Case        = 'token/interval match but the LocationID differs (99 vs 42)'
                 TaskXmlArgs = @{ RepairArguments = "-Server 'https://automate.example.com' -LocationID 99 -InstallerToken 'abc123'" }
                 Parameters  = @{ Server = 'https://automate.example.com'; LocationID = 42; InstallerToken = 'abc123' }
+                Forced      = $false
             }
             @{
                 Case        = 'the token differs by a suffix (abc1234 vs abc123)'
                 TaskXmlArgs = @{ RepairArguments = "-InstallerToken 'abc1234'" }
                 Parameters  = @{ InstallerToken = 'abc123' }
+                Forced      = $false
             }
             @{
                 Case        = 'the Server differs'
                 TaskXmlArgs = @{ RepairArguments = "-Server 'https://old.example.com' -LocationID 42 -InstallerToken 'abc123'" }
                 Parameters  = @{ Server = 'https://automate.example.com'; LocationID = 42; InstallerToken = 'abc123' }
+                Forced      = $false
             }
             @{
                 # -Force on a matching task is reported as a creation, not an update
@@ -777,7 +781,7 @@ Describe 'Register-CWAAHealthCheckTask' {
     }
 
     Context 'when task creation fails' {
-        It 'still writes the failure event log even when the caller sets $ErrorActionPreference = Stop' {
+        It 'writes the failure event log when the error is silenced under $ErrorActionPreference = Stop' {
             InModuleScope 'ConnectWiseAutomateAgent' {
                 Mock schtasks {
                     if ($args -contains '/QUERY' -and $args -contains '/XML') { throw 'Task not found' }
@@ -809,6 +813,33 @@ Describe 'Register-CWAAHealthCheckTask' {
                     Should -Throw '*Failed to create scheduled task*'
 
                 Should -Invoke Write-CWAAEventLog -Times 1 -Exactly -ParameterFilter { $EventId -eq 4022 }
+            }
+        }
+
+        It 'still throws under -ErrorAction Stop for a later pipeline record' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                $script:CWAATestCreateCalls = 0
+                Mock schtasks {
+                    if ($args -contains '/QUERY' -and $args -contains '/XML') { throw 'Task not found' }
+                    elseif ($args -contains '/CREATE') {
+                        $script:CWAATestCreateCalls++
+                        # First record succeeds, second fails
+                        $global:LASTEXITCODE = [int]($script:CWAATestCreateCalls -gt 1)
+                        return 'CREATE'
+                    }
+                    elseif ($args -contains '/QUERY') { $global:LASTEXITCODE = 0; return 'SUCCESS' }
+                }
+                Mock New-CWAABackup {}
+                Mock Remove-Item {}
+                Mock Write-CWAAEventLog {}
+
+                $records = @(
+                    [PSCustomObject]@{ Server = 'https://one.example.com'; LocationID = 1 }
+                    [PSCustomObject]@{ Server = 'https://two.example.com'; LocationID = 2 }
+                )
+                { $records | Register-CWAAHealthCheckTask -InstallerToken 'abc123' -Confirm:$false -ErrorAction Stop } |
+                    Should -Throw '*Failed to create scheduled task*'
+                $script:CWAATestCreateCalls | Should -Be 2 -Because 'the first record succeeds and the second fails'
             }
         }
     }

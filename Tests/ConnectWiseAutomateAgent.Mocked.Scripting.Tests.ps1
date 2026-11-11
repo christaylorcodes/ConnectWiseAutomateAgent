@@ -533,14 +533,46 @@ Describe 'Invoke-CWAAScript' {
         }
     }
 
-    It 'restores the process-wide TLS setting after a URL fetch' {
+    It 'enables TLS 1.2 for the download and restores the process-wide setting when the fetch <Case>' -ForEach @(
+        @{ Case = 'succeeds'; Fails = $false }
+        @{ Case = 'fails'; Fails = $true }
+    ) {
+        InModuleScope 'ConnectWiseAutomateAgent' -Parameters @{ Fails = $Fails } {
+            param($Fails)
+            Mock Invoke-RestMethod {
+                $script:CWAATestProtocolDuringFetch = [Net.ServicePointManager]::SecurityProtocol
+                if ($Fails) { throw 'Network error' }
+                "'x'"
+            }
+            $original = [Net.ServicePointManager]::SecurityProtocol
+            try {
+                # A known value without TLS 1.2, so the result does not depend on earlier tests
+                [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls11
+
+                $null = Invoke-CWAAScript -URL 'https://example.com/tls.ps1'
+
+                $script:CWAATestProtocolDuringFetch | Should -Be ([Net.SecurityProtocolType]'Tls11, Tls12')
+                [Net.ServicePointManager]::SecurityProtocol | Should -Be ([Net.SecurityProtocolType]::Tls11)
+            }
+            finally { [Net.ServicePointManager]::SecurityProtocol = $original }
+        }
+    }
+
+    It 'leaves the operating system default TLS setting alone during the download' {
         InModuleScope 'ConnectWiseAutomateAgent' {
-            Mock Invoke-RestMethod { "'x'" }
-            $before = [Net.ServicePointManager]::SecurityProtocol
+            Mock Invoke-RestMethod {
+                $script:CWAATestProtocolDuringFetch = [Net.ServicePointManager]::SecurityProtocol
+                "'x'"
+            }
+            $original = [Net.ServicePointManager]::SecurityProtocol
+            try {
+                [Net.ServicePointManager]::SecurityProtocol = 0
 
-            $null = Invoke-CWAAScript -URL 'https://example.com/tls.ps1'
+                $null = Invoke-CWAAScript -URL 'https://example.com/tls.ps1'
 
-            [Net.ServicePointManager]::SecurityProtocol | Should -Be $before
+                [int]$script:CWAATestProtocolDuringFetch | Should -Be 0
+            }
+            finally { [Net.ServicePointManager]::SecurityProtocol = $original }
         }
     }
 
@@ -567,6 +599,7 @@ Describe 'Invoke-CWAAScript' {
         @{ Case = 'empty'; Response = ''; Received = 'String' }
         @{ Case = 'whitespace'; Response = "  `n "; Received = 'String' }
         @{ Case = 'not text'; Response = [PSCustomObject]@{ a = 1 }; Received = 'PSCustomObject' }
+        @{ Case = 'only a byte order mark'; Response = [string][char]0xFEFF; Received = 'String' }
     ) {
         # Not named $Body: the mock would bind Invoke-RestMethod's own -Body parameter over it,
         # and every case would then be the "received nothing" one.
@@ -652,13 +685,22 @@ Describe 'Invoke-CWAAPwsh' {
         }
 
         It 'returns Error without running anything when PwshPath is not an .exe' {
-        $notExe = Join-Path $TestDrive 'pwsh.ps1'
-        Set-Content -LiteralPath $notExe -Value "'ran in-process'"
-        Invoke-CWAAPwsh -ScriptBlock { 'test' } -PwshPath $notExe |
-            Should -Match '^Status=Error\|Result=.*is not an executable'
-    }
+            $notExe = Join-Path $TestDrive 'pwsh.ps1'
+            Set-Content -LiteralPath $notExe -Value "'ran in-process'"
+            Invoke-CWAAPwsh -ScriptBlock { 'test' } -PwshPath $notExe |
+                Should -Match '^Status=Error\|Result=.*is not an executable'
+        }
 
-    It 'returns Error when the specified PwshPath does not exist' {
+        It 'returns Error when PwshPath is not a file system path' {
+            function global:CWAATestFake.exe { 'ran in-process' }
+            try {
+                Invoke-CWAAPwsh -ScriptBlock { 'test' } -PwshPath 'function:\CWAATestFake.exe' |
+                    Should -Match '^Status=Error\|Result=.*is not an executable'
+            }
+            finally { Remove-Item -LiteralPath 'function:\CWAATestFake.exe' -ErrorAction SilentlyContinue }
+        }
+
+        It 'returns Error when the specified PwshPath does not exist' {
             $result = Invoke-CWAAPwsh -ScriptBlock { 'test' } -PwshPath 'C:\nonexistent\pwsh.exe'
             $result | Should -Match '^Status=Error\|Result=Specified pwsh\.exe path .* does not exist'
         }
@@ -761,7 +803,7 @@ param([string]$Name, [int]$Count, [switch]$Force, [string]$Dir, [string]$Quote, 
 
         It 'passes hostile string values as literal text' {
             # Typographic quotes also delimit strings in PowerShell; --% is the stop-parsing token
-            $smartQuoted = "a$([char]0x2019); 'INJECTED'; $([char]0x2018)b"
+            $smartQuoted = "a$([char]0x2019); 'INJECTED'; $([char]0x2018)b$([char]0x201A); 'INJECTED'; $([char]0x201B)c"
             $metaCharacters = '$env:USERNAME $(1+1) `t ; & > <'
             $parameters = @{
                 Name  = $smartQuoted
