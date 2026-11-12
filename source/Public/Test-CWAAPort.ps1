@@ -53,23 +53,14 @@ function Test-CWAAPort {
                 [parameter(Position = 0)]
                 [string]$ComputerName,
 
-                [parameter(Mandatory = $False)]
-                [System.Net.IPAddress]$IPAddress,
-
                 [parameter(Mandatory = $True, Position = 1)]
                 [int]$Port
             )
 
-            $RemoteServer = if ([string]::IsNullOrEmpty($ComputerName)) { $IPAddress } else { $ComputerName }
-            if ([string]::IsNullOrEmpty($RemoteServer)) {
-                Write-Error "No ComputerName or IPAddress was provided to test."
-                return
-            }
-
             $tcpClient = New-Object System.Net.Sockets.TcpClient
             Try {
-                Write-Output "Connecting to $($RemoteServer):$Port (TCP).."
-                $tcpClient.Connect($RemoteServer, $Port)
+                Write-Output "Connecting to $($ComputerName):$Port (TCP).."
+                $tcpClient.Connect($ComputerName, $Port)
                 Write-Output 'Connection successful'
             }
             Catch {
@@ -91,14 +82,14 @@ function Test-CWAAPort {
             }
         }
 
-        if (-not ($Quiet) -or (($TrayPort) -ge 1 -and ($TrayPort) -le 65530)) {
-            if (-not ($TrayPort) -or -not (($TrayPort) -ge 1 -and ($TrayPort) -le 65530)) {
+        $trayPortInRange = $TrayPort -ge 1 -and $TrayPort -le 65530
+        if (-not ($Quiet) -or $trayPortInRange) {
+            if (-not $trayPortInRange) {
                 # Discover TrayPort from agent configuration if not provided
                 $TrayPort = (Get-CWAAInfo -EA 0 -Verbose:$False -WhatIf:$False -Confirm:$False -Debug:$False | Select-Object -Expand TrayPort -EA 0)
             }
             if (-not ($TrayPort) -or $TrayPort -notmatch '^\d+$') { $TrayPort = 42000 }
 
-            [array]$processes = @()
             # Get all processes using the TrayPort (default 42000)
             Try {
                 $netstatOutput = Get-CWAANetstat | Select-String -Pattern " .*[0-9\.]+:$($TrayPort).*[0-9\.]+:[0-9]+ .*?([0-9]+)" -EA 0
@@ -107,10 +98,9 @@ function Test-CWAAPort {
                 Write-Output 'Error calling netstat.exe.'
                 $netstatOutput = $null
             }
-            foreach ($netstatLine in $netstatOutput) {
-                $processes += ($netstatLine -split ' {4,}')[-1]
-            }
-            $processes = $processes | Where-Object { $_ -gt 0 -and $_ -match '^\d+$' } | Sort-Object | Get-Unique
+            # The owning process ID is the last column of each matching netstat line
+            $processes = @(foreach ($netstatLine in $netstatOutput) { ($netstatLine -split ' {4,}')[-1] }) |
+                Where-Object { $_ -gt 0 -and $_ -match '^\d+$' } | Sort-Object | Get-Unique
 
             if (($processes)) {
                 if (-not ($Quiet)) {
@@ -134,15 +124,14 @@ function Test-CWAAPort {
         }
 
         foreach ($serverEntry in $Server) {
+            $cleanServerAddress = ($serverEntry -replace 'https?://', '').Trim()
             if ($Quiet) {
-                $cleanServerAddress = ($serverEntry -replace 'https?://', '' | ForEach-Object { $_.Trim() })
                 Test-Connection $cleanServerAddress -Quiet
                 return
             }
 
             if ($serverEntry -match $Script:CWAAServerValidationRegex) {
                 Try {
-                    $cleanServerAddress = ($serverEntry -replace 'https?://', '' | ForEach-Object { $_.Trim() })
                     Write-Output 'Testing connectivity to required TCP ports:'
                     TestPort -ComputerName $cleanServerAddress -Port 70
                     TestPort -ComputerName $cleanServerAddress -Port 80

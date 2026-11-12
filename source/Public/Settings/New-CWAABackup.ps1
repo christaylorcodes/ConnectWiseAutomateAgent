@@ -93,7 +93,6 @@ function New-CWAABackup {
                 if ($LASTEXITCODE -ne 0) {
                     Write-Warning "reg.exe import returned exit code $LASTEXITCODE. Registry backup restoration may have failed."
                 }
-                $True | Out-Null
             }
             Catch {
                 Write-Error "There was a problem backing up the LTSvc registry keys. $_"

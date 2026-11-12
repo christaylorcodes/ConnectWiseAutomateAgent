@@ -7,7 +7,7 @@
 .DESCRIPTION
     Tests ConvertTo/From-CWAASecurity edge cases, Test-CWAADownloadIntegrity,
     Remove-CWAAFolderRecursive, Resolve-CWAAServer, Wait-CWAACondition,
-    Test-CWAADotNetPrerequisite, and Invoke-CWAAMsiInstaller using Pester mocks.
+    Test-CWAADotNetPrerequisite, Invoke-CWAAMsiInstaller, and Test-CWAAUrlAvailable using Pester mocks.
 
     Supports dual-mode testing via $env:CWAA_TEST_LOAD_METHOD.
 
@@ -715,5 +715,61 @@ Describe 'Confirm-CWAADependencyService' {
             Should -Invoke Set-Service -Scope It -Times 0
             Should -Invoke Start-Service -Scope It -Times 0
         }
+    }
+}
+
+# -----------------------------------------------------------------------------
+
+Describe 'Test-CWAAUrlAvailable' {
+
+    BeforeAll {
+        # A real loopback listener: [System.Net.WebRequest] is a static .NET call that Pester cannot mock.
+        $portProbe = New-Object System.Net.Sockets.TcpListener ([System.Net.IPAddress]::Loopback, 0)
+        $portProbe.Start()
+        $script:UrlTestPort = $portProbe.LocalEndpoint.Port
+        $portProbe.Stop()
+
+        $script:UrlTestListener = New-Object System.Net.HttpListener
+        $script:UrlTestListener.Prefixes.Add("http://localhost:$($script:UrlTestPort)/")
+        $script:UrlTestListener.Start()
+
+        # Answers exactly one request with the given status code from a background runspace.
+        function Start-UrlTestResponse {
+            param([int]$StatusCode)
+            $responder = [powershell]::Create().AddScript({
+                    param($listener, $statusCode)
+                    $context = $listener.GetContext()
+                    $context.Response.StatusCode = $statusCode
+                    $context.Response.Close()
+                }).AddArgument($script:UrlTestListener).AddArgument($StatusCode)
+            $null = $responder.BeginInvoke()
+            $responder
+        }
+    }
+
+    AfterAll {
+        $script:UrlTestListener.Stop()
+        $script:UrlTestListener.Close()
+    }
+
+    It 'returns true when the URL answers 200' {
+        $responder = Start-UrlTestResponse -StatusCode 200
+        $result = InModuleScope 'ConnectWiseAutomateAgent' -ArgumentList "http://localhost:$($script:UrlTestPort)/file.msi" {
+            param($testUrl)
+            Test-CWAAUrlAvailable -Url $testUrl
+        }
+        $responder.Dispose()
+        $result | Should -BeTrue
+    }
+
+    It 'lets the request failure reach the caller when the URL answers 404' {
+        $responder = Start-UrlTestResponse -StatusCode 404
+        {
+            InModuleScope 'ConnectWiseAutomateAgent' -ArgumentList "http://localhost:$($script:UrlTestPort)/missing.msi" {
+                param($testUrl)
+                Test-CWAAUrlAvailable -Url $testUrl
+            }
+        } | Should -Throw '*404*'
+        $responder.Dispose()
     }
 }

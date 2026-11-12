@@ -92,8 +92,8 @@
             }
 
             if ($agentInfo) {
-                # Extract server address
-                $serverAddress = ($agentInfo | Select-Object -Expand 'Server' -EA 0) -join '|'
+                $installedServers = @($agentInfo | Select-Object -Expand 'Server' -EA 0)
+                $serverAddress = $installedServers -join '|'
 
                 # Parse last contact timestamp
                 Try {
@@ -114,7 +114,6 @@
                 # If a Server was provided, check if any matches the installed configuration.
                 # Server is string[] to handle Get-CWAAInfo pipeline output (which returns Server as an array).
                 if ($Server) {
-                    $installedServers = @($agentInfo | Select-Object -Expand 'Server' -EA 0)
                     $cleanProvided = @($Server | ForEach-Object { $_ -replace 'https?://', '' -replace '/$', '' })
                     $serverMatch = $False
                     foreach ($installedServer in $installedServers) {
@@ -128,9 +127,8 @@
 
                 # Optionally test server connectivity
                 if ($TestServerConnectivity) {
-                    $serversToTest = @($agentInfo | Select-Object -Expand 'Server' -EA 0)
-                    if ($serversToTest) {
-                        $serverReachable = Test-CWAAServerConnectivity -Server $serversToTest[0] -Quiet
+                    if ($installedServers) {
+                        $serverReachable = Test-CWAAServerConnectivity -Server $installedServers[0] -Quiet
                     }
                     else {
                         $serverReachable = $False

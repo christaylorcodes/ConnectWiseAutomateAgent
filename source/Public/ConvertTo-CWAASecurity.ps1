@@ -52,18 +52,10 @@ function ConvertTo-CWAASecurity {
             $Key = $DefaultKey
         }
 
-        try {
-            $inputBytes = [System.Text.Encoding]::UTF8.GetBytes($InputString)
-        }
-        catch {
-            try { $inputBytes = [System.Text.Encoding]::ASCII.GetBytes($InputString) } catch {
-                Write-Debug "Failed to convert InputString to byte array: $_"
-            }
-        }
-
         Write-Debug "Attempting Encode for '$($InputString)' with Key '$($Key)'"
         $encodedString = ''
         try {
+            $inputBytes = [System.Text.Encoding]::UTF8.GetBytes($InputString)
             $tripleDesProvider = New-Object System.Security.Cryptography.TripleDESCryptoServiceProvider
             $tripleDesProvider.key = (New-Object Security.Cryptography.MD5CryptoServiceProvider).ComputeHash([Text.Encoding]::UTF8.GetBytes($Key))
             $tripleDesProvider.IV = $_initializationVector

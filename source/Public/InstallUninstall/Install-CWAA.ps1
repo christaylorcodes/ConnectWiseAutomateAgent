@@ -157,9 +157,10 @@ function Install-CWAA {
         }
         if (Test-Path -PathType Leaf -Path $curlog) {
             if ($PSCmdlet.ShouldProcess($curlog, 'Rotate existing log file')) {
-                Get-Item -LiteralPath $curlog -EA 0 | Where-Object { $_ } | ForEach-Object {
-                    Rename-Item -Path ($_ | Select-Object -Expand FullName -EA 0) -NewName "$logfile-$(Get-Date ($_ | Select-Object -Expand LastWriteTime -EA 0) -Format 'yyyyMMddHHmmss').log" -Force -Confirm:$False -WhatIf:$False
-                    Remove-Item -Path ($_ | Select-Object -Expand FullName -EA 0) -Force -EA 0 -Confirm:$False -WhatIf:$False
+                $existingLog = Get-Item -LiteralPath $curlog -EA 0
+                if ($existingLog) {
+                    Rename-Item -Path $existingLog.FullName -NewName "$logfile-$(Get-Date $existingLog.LastWriteTime -Format 'yyyyMMddHHmmss').log" -Force -Confirm:$False -WhatIf:$False
+                    Remove-Item -Path $existingLog.FullName -Force -EA 0 -Confirm:$False -WhatIf:$False
                 }
             }
         }
@@ -181,9 +182,8 @@ function Install-CWAA {
         if ($serverResult) {
             $serverUrl = $serverResult.ServerUrl
             $serverVersion = $serverResult.ServerVersion
-        }
-
-        if ($serverResult) {
+            # v240.331+ servers deliver InstallerToken deployments as a ZIP containing MSI+MST
+            $useZipInstaller = ($PSCmdlet.ParameterSetName -eq 'installertoken') -and [System.Version]$serverVersion -ge [System.Version]$Script:CWAAVersionZipInstaller
             $InstallMSI = 'Agent_Install.msi'
 
             # Server version detection and installer URL selection:
@@ -195,7 +195,7 @@ function Install-CWAA {
             # - Pre-110.374: Legacy deployment URL with per-location MSI targeting
             if ($PSCmdlet.ParameterSetName -eq 'installertoken') {
                 $installer = "$serverUrl/LabTech/Deployment.aspx?InstallerToken=$InstallerToken"
-                if ([System.Version]$serverVersion -ge [System.Version]$Script:CWAAVersionZipInstaller) {
+                if ($useZipInstaller) {
                     Write-Debug "New MSI Installer Format Needed"
                     $InstallMSI = 'Agent_Install.zip'
                 }
@@ -245,7 +245,7 @@ function Install-CWAA {
                 Elseif (Test-Path "$InstallBase\Installer\$InstallMSI") {
                     $GoodServer = $serverUrl
                     Write-Verbose "$InstallMSI downloaded successfully from server $serverUrl."
-                    if (($PSCmdlet.ParameterSetName -eq 'installertoken') -and [System.Version]$serverVersion -ge [System.Version]$Script:CWAAVersionZipInstaller) {
+                    if ($useZipInstaller) {
                         Expand-Archive "$InstallBase\Installer\$InstallMSI" -DestinationPath "$InstallBase\Installer" -Force
                         Remove-Item "$InstallBase\Installer\$InstallMSI" -ErrorAction SilentlyContinue -Force -Confirm:$False
                         $InstallMSI = 'Agent_Install.msi'
@@ -283,15 +283,12 @@ function Install-CWAA {
                     $GoodTrayPort = $Null
                     $TestTrayPort = $TrayPort
                     For ($i = 0; $i -le 10; $i++) {
-                        if (-not $GoodTrayPort) {
-                            if (-not (Test-CWAAPort -TrayPort $TestTrayPort -Quiet)) {
-                                $TestTrayPort++
-                                if ($TestTrayPort -gt $Script:CWAATrayPortMax) { $TestTrayPort = $Script:CWAATrayPortMin }
-                            }
-                            else {
-                                $GoodTrayPort = $TestTrayPort
-                            }
+                        if (Test-CWAAPort -TrayPort $TestTrayPort -Quiet) {
+                            $GoodTrayPort = $TestTrayPort
+                            break
                         }
+                        $TestTrayPort++
+                        if ($TestTrayPort -gt $Script:CWAATrayPortMax) { $TestTrayPort = $Script:CWAATrayPortMin }
                     }
                     if ($GoodTrayPort -and $GoodTrayPort -ne $TrayPort -and $GoodTrayPort -ge 1 -and $GoodTrayPort -le 65535) {
                         Write-Verbose "TrayPort $TrayPort is in use. Changing TrayPort to $GoodTrayPort"
@@ -304,12 +301,12 @@ function Install-CWAA {
                 $installerArguments = ($(
                     "/i `"$InstallBase\Installer\$InstallMSI`""
                     "SERVERADDRESS=$GoodServer"
-                    if (($PSCmdlet.ParameterSetName -eq 'installertoken') -and [System.Version]$serverVersion -ge [System.Version]$Script:CWAAVersionZipInstaller) { "TRANSFORMS=`"Agent_Install.mst`"" }
+                    if ($useZipInstaller) { "TRANSFORMS=`"Agent_Install.mst`"" }
                     if ($ServerPassword -and $ServerPassword -match '.') { "SERVERPASS=`"$ServerPassword`"" }
                     if ($LocationID -and $LocationID -match '^\d+$') { "LOCATION=$LocationID" }
                     if ($TrayPort -and $TrayPort -ne $Script:CWAATrayPortDefault) { "SERVICEPORT=$TrayPort" }
                     "/qn"
-                    "/l `"$InstallBase\$logfile.log`""
+                    "/l `"$curlog`""
                 ) | Where-Object { $_ }) -join ' '
 
                 Try {
@@ -322,8 +319,7 @@ function Install-CWAA {
                         Write-Verbose 'Proxy Configuration Needed. Applying Proxy Settings to Agent Installation.'
                         if ($PSCmdlet.ShouldProcess($Script:LTProxy.ProxyServerURL, 'Configure Agent Proxy')) {
                             $serviceRunning = Wait-CWAACondition -Condition {
-                                $count = ('LTService') | Get-Service -EA 0 | Where-Object { $_.Status -eq 'Running' } | Measure-Object | Select-Object -Expand Count
-                                $count -eq 1
+                                [bool](Get-Service 'LTService' -EA 0 | Where-Object { $_.Status -eq 'Running' })
                             } -TimeoutSeconds $Script:CWAAServiceStartTimeoutSec -IntervalSeconds 2 -Activity 'LTService initial startup'
                             if ($serviceRunning) {
                                 Write-Debug "LTService Initial Startup Successful."
@@ -370,9 +366,11 @@ function Install-CWAA {
 
                     $tempServiceInfo = Get-CWAAInfo -EA 0 -Verbose:$False -WhatIf:$False -Confirm:$False -Debug:$False
                     if ($tempServiceInfo) {
-                        if (($tempServiceInfo | Select-Object -Expand 'ID' -EA 0) -ge 1) {
-                            Write-Output "Automate agent has been installed successfully. Agent ID: $($tempServiceInfo | Select-Object -Expand 'ID' -EA 0) LocationID: $($tempServiceInfo | Select-Object -Expand 'LocationID' -EA 0)"
-                            Write-CWAAEventLog -EventId 1000 -EntryType Information -Message "Agent installed successfully. Agent ID: $($tempServiceInfo | Select-Object -Expand 'ID' -EA 0), LocationID: $($tempServiceInfo | Select-Object -Expand 'LocationID' -EA 0)"
+                        $installedAgentId = $tempServiceInfo | Select-Object -Expand 'ID' -EA 0
+                        $installedLocationId = $tempServiceInfo | Select-Object -Expand 'LocationID' -EA 0
+                        if ($installedAgentId -ge 1) {
+                            Write-Output "Automate agent has been installed successfully. Agent ID: $installedAgentId LocationID: $installedLocationId"
+                            Write-CWAAEventLog -EventId 1000 -EntryType Information -Message "Agent installed successfully. Agent ID: $installedAgentId, LocationID: $installedLocationId"
                         }
                         Elseif (-not $NoWait) {
                             Write-Error "Automate agent installation completed but agent failed to register within expected period." -ErrorAction Continue
@@ -384,8 +382,8 @@ function Install-CWAA {
                     }
                     else {
                         if ($Error.Count -gt $errorCountAtStart -or (-not $NoWait)) {
-                            Write-Error "There was an error installing Automate agent. Check the log, $InstallBase\$logfile.log"
-                            Write-CWAAEventLog -EventId 1002 -EntryType Error -Message "Agent installation failed. Check log: $InstallBase\$logfile.log"
+                            Write-Error "There was an error installing Automate agent. Check the log, $curlog"
+                            Write-CWAAEventLog -EventId 1002 -EntryType Error -Message "Agent installation failed. Check log: $curlog"
                             Return
                         }
                         else {

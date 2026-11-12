@@ -29,8 +29,6 @@ function Start-CWAA {
 
     Begin {
         Write-Debug "Starting $($MyInvocation.InvocationName)"
-        # Identify processes that are using the tray port
-        [array]$processes = @()
         $Port = (Get-CWAAInfo -EA 0 -Verbose:$False -WhatIf:$False -Confirm:$False -Debug:$False | Select-Object -Expand TrayPort -EA 0)
         if (-not ($Port)) { $Port = '42000' }
         $startedSvcCount = 0
@@ -43,26 +41,26 @@ function Start-CWAA {
         Confirm-CWAADependencyService
         Try {
             if ((('LTService') | Get-Service -EA 0 | Where-Object { $_.Status -eq 'Stopped' } | Measure-Object | Select-Object -Expand Count) -gt 0) {
-                Try { $netstat = & "$env:windir\system32\netstat.exe" -a -o -n 2>'' | Select-String -Pattern " .*[0-9\.]+:$($Port).*[0-9\.]+:[0-9]+ .*?([0-9]+)" -EA 0 }
+                # Identify processes that are using the tray port
+                [array]$processes = @()
+                Try { $netstat = Get-CWAANetstat | Select-String -Pattern " .*[0-9\.]+:$($Port).*[0-9\.]+:[0-9]+ .*?([0-9]+)" -EA 0 }
                 Catch { Write-Debug 'Failed to call netstat.exe.'; $netstat = $null }
                 Foreach ($line in $netstat) {
                     $processes += ($line -split ' {4,}')[-1]
                 }
                 $processes = $processes | Where-Object { $_ -gt 0 -and $_ -match '^\d+$' } | Sort-Object | Get-Unique
-                if ($processes) {
-                    Foreach ($processId in $processes) {
-                        Write-Output "Process ID:$processId is using port $Port. Killing process."
-                        Try { Stop-Process -Id $processId -Force -Verbose -EA Stop }
-                        Catch {
-                            Write-Warning "There was an issue killing process: $processId"
-                            Write-Warning "This generally means that a 'protected application' is using this port."
-                            # TrayPort wraps within the 42000-42009 range. If a protected process holds
-                            # the current port, increment and wrap back to 42000 after 42009.
-                            $newPort = [int]$Port + 1
-                            if ($newPort -gt $Script:CWAATrayPortMax) { $newPort = $Script:CWAATrayPortMin }
-                            Write-Warning "Setting tray port to $newPort."
-                            New-ItemProperty -Path $Script:CWAARegistryRoot -Name TrayPort -PropertyType String -Value $newPort -Force -WhatIf:$False -Confirm:$False | Out-Null
-                        }
+                Foreach ($processId in $processes) {
+                    Write-Output "Process ID:$processId is using port $Port. Killing process."
+                    Try { Stop-Process -Id $processId -Force -Verbose -EA Stop }
+                    Catch {
+                        Write-Warning "There was an issue killing process: $processId"
+                        Write-Warning "This generally means that a 'protected application' is using this port."
+                        # TrayPort wraps within the 42000-42009 range. If a protected process holds
+                        # the current port, increment and wrap back to 42000 after 42009.
+                        $newPort = [int]$Port + 1
+                        if ($newPort -gt $Script:CWAATrayPortMax) { $newPort = $Script:CWAATrayPortMin }
+                        Write-Warning "Setting tray port to $newPort."
+                        New-ItemProperty -Path $Script:CWAARegistryRoot -Name TrayPort -PropertyType String -Value $newPort -Force -WhatIf:$False -Confirm:$False | Out-Null
                     }
                 }
             }

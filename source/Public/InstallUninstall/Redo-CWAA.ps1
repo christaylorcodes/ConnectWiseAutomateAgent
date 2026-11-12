@@ -106,21 +106,17 @@ function Redo-CWAA {
     }
 
     Process {
+        if (-not $Server -and $Settings) {
+            $Server = $Settings | Select-Object -Expand 'Server' -EA 0
+        }
         if (-not $Server) {
-            if ($Settings) {
-                $Server = $Settings | Select-Object -Expand 'Server' -EA 0
-            }
-            if (-not $Server) {
-                $Server = Read-Host -Prompt 'Provide the URL to your Automate server (https://automate.domain.com):'
-            }
+            $Server = Read-Host -Prompt 'Provide the URL to your Automate server (https://automate.domain.com):'
+        }
+        if (-not $LocationID -and $Settings) {
+            $LocationID = $Settings | Select-Object -Expand LocationID -EA 0
         }
         if (-not $LocationID) {
-            if ($Settings) {
-                $LocationID = $Settings | Select-Object -Expand LocationID -EA 0
-            }
-            if (-not $LocationID) {
-                $LocationID = Read-Host -Prompt 'Provide the LocationID'
-            }
+            $LocationID = Read-Host -Prompt 'Provide the LocationID'
         }
         if (-not $LocationID) {
             $LocationID = '1'
@@ -164,13 +160,22 @@ function Redo-CWAA {
         }
 
         Write-Verbose "Starting: Install-CWAA -Server $($ServerList -join ',') $PasswordPresent -LocationID $LocationID -Hide:`$$Hide $RenameArg"
+        $installParameters = @{
+            Server     = $ServerList
+            LocationID = $LocationID
+            Hide       = $Hide
+            Rename     = $Rename
+            SkipDotNet = $SkipDotNet
+            Force      = $True
+        }
+        if ($PSCmdlet.ParameterSetName -eq 'installertoken') {
+            $installParameters.InstallerToken = $InstallerToken
+        }
+        else {
+            $installParameters.ServerPassword = $ServerPassword
+        }
         Try {
-            if ($PSCmdlet.ParameterSetName -ne 'installertoken') {
-                Install-CWAA -Server $ServerList -ServerPassword $ServerPassword -LocationID $LocationID -Hide:$Hide -Rename $Rename -SkipDotNet:$SkipDotNet -Force
-            }
-            else {
-                Install-CWAA -Server $ServerList -InstallerToken $InstallerToken -LocationID $LocationID -Hide:$Hide -Rename $Rename -SkipDotNet:$SkipDotNet -Force
-            }
+            Install-CWAA @installParameters
         }
         Catch {
             Write-CWAAEventLog -EventId 1022 -EntryType Error -Message "Agent reinstall failed during install phase. Error: $($_.Exception.Message)"

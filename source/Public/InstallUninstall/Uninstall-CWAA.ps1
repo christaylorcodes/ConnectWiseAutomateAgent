@@ -100,7 +100,7 @@
             }
         }
 
-        $BasePath = Get-CWAAInfo -EA 0 -Verbose:$False -WhatIf:$False -Confirm:$False -Debug:$False | Select-Object -Expand BasePath -EA 0
+        $BasePath = $serviceInfo | Select-Object -Expand BasePath -EA 0
         if (-not $BasePath) { $BasePath = $Script:CWAAInstallPath }
 
         New-PSDrive HKU Registry HKEY_USERS -ErrorAction SilentlyContinue -WhatIf:$False -Confirm:$False -Debug:$False | Out-Null
@@ -148,7 +148,7 @@
 
     Process {
         if (-not $Server) {
-            $Server = Get-CWAAInfo -EA 0 -Verbose:$False -WhatIf:$False -Confirm:$False -Debug:$False | Select-Object -Expand 'Server' -EA 0
+            $Server = $serviceInfo | Select-Object -Expand 'Server' -EA 0
         }
         if (-not $Server) {
             $Server = Read-Host -Prompt 'Provide the URL to your Automate server (https://automate.domain.com):'
@@ -166,16 +166,7 @@
         Try {
             # Download the uninstall MSI (same URL for all server versions)
             $installer = "$serverUrl/LabTech/Service/LabTechRemoteAgent.msi"
-            $installerTest = [System.Net.WebRequest]::Create($installer)
-            if (($Script:LTProxy.Enabled) -eq $True) {
-                Write-Debug "Proxy Configuration Needed. Applying Proxy Settings to request."
-                $installerTest.Proxy = $Script:LTWebProxy
-            }
-            $installerTest.KeepAlive = $False
-            $installerTest.ProtocolVersion = '1.0'
-            $installerResult = $installerTest.GetResponse()
-            $installerTest.Abort()
-            if ($installerResult.StatusCode -ne 200) {
+            if (-not (Test-CWAAUrlAvailable -Url $installer)) {
                 Write-Warning "Unable to download Agent_Uninstall.msi from server $serverUrl."
                 return
             }
@@ -191,16 +182,7 @@
 
             # Download the uninstall EXE (same URI for all versions)
             $uninstaller = "$serverUrl/LabTech/Service/LabUninstall.exe"
-            $uninstallerTest = [System.Net.WebRequest]::Create($uninstaller)
-            if (($Script:LTProxy.Enabled) -eq $True) {
-                Write-Debug "Proxy Configuration Needed. Applying Proxy Settings to request."
-                $uninstallerTest.Proxy = $Script:LTWebProxy
-            }
-            $uninstallerTest.KeepAlive = $False
-            $uninstallerTest.ProtocolVersion = '1.0'
-            $uninstallerResult = $uninstallerTest.GetResponse()
-            $uninstallerTest.Abort()
-            if ($uninstallerResult.StatusCode -ne 200) {
+            if (-not (Test-CWAAUrlAvailable -Url $uninstaller)) {
                 Write-Warning "Unable to download Agent_Uninstall from server."
                 return
             }
@@ -353,11 +335,14 @@
 
             if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Verifying uninstall' -PercentComplete 100 }
             if ($WhatIfPreference -ne $True) {
-                # Post Uninstall Check
-                If ((Test-Path $Script:CWAAInstallPath) -or (Test-Path "${env:windir}\temp\_ltupdate") -or (Test-Path registry::HKLM\Software\LabTech\Service) -or (Test-Path registry::HKLM\Software\WOW6432Node\Labtech\Service)) {
+                # Post Uninstall Check: give lingering removals one 10-second grace period
+                $remnantsDetected = {
+                    (Test-Path $Script:CWAAInstallPath) -or (Test-Path "${env:windir}\temp\_ltupdate") -or (Test-Path registry::HKLM\Software\LabTech\Service) -or (Test-Path registry::HKLM\Software\WOW6432Node\Labtech\Service)
+                }
+                If (& $remnantsDetected) {
                     Start-Sleep -Seconds 10
                 }
-                If ((Test-Path $Script:CWAAInstallPath) -or (Test-Path "${env:windir}\temp\_ltupdate") -or (Test-Path registry::HKLM\Software\LabTech\Service) -or (Test-Path registry::HKLM\Software\WOW6432Node\Labtech\Service)) {
+                If (& $remnantsDetected) {
                     Write-Error "Remnants of previous install still detected after uninstall attempt. Please reboot and try again."
                     Write-CWAAEventLog -EventId 1011 -EntryType Warning -Message 'Remnants of previous install detected after uninstall. Reboot recommended.'
                 }

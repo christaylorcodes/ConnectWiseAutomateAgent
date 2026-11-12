@@ -26,51 +26,45 @@ function Hide-CWAAAddRemove {
 
     Begin {
         Write-Debug "Starting $($MyInvocation.InvocationName)"
-        $RegRoots = $Script:CWAAInstallerProductKeys
-        $PublisherRegRoots = $Script:CWAAUninstallKeys
         $RegEntriesFound = 0
         $RegEntriesChanged = 0
     }
 
     Process {
         Try {
-            foreach ($RegRoot in $RegRoots) {
-                if (Test-Path $RegRoot) {
-                    if (Get-ItemProperty $RegRoot -Name HiddenProductName -ErrorAction SilentlyContinue) {
-                        if (!(Get-ItemProperty $RegRoot -Name ProductName -ErrorAction SilentlyContinue)) {
-                            Write-Verbose 'Automate agent found with HiddenProductName value.'
-                            Try {
-                                Rename-ItemProperty $RegRoot -Name HiddenProductName -NewName ProductName
-                            }
-                            Catch {
-                                Write-Error "There was an error renaming the registry value. $($_)" -ErrorAction Stop
-                            }
+            foreach ($RegRoot in $Script:CWAAInstallerProductKeys) {
+                if ((Test-Path $RegRoot) -and (Get-ItemProperty $RegRoot -Name HiddenProductName -ErrorAction SilentlyContinue)) {
+                    if (!(Get-ItemProperty $RegRoot -Name ProductName -ErrorAction SilentlyContinue)) {
+                        Write-Verbose 'Automate agent found with HiddenProductName value.'
+                        Try {
+                            Rename-ItemProperty $RegRoot -Name HiddenProductName -NewName ProductName
                         }
-                        else {
-                            Write-Verbose 'Automate agent found with unused HiddenProductName value.'
-                            Try {
-                                Remove-ItemProperty $RegRoot -Name HiddenProductName -EA 0 -Confirm:$False -WhatIf:$False -Force
-                            }
-                            Catch {
-                                Write-Debug "Failed to remove unused HiddenProductName from '$RegRoot': $($_)"
-                            }
+                        Catch {
+                            Write-Error "There was an error renaming the registry value. $($_)" -ErrorAction Stop
+                        }
+                    }
+                    else {
+                        Write-Verbose 'Automate agent found with unused HiddenProductName value.'
+                        Try {
+                            Remove-ItemProperty $RegRoot -Name HiddenProductName -EA 0 -Confirm:$False -WhatIf:$False -Force
+                        }
+                        Catch {
+                            Write-Debug "Failed to remove unused HiddenProductName from '$RegRoot': $($_)"
                         }
                     }
                 }
             }
 
-            foreach ($RegRoot in $PublisherRegRoots) {
+            foreach ($RegRoot in $Script:CWAAUninstallKeys) {
                 if (Test-Path $RegRoot) {
                     $RegKey = Get-Item $RegRoot -ErrorAction SilentlyContinue
                     if ($RegKey) {
                         $RegEntriesFound++
                         if ($PSCmdlet.ShouldProcess("$($RegRoot)", "Set Registry Values to Hide $($RegKey.GetValue('DisplayName'))")) {
                             $RegEntriesChanged++
-                            @('SystemComponent') | ForEach-Object {
-                                if (($RegKey.GetValue("$($_)")) -ne 1) {
-                                    Write-Verbose "Setting $($RegRoot)\$($_)=1"
-                                    Set-ItemProperty $RegRoot -Name "$($_)" -Value 1 -Type DWord -WhatIf:$False -Confirm:$False -Verbose:$False
-                                }
+                            if ($RegKey.GetValue('SystemComponent') -ne 1) {
+                                Write-Verbose "Setting $($RegRoot)\SystemComponent=1"
+                                Set-ItemProperty $RegRoot -Name 'SystemComponent' -Value 1 -Type DWord -WhatIf:$False -Confirm:$False -Verbose:$False
                             }
                         }
                     }

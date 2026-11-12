@@ -65,10 +65,8 @@ function Update-CWAA {
     }
 
     Process {
-        if (-not $Server) {
-            if ($Settings) {
-                $Server = $Settings | Select-Object -Expand 'Server' -EA 0
-            }
+        if (-not $Server -and $Settings) {
+            $Server = $Settings | Select-Object -Expand 'Server' -EA 0
         }
 
         # Resolve the first reachable server and its advertised version
@@ -113,16 +111,7 @@ function Update-CWAA {
                 if (-not (Test-Path -PathType Container -Path $updaterPath)) {
                     New-Item $updaterPath -type directory -ErrorAction SilentlyContinue | Out-Null
                 }
-                $updaterTest = [System.Net.WebRequest]::Create($updater)
-                if (($Script:LTProxy.Enabled) -eq $True) {
-                    Write-Debug "Proxy Configuration Needed. Applying Proxy Settings to request."
-                    $updaterTest.Proxy = $Script:LTWebProxy
-                }
-                $updaterTest.KeepAlive = $False
-                $updaterTest.ProtocolVersion = '1.0'
-                $updaterResult = $updaterTest.GetResponse()
-                $updaterTest.Abort()
-                if ($updaterResult.StatusCode -ne 200) {
+                if (-not (Test-CWAAUrlAvailable -Url $updater)) {
                     Write-Warning "Unable to download LabtechUpdate.exe version $Version from server $GoodServer."
                     $GoodServer = $null
                 }

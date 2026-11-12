@@ -164,14 +164,13 @@
 
                     if ($PSCmdlet.ShouldProcess('LTService', "Reinstall agent for server mismatch (current: $($currentServers -join ', '), expected: $Server)")) {
                         Clear-CWAAInstallerArtifacts
+                        $actionTaken = 'Reinstall'
                         Try {
                             Redo-CWAA -Server $Server -LocationID $LocationID -InstallerToken $InstallerToken
-                            $actionTaken = 'Reinstall'
                             $resultMessage = "Reinstalled agent to correct server: $Server"
                             Write-CWAAEventLog -EventId 4004 -EntryType Information -Message $resultMessage
                         }
                         Catch {
-                            $actionTaken = 'Reinstall'
                             $success = $False
                             $resultMessage = "Failed to reinstall agent for server mismatch. Error: $($_.Exception.Message)"
                             Write-Error $resultMessage
@@ -285,6 +284,7 @@
 
                     if ($PSCmdlet.ShouldProcess('LTService', 'Reinstall agent after failed restart recovery')) {
                         Clear-CWAAInstallerArtifacts
+                        $actionTaken = 'Reinstall'
                         Try {
                             if ($InstallerToken -and $Server -and $LocationID) {
                                 Redo-CWAA -Server $Server -LocationID $LocationID -InstallerToken $InstallerToken -Hide
@@ -292,12 +292,10 @@
                             else {
                                 Redo-CWAA -Hide -InstallerToken $InstallerToken
                             }
-                            $actionTaken = 'Reinstall'
                             $resultMessage = 'Agent reinstalled after extended offline period.'
                             Write-CWAAEventLog -EventId 4002 -EntryType Information -Message $resultMessage
                         }
                         Catch {
-                            $actionTaken = 'Reinstall'
                             $success = $False
                             $resultMessage = "Agent reinstall failed. Error: $($_.Exception.Message)"
                             Write-Error $resultMessage
@@ -308,7 +306,6 @@
                 else {
                     # Restart was attempted but agent hasn't recovered yet. Not yet at reinstall threshold.
                     $actionTaken = 'Restart'
-                    $success = $True
                     $resultMessage = "Services restarted. Agent has not recovered yet but is within reinstall threshold ($([Math]::Abs($HoursReinstall)) hours)."
                     Write-Verbose $resultMessage
                 }
@@ -350,7 +347,6 @@
                     }
                     Catch {
                         $settings = Get-CWAAInfoBackup -EA 0
-                        $hasBackup = $False
                     }
 
                     if ($settings) {

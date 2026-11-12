@@ -37,7 +37,8 @@ function Get-CWAAProxy {
         # consumer, and key decryption is inherently the first step of proxy discovery.
         # The $serviceInfo result is reused in Process to avoid a redundant registry read.
         $serviceInfo = Get-CWAAInfo -EA 0 -Verbose:$False -WhatIf:$False -Confirm:$False -Debug:$False
-        if ($serviceInfo -and ($serviceInfo | Get-Member | Where-Object { $_.Name -eq 'ServerPassword' })) {
+        $agentHasServerPassword = [bool]($serviceInfo -and ($serviceInfo | Get-Member | Where-Object { $_.Name -eq 'ServerPassword' }))
+        if ($agentHasServerPassword) {
             Write-Debug "Decoding Server Password."
             $Script:LTServiceKeys.ServerPasswordString = ConvertFrom-CWAASecurity -InputString "$($serviceInfo.ServerPassword)"
             if ($serviceInfo | Get-Member | Where-Object { $_.Name -eq 'Password' }) {
@@ -56,8 +57,8 @@ function Get-CWAAProxy {
 
     Process {
         Try {
-            # Reuse $serviceInfo from Begin block -- eliminates a redundant Get-CWAAInfo call.
-            if ($Null -ne $serviceInfo -and ($serviceInfo | Get-Member | Where-Object { $_.Name -eq 'ServerPassword' })) {
+            # Reuse the Begin block's registry read -- eliminates a redundant Get-CWAAInfo call.
+            if ($agentHasServerPassword) {
                 $serviceSettings = Get-CWAASettings -EA 0 -Verbose:$False -WA 0 -Debug:$False
                 if ($Null -ne $serviceSettings) {
                     if (($serviceSettings | Get-Member | Where-Object { $_.Name -eq 'ProxyServerURL' }) -and ($($serviceSettings | Select-Object -Expand ProxyServerURL -EA 0) -Match 'https?://.+')) {

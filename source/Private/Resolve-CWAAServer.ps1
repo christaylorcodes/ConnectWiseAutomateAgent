@@ -38,8 +38,6 @@ function Resolve-CWAAServer {
 
         ForEach ($serverUrl in $normalizedServers) {
             if ($serverUrl -match $Script:CWAAServerValidationRegex) {
-                # Ensure a scheme is present for the actual request
-                if ($serverUrl -notmatch 'https?://.+') { $serverUrl = "http://$serverUrl" }
                 Try {
                     $versionCheckUrl = "$serverUrl/LabTech/Agent.aspx"
                     Write-Debug "Testing Server Response and Version: $versionCheckUrl"

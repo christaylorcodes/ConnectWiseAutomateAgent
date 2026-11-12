@@ -108,16 +108,19 @@ function Set-CWAAProxy {
             $ProxyPassword = $ProxyCredential.GetNetworkCredential().Password
         }
 
+        # Valid combinations: -ResetProxy alone, -DetectProxy alone, or -ProxyServerURL
+        # with at most one credential pair (plain or encoded).
+        $plainCredentialSpecified = ($ProxyUsername -or $ProxyPassword)
+        $encodedCredentialSpecified = ($EncodedProxyUsername -or $EncodedProxyPassword)
+        $proxyValueSpecified = ($ProxyServerURL -or $plainCredentialSpecified -or $encodedCredentialSpecified)
         if (
-            (($ResetProxy -eq $True) -and (($DetectProxy -eq $True) -or ($ProxyServerURL) -or ($ProxyUsername) -or ($ProxyPassword) -or ($EncodedProxyUsername) -or ($EncodedProxyPassword))) -or
-            (($DetectProxy -eq $True) -and (($ResetProxy -eq $True) -or ($ProxyServerURL) -or ($ProxyUsername) -or ($ProxyPassword) -or ($EncodedProxyUsername) -or ($EncodedProxyPassword))) -or
-            ((($ProxyServerURL) -or ($ProxyUsername) -or ($ProxyPassword) -or ($EncodedProxyUsername) -or ($EncodedProxyPassword)) -and (($ResetProxy -eq $True) -or ($DetectProxy -eq $True))) -or
-            ((($ProxyUsername) -or ($ProxyPassword)) -and (-not ($ProxyServerURL) -or ($EncodedProxyUsername) -or ($EncodedProxyPassword) -or ($ResetProxy -eq $True) -or ($DetectProxy -eq $True))) -or
-            ((($EncodedProxyUsername) -or ($EncodedProxyPassword)) -and (-not ($ProxyServerURL) -or ($ProxyUsername) -or ($ProxyPassword) -or ($ResetProxy -eq $True) -or ($DetectProxy -eq $True)))
+            ($ResetProxy -and $DetectProxy) -or
+            (($ResetProxy -or $DetectProxy) -and $proxyValueSpecified) -or
+            ($plainCredentialSpecified -and $encodedCredentialSpecified) -or
+            (($plainCredentialSpecified -or $encodedCredentialSpecified) -and -not $ProxyServerURL)
         ) { Write-Error "Set-CWAAProxy: Invalid parameter combination specified." -ErrorAction Stop }
-        if (-not (($ResetProxy -eq $True) -or ($DetectProxy -eq $True) -or ($ProxyServerURL) -or ($ProxyUsername) -or ($ProxyPassword) -or ($EncodedProxyUsername) -or ($EncodedProxyPassword))) {
-            if ($Args.Count -gt 0) { Write-Error "Set-CWAAProxy: Unknown parameter specified." -ErrorAction Stop }
-            else { Write-Error "Set-CWAAProxy: Required parameters missing." -ErrorAction Stop }
+        if (-not ($ResetProxy -or $DetectProxy -or $proxyValueSpecified)) {
+            Write-Error "Set-CWAAProxy: Required parameters missing." -ErrorAction Stop
         }
 
         Try {
@@ -174,34 +177,24 @@ function Set-CWAAProxy {
             }
             Elseif (($ProxyServerURL)) {
                 if ( $PSCmdlet.ShouldProcess('LTProxy', 'Set') ) {
-                    foreach ($ProxyURL in $ProxyServerURL) {
-                        $Script:LTWebProxy = New-Object System.Net.WebProxy($ProxyURL, $true);
-                        $Script:LTProxy.Enabled = $True
-                        $Script:LTProxy.ProxyServerURL = $ProxyURL
-                    }
+                    $Script:LTWebProxy = New-Object System.Net.WebProxy($ProxyServerURL, $true);
+                    $Script:LTProxy.Enabled = $True
+                    $Script:LTProxy.ProxyServerURL = $ProxyServerURL
                     Write-Verbose "Setting Proxy URL to: $($ProxyServerURL)"
                     if ((($ProxyUsername) -and ($ProxyPassword)) -or (($EncodedProxyUsername) -and ($EncodedProxyPassword))) {
                         if (($ProxyUsername)) {
-                            foreach ($proxyUser in $ProxyUsername) {
-                                $Script:LTProxy.ProxyUsername = $proxyUser
-                            }
+                            $Script:LTProxy.ProxyUsername = $ProxyUsername
                         }
                         if (($EncodedProxyUsername)) {
-                            foreach ($proxyUser in $EncodedProxyUsername) {
-                                $Script:LTProxy.ProxyUsername = $(ConvertFrom-CWAASecurity -InputString "$($proxyUser)" -Key ("$($Script:LTServiceKeys.PasswordString)", ''))
-                            }
+                            $Script:LTProxy.ProxyUsername = $(ConvertFrom-CWAASecurity -InputString "$($EncodedProxyUsername)" -Key ("$($Script:LTServiceKeys.PasswordString)", ''))
                         }
                         if (($ProxyPassword)) {
-                            foreach ($proxyPass in $ProxyPassword) {
-                                $Script:LTProxy.ProxyPassword = $proxyPass
-                                $passwd = ConvertTo-SecureString $proxyPass -AsPlainText -Force;
-                            }
+                            $Script:LTProxy.ProxyPassword = $ProxyPassword
+                            $passwd = ConvertTo-SecureString $ProxyPassword -AsPlainText -Force;
                         }
                         if (($EncodedProxyPassword)) {
-                            foreach ($proxyPass in $EncodedProxyPassword) {
-                                $Script:LTProxy.ProxyPassword = $(ConvertFrom-CWAASecurity -InputString "$($proxyPass)" -Key ("$($Script:LTServiceKeys.PasswordString)", ''))
-                                $passwd = ConvertTo-SecureString $Script:LTProxy.ProxyPassword -AsPlainText -Force;
-                            }
+                            $Script:LTProxy.ProxyPassword = $(ConvertFrom-CWAASecurity -InputString "$($EncodedProxyPassword)" -Key ("$($Script:LTServiceKeys.PasswordString)", ''))
+                            $passwd = ConvertTo-SecureString $Script:LTProxy.ProxyPassword -AsPlainText -Force;
                         }
                         $Script:LTWebProxy.Credentials = New-Object System.Management.Automation.PSCredential ($Script:LTProxy.ProxyUsername, $passwd);
                     }
@@ -213,19 +206,23 @@ function Set-CWAAProxy {
             $settingsChanged = $False
             if ($Null -ne ($serviceSettings)) {
                 if (($serviceSettings | Get-Member | Where-Object { $_.Name -eq 'ProxyServerURL' })) {
-                    if (($($serviceSettings | Select-Object -Expand ProxyServerURL -EA 0) -replace 'https?://', '' -ne $Script:LTProxy.ProxyServerURL) -and (($($serviceSettings | Select-Object -Expand ProxyServerURL -EA 0) -replace 'https?://', '' -eq '' -and $Script:LTProxy.Enabled -eq $True -and $Script:LTProxy.ProxyServerURL -match '.+\..+') -or ($($serviceSettings | Select-Object -Expand ProxyServerURL -EA 0) -replace 'https?://', '' -ne '' -and ($Script:LTProxy.ProxyServerURL -ne '' -or $Script:LTProxy.Enabled -eq $False)))) {
-                        Write-Debug "ProxyServerURL Changed: Old Value: $($serviceSettings | Select-Object -Expand ProxyServerURL -EA 0) New Value: $($Script:LTProxy.ProxyServerURL)"
+                    $storedProxyServerUrl = $serviceSettings | Select-Object -Expand ProxyServerURL -EA 0
+                    $storedProxyHost = $storedProxyServerUrl -replace 'https?://', ''
+                    if (($storedProxyHost -ne $Script:LTProxy.ProxyServerURL) -and (($storedProxyHost -eq '' -and $Script:LTProxy.Enabled -eq $True -and $Script:LTProxy.ProxyServerURL -match '.+\..+') -or ($storedProxyHost -ne '' -and ($Script:LTProxy.ProxyServerURL -ne '' -or $Script:LTProxy.Enabled -eq $False)))) {
+                        Write-Debug "ProxyServerURL Changed: Old Value: $($storedProxyServerUrl) New Value: $($Script:LTProxy.ProxyServerURL)"
                         $settingsChanged = $True
                     }
                     if (($serviceSettings | Get-Member | Where-Object { $_.Name -eq 'ProxyUsername' }) -and ($serviceSettings | Select-Object -Expand ProxyUsername -EA 0)) {
-                        if ($(ConvertFrom-CWAASecurity -InputString "$($serviceSettings | Select-Object -Expand ProxyUsername -EA 0)" -Key ("$($Script:LTServiceKeys.PasswordString)", '')) -ne $Script:LTProxy.ProxyUsername) {
-                            Write-Debug "ProxyUsername Changed: Old Value: $(Get-CWAARedactedValue (ConvertFrom-CWAASecurity -InputString "$($serviceSettings | Select-Object -Expand ProxyUsername -EA 0)" -Key ("$($Script:LTServiceKeys.PasswordString)",''))) New Value: $(Get-CWAARedactedValue $Script:LTProxy.ProxyUsername)"
+                        $storedProxyUsername = ConvertFrom-CWAASecurity -InputString "$($serviceSettings | Select-Object -Expand ProxyUsername -EA 0)" -Key ("$($Script:LTServiceKeys.PasswordString)", '')
+                        if ($storedProxyUsername -ne $Script:LTProxy.ProxyUsername) {
+                            Write-Debug "ProxyUsername Changed: Old Value: $(Get-CWAARedactedValue $storedProxyUsername) New Value: $(Get-CWAARedactedValue $Script:LTProxy.ProxyUsername)"
                             $settingsChanged = $True
                         }
                     }
-                    if ($Null -ne ($serviceSettings) -and ($serviceSettings | Get-Member | Where-Object { $_.Name -eq 'ProxyPassword' }) -and ($serviceSettings | Select-Object -Expand ProxyPassword -EA 0)) {
-                        if ($(ConvertFrom-CWAASecurity -InputString "$($serviceSettings | Select-Object -Expand ProxyPassword -EA 0)" -Key ("$($Script:LTServiceKeys.PasswordString)", '')) -ne $Script:LTProxy.ProxyPassword) {
-                            Write-Debug "ProxyPassword Changed: Old Value: $(Get-CWAARedactedValue (ConvertFrom-CWAASecurity -InputString "$($serviceSettings | Select-Object -Expand ProxyPassword -EA 0)" -Key ("$($Script:LTServiceKeys.PasswordString)",''))) New Value: $(Get-CWAARedactedValue $Script:LTProxy.ProxyPassword)"
+                    if (($serviceSettings | Get-Member | Where-Object { $_.Name -eq 'ProxyPassword' }) -and ($serviceSettings | Select-Object -Expand ProxyPassword -EA 0)) {
+                        $storedProxyPassword = ConvertFrom-CWAASecurity -InputString "$($serviceSettings | Select-Object -Expand ProxyPassword -EA 0)" -Key ("$($Script:LTServiceKeys.PasswordString)", '')
+                        if ($storedProxyPassword -ne $Script:LTProxy.ProxyPassword) {
+                            Write-Debug "ProxyPassword Changed: Old Value: $(Get-CWAARedactedValue $storedProxyPassword) New Value: $(Get-CWAARedactedValue $Script:LTProxy.ProxyPassword)"
                             $settingsChanged = $True
                         }
                     }

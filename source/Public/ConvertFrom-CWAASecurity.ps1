@@ -45,7 +45,6 @@ function ConvertFrom-CWAASecurity {
         $_initializationVector = [byte[]](240, 3, 45, 29, 0, 76, 173, 59)
         $NoKeyPassed = $False
         $DecodedString = $Null
-        $DecodeString = $Null
     }
 
     Process {
@@ -83,17 +82,15 @@ function ConvertFrom-CWAASecurity {
             }
             if ($Null -eq $DecodeString) {
                 if ($Force) {
+                    # Retry with the alternate key: an empty key after the default failed, otherwise the default
                     if ($NoKeyPassed) {
                         $DecodeString = ConvertFrom-CWAASecurity -InputString "$($testInput)" -Key '' -Force:$False
-                        if (-not ($Null -eq $DecodeString)) {
-                            $DecodedString += @($DecodeString)
-                        }
                     }
                     else {
                         $DecodeString = ConvertFrom-CWAASecurity -InputString "$($testInput)"
-                        if (-not ($Null -eq $DecodeString)) {
-                            $DecodedString += @($DecodeString)
-                        }
+                    }
+                    if ($Null -ne $DecodeString) {
+                        $DecodedString += @($DecodeString)
                     }
                 }
                 else {
