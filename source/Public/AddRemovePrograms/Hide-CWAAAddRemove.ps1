@@ -1,4 +1,4 @@
-function Hide-CWAAAddRemove {
+﻿function Hide-CWAAAddRemove {
     <#
     .SYNOPSIS
         Hides the Automate agent from the Add/Remove Programs list.

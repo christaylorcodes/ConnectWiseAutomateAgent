@@ -1,4 +1,4 @@
-function Update-CWAA {
+﻿function Update-CWAA {
     <#
     .SYNOPSIS
         Manually updates the ConnectWise Automate Agent to a specified version.

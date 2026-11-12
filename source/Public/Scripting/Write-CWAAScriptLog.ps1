@@ -1,4 +1,4 @@
-function Write-CWAAScriptLog {
+﻿function Write-CWAAScriptLog {
     <#
     .SYNOPSIS
         Writes a timestamped log entry to a ConnectWise Automate script log file.

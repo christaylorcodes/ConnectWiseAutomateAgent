@@ -1,4 +1,4 @@
-function Test-CWAAServiceExists {
+﻿function Test-CWAAServiceExists {
     <#
     .SYNOPSIS
         Tests whether the Automate agent services are installed on the local computer.

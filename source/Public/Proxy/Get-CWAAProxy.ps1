@@ -1,4 +1,4 @@
-function Get-CWAAProxy {
+﻿function Get-CWAAProxy {
     <#
     .SYNOPSIS
         Retrieves the current agent proxy settings for module operations.

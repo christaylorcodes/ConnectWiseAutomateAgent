@@ -1,4 +1,4 @@
-function Test-CWAADownloadIntegrity {
+﻿function Test-CWAADownloadIntegrity {
     <#
     .SYNOPSIS
         Validates a downloaded file meets minimum size requirements.

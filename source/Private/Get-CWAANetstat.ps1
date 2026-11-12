@@ -1,4 +1,4 @@
-function Get-CWAANetstat {
+﻿function Get-CWAANetstat {
     <#
     .SYNOPSIS
         Returns raw output from the local computer's netstat.exe.

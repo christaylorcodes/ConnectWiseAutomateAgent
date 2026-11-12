@@ -1,4 +1,4 @@
-function Invoke-CWAAPwsh {
+﻿function Invoke-CWAAPwsh {
     <#
     .SYNOPSIS
         Executes a scriptblock or script file under PowerShell 7 (pwsh.exe).

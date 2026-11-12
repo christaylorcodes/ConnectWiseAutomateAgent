@@ -1,4 +1,4 @@
-function Resolve-CWAAServer {
+﻿function Resolve-CWAAServer {
     <#
     .SYNOPSIS
         Finds the first reachable ConnectWise Automate server from a list of candidates.

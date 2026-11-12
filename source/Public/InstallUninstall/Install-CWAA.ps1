@@ -1,4 +1,4 @@
-function Install-CWAA {
+﻿function Install-CWAA {
     <#
     .SYNOPSIS
         Installs the ConnectWise Automate Agent on the local computer.

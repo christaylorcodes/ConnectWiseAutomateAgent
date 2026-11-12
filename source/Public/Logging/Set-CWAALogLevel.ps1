@@ -1,4 +1,4 @@
-function Set-CWAALogLevel {
+﻿function Set-CWAALogLevel {
     <#
     .SYNOPSIS
         Sets the logging level for the ConnectWise Automate Agent.

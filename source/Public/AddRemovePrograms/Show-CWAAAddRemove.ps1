@@ -1,4 +1,4 @@
-function Show-CWAAAddRemove {
+﻿function Show-CWAAAddRemove {
     <#
     .SYNOPSIS
         Shows the Automate agent in the Add/Remove Programs list.

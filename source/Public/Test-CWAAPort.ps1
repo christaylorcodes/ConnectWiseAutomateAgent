@@ -1,4 +1,4 @@
-function Test-CWAAPort {
+﻿function Test-CWAAPort {
     <#
     .SYNOPSIS
         Tests connectivity to TCP ports required by the ConnectWise Automate agent.

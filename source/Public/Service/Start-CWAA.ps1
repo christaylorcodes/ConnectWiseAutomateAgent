@@ -1,4 +1,4 @@
-function Start-CWAA {
+﻿function Start-CWAA {
     <#
     .SYNOPSIS
         Starts the ConnectWise Automate agent services.

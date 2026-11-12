@@ -1,4 +1,4 @@
-function Remove-CWAAFolderRecursive {
+﻿function Remove-CWAAFolderRecursive {
     <#
     .SYNOPSIS
         Performs depth-first removal of a folder and all its contents.

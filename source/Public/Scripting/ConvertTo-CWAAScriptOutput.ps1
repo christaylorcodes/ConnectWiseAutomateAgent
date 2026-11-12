@@ -1,4 +1,4 @@
-function ConvertTo-CWAAScriptOutput {
+﻿function ConvertTo-CWAAScriptOutput {
     <#
     .SYNOPSIS
         Converts a script output object or hashtable to the pipe-delimited format expected by ConnectWise Automate.

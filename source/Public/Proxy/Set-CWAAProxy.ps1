@@ -1,4 +1,4 @@
-function Set-CWAAProxy {
+﻿function Set-CWAAProxy {
     <#
     .SYNOPSIS
         Configures module proxy settings for all operations during the current session.

@@ -1,4 +1,4 @@
-function Initialize-CWAAScriptLog {
+﻿function Initialize-CWAAScriptLog {
     <#
     .SYNOPSIS
         Initializes a log file for ConnectWise Automate script execution.

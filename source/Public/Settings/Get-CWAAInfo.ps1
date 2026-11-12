@@ -1,4 +1,4 @@
-function Get-CWAAInfo {
+﻿function Get-CWAAInfo {
     <#
     .SYNOPSIS
         Retrieves ConnectWise Automate agent configuration from the registry.

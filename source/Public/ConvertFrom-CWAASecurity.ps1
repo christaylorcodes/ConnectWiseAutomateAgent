@@ -1,4 +1,4 @@
-function ConvertFrom-CWAASecurity {
+﻿function ConvertFrom-CWAASecurity {
     <#
     .SYNOPSIS
         Decodes a Base64-encoded string using TripleDES decryption.

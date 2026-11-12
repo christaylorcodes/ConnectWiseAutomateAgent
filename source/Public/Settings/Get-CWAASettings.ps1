@@ -1,4 +1,4 @@
-function Get-CWAASettings {
+﻿function Get-CWAASettings {
     <#
     .SYNOPSIS
         Retrieves ConnectWise Automate agent settings from the registry.

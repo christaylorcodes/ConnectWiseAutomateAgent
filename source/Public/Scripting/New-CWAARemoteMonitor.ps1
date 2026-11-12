@@ -1,4 +1,4 @@
-function New-CWAARemoteMonitor {
+﻿function New-CWAARemoteMonitor {
     <#
     .SYNOPSIS
         Encodes a PowerShell scriptblock for use in a ConnectWise Automate remote monitor.

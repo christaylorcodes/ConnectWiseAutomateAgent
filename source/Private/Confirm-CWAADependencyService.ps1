@@ -1,4 +1,4 @@
-function Confirm-CWAADependencyService {
+﻿function Confirm-CWAADependencyService {
     <#
     .SYNOPSIS
         Ensures the OS services the Automate agent depends on are Automatic and Running.

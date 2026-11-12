@@ -1,4 +1,4 @@
-function New-CWAABackup {
+﻿function New-CWAABackup {
     <#
     .SYNOPSIS
         Creates a complete backup of the ConnectWise Automate agent installation.

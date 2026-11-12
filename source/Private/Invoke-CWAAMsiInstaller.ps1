@@ -1,4 +1,4 @@
-function Invoke-CWAAMsiInstaller {
+﻿function Invoke-CWAAMsiInstaller {
     <#
     .SYNOPSIS
         Executes the Automate agent MSI installer with retry logic.

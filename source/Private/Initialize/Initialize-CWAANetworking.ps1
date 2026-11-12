@@ -1,4 +1,4 @@
-function Initialize-CWAANetworking {
+﻿function Initialize-CWAANetworking {
     <#
     .SYNOPSIS
         Lazily initializes networking objects on first use rather than at module load.

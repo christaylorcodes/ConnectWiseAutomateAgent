@@ -1,4 +1,4 @@
-function Unregister-CWAAHealthCheckTask {
+﻿function Unregister-CWAAHealthCheckTask {
     <#
     .SYNOPSIS
         Removes the ConnectWise Automate agent health check scheduled task.

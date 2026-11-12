@@ -1,4 +1,4 @@
-function Assert-CWAANotProbeAgent {
+﻿function Assert-CWAANotProbeAgent {
     <#
     .SYNOPSIS
         Blocks operations on probe agents unless -Force is specified.

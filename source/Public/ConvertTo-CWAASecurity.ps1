@@ -1,4 +1,4 @@
-function ConvertTo-CWAASecurity {
+﻿function ConvertTo-CWAASecurity {
     <#
     .SYNOPSIS
         Encodes a string using TripleDES encryption compatible with Automate operations.

@@ -1,4 +1,4 @@
-function Stop-CWAA {
+﻿function Stop-CWAA {
     <#
     .SYNOPSIS
         Stops the ConnectWise Automate agent services.

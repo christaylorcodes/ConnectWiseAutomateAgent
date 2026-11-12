@@ -1,4 +1,4 @@
-function Redo-CWAA {
+﻿function Redo-CWAA {
     <#
     .SYNOPSIS
         Reinstalls the ConnectWise Automate Agent on the local computer.

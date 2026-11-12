@@ -1,4 +1,4 @@
-function Get-CWAALogLevel {
+﻿function Get-CWAALogLevel {
     <#
     .SYNOPSIS
         Retrieves the current logging level for the ConnectWise Automate Agent.

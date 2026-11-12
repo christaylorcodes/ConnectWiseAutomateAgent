@@ -1,4 +1,4 @@
-function Invoke-CWAACommand {
+﻿function Invoke-CWAACommand {
     <#
     .SYNOPSIS
         Sends a service command to the ConnectWise Automate agent.

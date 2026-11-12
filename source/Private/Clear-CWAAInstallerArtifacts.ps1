@@ -1,4 +1,4 @@
-function Clear-CWAAInstallerArtifacts {
+﻿function Clear-CWAAInstallerArtifacts {
     <#
     .SYNOPSIS
         Cleans up stale ConnectWise Automate installer processes and temporary files.

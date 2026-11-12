@@ -1,4 +1,4 @@
-function Rename-CWAAAddRemove {
+﻿function Rename-CWAAAddRemove {
     <#
     .SYNOPSIS
         Renames the Automate agent entry in the Add/Remove Programs list.

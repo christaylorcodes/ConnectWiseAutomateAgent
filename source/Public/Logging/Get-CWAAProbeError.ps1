@@ -1,4 +1,4 @@
-function Get-CWAAProbeError {
+﻿function Get-CWAAProbeError {
     <#
     .SYNOPSIS
         Reads the ConnectWise Automate Agent probe error log into structured objects.

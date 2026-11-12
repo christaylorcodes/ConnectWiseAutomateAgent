@@ -1,4 +1,4 @@
-function Invoke-CWAAScript {
+﻿function Invoke-CWAAScript {
     <#
     .SYNOPSIS
         Executes a scriptblock with standardized Automate script output and error handling.
