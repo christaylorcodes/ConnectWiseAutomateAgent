@@ -159,10 +159,11 @@
                 }
 
                 if (-not $serverMatches) {
-                    Write-Warning "Wrong install server ($($currentServers -join ', ')). Expected '$Server'. Reinstalling."
-                    Write-CWAAEventLog -EventId 4004 -EntryType Warning -Message "Server mismatch detected. Installed: $($currentServers -join ', '). Expected: $Server. Reinstalling."
+                    $currentServerList = $currentServers -join ', '
+                    Write-Warning "Wrong install server ($currentServerList). Expected '$Server'. Reinstalling."
+                    Write-CWAAEventLog -EventId 4004 -EntryType Warning -Message "Server mismatch detected. Installed: $currentServerList. Expected: $Server. Reinstalling."
 
-                    if ($PSCmdlet.ShouldProcess('LTService', "Reinstall agent for server mismatch (current: $($currentServers -join ', '), expected: $Server)")) {
+                    if ($PSCmdlet.ShouldProcess('LTService', "Reinstall agent for server mismatch (current: $currentServerList, expected: $Server)")) {
                         Clear-CWAAInstallerArtifacts
                         $actionTaken = 'Reinstall'
                         Try {
@@ -340,17 +341,17 @@
                 else {
                     # Try to recover from existing settings or backup
                     $settings = $Null
-                    $hasBackup = $False
+                    $settingsFromInstalledAgent = $False
                     Try {
                         $settings = Get-CWAAInfo -EA Stop -Verbose:$False -WhatIf:$False -Confirm:$False
-                        $hasBackup = $True
+                        $settingsFromInstalledAgent = $True
                     }
                     Catch {
                         $settings = Get-CWAAInfoBackup -EA 0
                     }
 
                     if ($settings) {
-                        if ($hasBackup) {
+                        if ($settingsFromInstalledAgent) {
                             Write-Verbose 'Backing up current settings before reinstall.'
                             New-CWAABackup -ErrorAction SilentlyContinue
                         }

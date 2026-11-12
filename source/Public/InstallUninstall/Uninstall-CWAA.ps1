@@ -143,7 +143,9 @@
             New-Item "$Script:CWAAInstallerTempPath\Installer" -type directory -ErrorAction SilentlyContinue | Out-Null
         }
 
-        $uninstallArguments = "/x ""$Script:CWAAInstallerTempPath\Installer\Agent_Uninstall.msi"" /qn"
+        $uninstallMsiPath = "$Script:CWAAInstallerTempPath\Installer\Agent_Uninstall.msi"
+        $uninstallExePath = "${env:windir}\temp\Agent_Uninstall.exe"
+        $uninstallArguments = "/x ""$uninstallMsiPath"" /qn"
     }
 
     Process {
@@ -173,8 +175,8 @@
 
             if ($PSCmdlet.ShouldProcess("$installer", 'DownloadFile')) {
                 Write-Debug "Downloading Agent_Uninstall.msi from $installer"
-                $Script:LTServiceNetWebClient.DownloadFile($installer, "$Script:CWAAInstallerTempPath\Installer\Agent_Uninstall.msi")
-                if (-not (Test-CWAADownloadIntegrity -FilePath "$Script:CWAAInstallerTempPath\Installer\Agent_Uninstall.msi" -FileName 'Agent_Uninstall.msi')) {
+                $Script:LTServiceNetWebClient.DownloadFile($installer, $uninstallMsiPath)
+                if (-not (Test-CWAADownloadIntegrity -FilePath $uninstallMsiPath -FileName 'Agent_Uninstall.msi')) {
                     return
                 }
                 $AlternateServer = $serverUrl
@@ -189,9 +191,9 @@
 
             if ($PSCmdlet.ShouldProcess("$uninstaller", 'DownloadFile')) {
                 Write-Debug "Downloading Agent_Uninstall.exe from $uninstaller"
-                $Script:LTServiceNetWebClient.DownloadFile($uninstaller, "${env:windir}\temp\Agent_Uninstall.exe")
+                $Script:LTServiceNetWebClient.DownloadFile($uninstaller, $uninstallExePath)
                 # Uninstall EXE is smaller than MSI � use 80 KB threshold
-                if (-not (Test-CWAADownloadIntegrity -FilePath "${env:windir}\temp\Agent_Uninstall.exe" -FileName 'Agent_Uninstall.exe' -MinimumSizeKB 80)) {
+                if (-not (Test-CWAADownloadIntegrity -FilePath $uninstallExePath -FileName 'Agent_Uninstall.exe' -MinimumSizeKB 80)) {
                     return
                 }
             }
@@ -199,7 +201,7 @@
             if ($WhatIfPreference -eq $True) {
                 $GoodServer = $serverUrl
             }
-            Elseif ((Test-Path "$Script:CWAAInstallerTempPath\Installer\Agent_Uninstall.msi") -and (Test-Path "${env:windir}\temp\Agent_Uninstall.exe")) {
+            Elseif ((Test-Path $uninstallMsiPath) -and (Test-Path $uninstallExePath)) {
                 $GoodServer = $serverUrl
                 Write-Verbose "Successfully downloaded files from $serverUrl."
             }
@@ -214,7 +216,13 @@
 
     End {
         try {
-        if ($GoodServer -match 'https?://.+' -or $AlternateServer -match 'https?://.+') {
+            if (-not ($GoodServer -match 'https?://.+' -or $AlternateServer -match 'https?://.+')) {
+                if ($WhatIfPreference -ne $True) {
+                    Write-Error "No valid server was reached to use for the uninstall." -ErrorAction Stop
+                }
+                return
+            }
+
             Try {
                 Write-Output 'Starting Uninstall.'
                 if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Stopping services and processes' -PercentComplete 37 }
@@ -242,29 +250,29 @@
 
                 if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Running MSI uninstaller' -PercentComplete 50 }
                 if ($PSCmdlet.ShouldProcess("msiexec.exe $uninstallArguments", 'Execute MSI Uninstall')) {
-                    if (Test-Path "$Script:CWAAInstallerTempPath\Installer\Agent_Uninstall.msi") {
+                    if (Test-Path $uninstallMsiPath) {
                         Write-Verbose 'Launching MSI Uninstall.'
                         Write-Debug "Executing Command ""msiexec.exe $uninstallArguments"""
                         Start-Process -Wait -FilePath "$env:windir\system32\msiexec.exe" -ArgumentList $uninstallArguments -WorkingDirectory $env:TEMP
                         Start-Sleep -Seconds 5
                     }
                     else {
-                        Write-Verbose "$Script:CWAAInstallerTempPath\Installer\Agent_Uninstall.msi was not found."
+                        Write-Verbose "$uninstallMsiPath was not found."
                     }
                 }
 
                 if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Running agent uninstaller' -PercentComplete 62 }
-                if ($PSCmdlet.ShouldProcess("${env:windir}\temp\Agent_Uninstall.exe", 'Execute Agent Uninstall')) {
-                    if (Test-Path "${env:windir}\temp\Agent_Uninstall.exe") {
+                if ($PSCmdlet.ShouldProcess($uninstallExePath, 'Execute Agent Uninstall')) {
+                    if (Test-Path $uninstallExePath) {
                         # Remove previously extracted SFX files to prevent UnRAR overwrite prompts
                         Remove-Item "$env:TEMP\Uninstall.exe", "$env:TEMP\Uninstall.exe.config" -ErrorAction SilentlyContinue -Force -Confirm:$False
                         Write-Verbose 'Launching Agent Uninstaller'
-                        Write-Debug "Executing Command ""${env:windir}\temp\Agent_Uninstall.exe"""
-                        Start-Process -Wait -FilePath "${env:windir}\temp\Agent_Uninstall.exe" -WorkingDirectory $env:TEMP
+                        Write-Debug "Executing Command ""$uninstallExePath"""
+                        Start-Process -Wait -FilePath $uninstallExePath -WorkingDirectory $env:TEMP
                         Start-Sleep -Seconds 5
                     }
                     else {
-                        Write-Verbose "${env:windir}\temp\Agent_Uninstall.exe was not found."
+                        Write-Verbose "$uninstallExePath was not found."
                     }
                 }
 
@@ -296,13 +304,12 @@
 
                 Write-Verbose 'Removing agent installation msi file.'
                 if ($PSCmdlet.ShouldProcess('Agent_Uninstall.msi', 'Remove File')) {
-                    $MsiPath = "$Script:CWAAInstallerTempPath\Installer\Agent_Uninstall.msi"
                     $tries = 0
                     Try {
                         Do {
-                            $MsiExists = Test-Path $MsiPath
+                            $MsiExists = Test-Path $uninstallMsiPath
                             Start-Sleep -Seconds 10
-                            Remove-Item $MsiPath -ErrorAction SilentlyContinue
+                            Remove-Item $uninstallMsiPath -ErrorAction SilentlyContinue
                             $tries++
                         }
                         While ($MsiExists -and $tries -lt 4)
@@ -351,10 +358,6 @@
                     Write-CWAAEventLog -EventId 1010 -EntryType Information -Message 'Agent uninstalled successfully.'
                 }
             }
-        }
-        Elseif ($WhatIfPreference -ne $True) {
-            Write-Error "No valid server was reached to use for the uninstall." -ErrorAction Stop
-        }
         }
         finally {
             if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Completed }

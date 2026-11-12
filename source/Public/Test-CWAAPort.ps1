@@ -102,21 +102,18 @@ function Test-CWAAPort {
             $processes = @(foreach ($netstatLine in $netstatOutput) { ($netstatLine -split ' {4,}')[-1] }) |
                 Where-Object { $_ -gt 0 -and $_ -match '^\d+$' } | Sort-Object | Get-Unique
 
-            if (($processes)) {
-                if (-not ($Quiet)) {
-                    foreach ($processId in $processes) {
-                        if ((Get-Process -Id $processId -EA 0 | Select-Object -Expand ProcessName -EA 0) -eq 'LTSvc') {
-                            Write-Output "TrayPort Port $TrayPort is being used by LTSvc."
-                        }
-                        else {
-                            Write-Output "Error: TrayPort Port $TrayPort is being used by $(Get-Process -Id $processId | Select-Object -Expand ProcessName -EA 0)."
-                        }
+            # Quiet mode: the TrayPort is available only if no process holds it
+            if ($Quiet) { return (-not $processes) }
+
+            if ($processes) {
+                foreach ($processId in $processes) {
+                    if ((Get-Process -Id $processId -EA 0 | Select-Object -Expand ProcessName -EA 0) -eq 'LTSvc') {
+                        Write-Output "TrayPort Port $TrayPort is being used by LTSvc."
+                    }
+                    else {
+                        Write-Output "Error: TrayPort Port $TrayPort is being used by $(Get-Process -Id $processId | Select-Object -Expand ProcessName -EA 0)."
                     }
                 }
-                else { return $False }
-            }
-            elseif (($Quiet) -eq $True) {
-                return $True
             }
             else {
                 Write-Output "TrayPort Port $TrayPort is available."

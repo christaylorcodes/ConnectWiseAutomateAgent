@@ -143,8 +143,9 @@ function Redo-CWAA {
             $PasswordPresent = "-Password 'REDACTED'"
         }
 
-        Write-Output "Reinstalling Automate agent with the following information, -Server $($ServerList -join ',') $PasswordPresent -LocationID $LocationID $RenameArg"
-        Write-Verbose "Starting: UnInstall-CWAA -Server $($ServerList -join ',')"
+        $serverListText = $ServerList -join ','
+        Write-Output "Reinstalling Automate agent with the following information, -Server $serverListText $PasswordPresent -LocationID $LocationID $RenameArg"
+        Write-Verbose "Starting: UnInstall-CWAA -Server $serverListText"
         Try {
             Uninstall-CWAA -Server $ServerList -ErrorAction Stop -Force
         }
@@ -159,7 +160,7 @@ function Redo-CWAA {
             }
         }
 
-        Write-Verbose "Starting: Install-CWAA -Server $($ServerList -join ',') $PasswordPresent -LocationID $LocationID -Hide:`$$Hide $RenameArg"
+        Write-Verbose "Starting: Install-CWAA -Server $serverListText $PasswordPresent -LocationID $LocationID -Hide:`$$Hide $RenameArg"
         $installParameters = @{
             Server     = $ServerList
             LocationID = $LocationID
@@ -182,7 +183,7 @@ function Redo-CWAA {
             Write-Error "There was an error during the reinstall process while installing. $_" -ErrorAction Stop
         }
 
-        Write-CWAAEventLog -EventId 1020 -EntryType Information -Message "Agent reinstalled successfully. Server: $($ServerList -join ','), LocationID: $LocationID"
+        Write-CWAAEventLog -EventId 1020 -EntryType Information -Message "Agent reinstalled successfully. Server: $serverListText, LocationID: $LocationID"
         Write-Debug "Exiting $($myInvocation.InvocationName)"
     }
 }
