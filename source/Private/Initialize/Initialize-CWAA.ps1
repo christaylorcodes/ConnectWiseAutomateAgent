@@ -147,14 +147,15 @@ function Initialize-CWAA {
     # Get-CimInstance calls). Kept as a list so additional dependencies are trivial to add.
     $Script:CWAADependencyServiceNames = @('winmgmt')
 
-    # Service credential storage -- populated on-demand by Get-CWAAProxy
-    $Script:LTServiceKeys = [PSCustomObject]@{
+    # Service credential storage -- populated on-demand by Get-CWAAProxy.
+    # New-Object, not [PSCustomObject]: that cast quietly returns a hashtable on PowerShell 2.0.
+    $Script:LTServiceKeys = New-Object PSObject -Property @{
         ServerPasswordString = ''
         PasswordString       = ''
     }
 
     # Proxy configuration -- populated on-demand by Initialize-CWAANetworking
-    $Script:LTProxy = [PSCustomObject]@{
+    $Script:LTProxy = New-Object PSObject -Property @{
         ProxyServerURL = ''
         ProxyUsername   = ''
         ProxyPassword   = ''

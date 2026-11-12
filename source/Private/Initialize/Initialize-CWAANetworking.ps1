@@ -113,6 +113,12 @@ public class ServerCertificateValidationCallback
     # excluded. Each version is added via bitwise OR to preserve already-enabled protocols.
     Try {
         if ([Net.SecurityProtocolType]::Tls12) { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 }
+        else {
+            # .NET 3.5 (PowerShell 2.0 on Windows 7 / Server 2008 R2) has no Tls12 name, but accepts its
+            # value (3072) once the TLS 1.2 update for .NET 3.5.1 is installed. Without it this throws.
+            Try { [Net.ServicePointManager]::SecurityProtocol = [int][Net.ServicePointManager]::SecurityProtocol -bor 3072 }
+            Catch { Write-Debug "TLS 1.2 is not available on this .NET runtime: $_" }
+        }
         if ([Net.SecurityProtocolType]::Tls13) { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls13 }
     }
     Catch {

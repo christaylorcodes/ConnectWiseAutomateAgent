@@ -30,7 +30,7 @@ Open an issue describing what you would like to see and why. Include use cases s
 
 ## Development Setup
 
-Build and test tooling requires **PowerShell 7.6+**. The module itself supports PowerShell 3.0+.
+Build and test tooling requires **PowerShell 7.6+**. The module itself is written to three PowerShell version tiers: code that deploys an agent must run on Windows 7 / Server 2008 R2 as shipped (PowerShell 2.0), and code that only runs once an agent is installed can assume 5.1 or later. See [PowerShell Version Tiers](AGENTS.md#powershell-version-tiers) before changing anything under `source/`.
 
 ```powershell
 # Clone the repository

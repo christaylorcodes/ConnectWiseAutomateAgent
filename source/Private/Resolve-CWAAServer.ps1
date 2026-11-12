@@ -57,7 +57,8 @@
                     }
 
                     Write-Verbose "Server $serverUrl responded with version $serverVersion."
-                    return [PSCustomObject]@{
+                    # New-Object, not [PSCustomObject]: that cast quietly returns a hashtable on PowerShell 2.0
+                    return New-Object PSObject -Property @{
                         ServerUrl     = $serverUrl
                         ServerVersion = $serverVersion
                     }

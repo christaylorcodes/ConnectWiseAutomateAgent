@@ -39,6 +39,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `Install-CWAA` could not install on PowerShell versions before 5.0 when using an InstallerToken against a current Automate server, because it unpacked the installer with `Expand-Archive`. It now falls back to the Windows shell's ZIP support. It also used the `-in` operator, which stopped the whole module from loading on PowerShell 2.0.
+- On PowerShell 2.0, server resolution and the module's proxy and key state used `[PSCustomObject]`, which returns a hashtable there. They are now created with `New-Object PSObject`.
+- TLS 1.2 is now also requested on .NET 3.5 (PowerShell 2.0 on Windows 7 / Server 2008 R2), where it works once the TLS 1.2 update for .NET 3.5.1 is installed.
 - The automatic relaunch from 32-bit to 64-bit PowerShell in direct download mode (used when the module is loaded from tools such as ScreenConnect) ran `Initialize-CWAA` in the 64-bit session instead of the caller's commands, failed, and then ended the 32-bit session with nothing done. It now runs the original `powershell.exe` command line again in 64-bit (`-Command`, `-File` with its arguments, or `-EncodedCommand`) and exits with its exit code. Sessions that cannot be run again (not started with `-Command`, `-File` or `-EncodedCommand`, or started with `-NoExit`) get a warning and continue in 32-bit, as does a session whose 64-bit relaunch fails to start.
 - Importing the module with `Import-Module` from 32-bit PowerShell no longer attempts that relaunch; it only warns, as documented.
 - `Set-CWAAProxy -ProxyPassword` and `-EncodedProxyPassword` stored the text "System.Security.SecureString" as the proxy password, and `-ProxyCredential` failed with a conversion error. All three now apply the real password. Encoded credentials that cannot be decoded with the agent password are now an error instead of being applied as blank.

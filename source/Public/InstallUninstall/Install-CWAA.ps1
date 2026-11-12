@@ -242,7 +242,7 @@
             $GoodServer = $serverUrl
             Write-Verbose "$InstallMSI downloaded successfully from server $serverUrl."
             if ($useZipInstaller) {
-                Expand-Archive $downloadPath -DestinationPath "$InstallBase\Installer" -Force
+                Expand-CWAAZipFile -Path $downloadPath -DestinationPath "$InstallBase\Installer"
                 Remove-Item $downloadPath -ErrorAction SilentlyContinue -Force -Confirm:$False
                 $InstallMSI = 'Agent_Install.msi'
             }
@@ -263,7 +263,7 @@
 
             if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Preparing installation environment' -PercentComplete 44 }
 
-            if ($WhatIfPreference -eq $True -and (Get-PSCallStack)[1].Command -in @('Redo-CWAA', 'Redo-LTService', 'Reinstall-CWAA', 'Reinstall-LTService')) {
+            if ($WhatIfPreference -eq $True -and @('Redo-CWAA', 'Redo-LTService', 'Reinstall-CWAA', 'Reinstall-LTService') -contains (Get-PSCallStack)[1].Command) {
                 Write-Debug "Skipping Preinstall Check: Called by Redo-CWAA with -WhatIf"
             }
             Elseif ((Test-Path $Script:CWAAInstallPath -EA 0) -or (Test-Path "${env:windir}\temp\_ltupdate" -EA 0) -or (Test-Path registry::HKLM\Software\LabTech\Service -EA 0) -or (Test-Path registry::HKLM\Software\WOW6432Node\Labtech\Service -EA 0)) {

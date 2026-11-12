@@ -7,7 +7,7 @@
 .DESCRIPTION
     Tests ConvertTo/From-CWAASecurity edge cases, Test-CWAADownloadIntegrity,
     Remove-CWAAFolderRecursive, Resolve-CWAAServer, Wait-CWAACondition,
-    Test-CWAADotNetPrerequisite, Invoke-CWAAMsiInstaller, Test-CWAAUrlAvailable, Get-CWAARelaunchArgument, and Invoke-CWAANativeRelaunch using Pester mocks.
+    Test-CWAADotNetPrerequisite, Invoke-CWAAMsiInstaller, Test-CWAAUrlAvailable, Get-CWAARelaunchArgument, Invoke-CWAANativeRelaunch, and Expand-CWAAZipFile using Pester mocks.
 
     Supports dual-mode testing via $env:CWAA_TEST_LOAD_METHOD.
 
@@ -852,5 +852,69 @@ Describe 'Invoke-CWAANativeRelaunch' {
             $result | Should -BeNullOrEmpty
             "$testWarn" | Should -Match 'Unable to start the 64-bit PowerShell session.*blocked by group policy'
         }
+    }
+}
+
+# -----------------------------------------------------------------------------
+
+Describe 'Expand-CWAAZipFile' {
+
+    BeforeAll {
+        # The Windows shell needs real file system paths, not the TestDrive: drive name
+        $script:ZipTestRoot = (Get-Item -Path 'TestDrive:\').FullName
+        $zipSource = Join-Path $script:ZipTestRoot 'zip source'
+        $null = New-Item -Path $zipSource -ItemType Directory -Force
+        Set-Content -Path (Join-Path $zipSource 'Agent_Install.msi') -Value 'installer content'
+        Set-Content -Path (Join-Path $zipSource 'Agent_Install.mst') -Value 'transform content'
+        $script:ZipTestFile = Join-Path $script:ZipTestRoot 'Agent_Install.zip'
+        Compress-Archive -Path (Join-Path $zipSource '*') -DestinationPath $script:ZipTestFile -Force
+    }
+
+    It 'extracts with Expand-Archive when it is available' {
+        $destination = Join-Path $script:ZipTestRoot 'out modern'
+        InModuleScope 'ConnectWiseAutomateAgent' -Parameters @{ ZipFile = $script:ZipTestFile; Destination = $destination } {
+            param($ZipFile, $Destination)
+            Expand-CWAAZipFile -Path $ZipFile -DestinationPath $Destination
+        }
+        Get-Content -Path (Join-Path $destination 'Agent_Install.msi') | Should -Be 'installer content'
+        Get-Content -Path (Join-Path $destination 'Agent_Install.mst') | Should -Be 'transform content'
+    }
+
+    It 'extracts with the Windows shell when Expand-Archive does not exist (PowerShell before 5.0)' {
+        $destination = Join-Path $script:ZipTestRoot 'out legacy'
+        InModuleScope 'ConnectWiseAutomateAgent' -Parameters @{ ZipFile = $script:ZipTestFile; Destination = $destination } {
+            param($ZipFile, $Destination)
+            Mock Get-Command { return $null } -ParameterFilter { $Name -eq 'Expand-Archive' }
+            Mock Expand-Archive { throw 'Expand-Archive must not be used on this path.' }
+
+            Expand-CWAAZipFile -Path $ZipFile -DestinationPath $Destination
+
+            Should -Invoke Expand-Archive -Times 0 -Scope It
+        }
+        Get-Content -Path (Join-Path $destination 'Agent_Install.msi') | Should -Be 'installer content'
+        Get-Content -Path (Join-Path $destination 'Agent_Install.mst') | Should -Be 'transform content'
+    }
+
+    It 'overwrites files already in the destination on the Windows shell path' {
+        $destination = Join-Path $script:ZipTestRoot 'out overwrite'
+        $null = New-Item -Path $destination -ItemType Directory -Force
+        Set-Content -Path (Join-Path $destination 'Agent_Install.msi') -Value 'stale content'
+        InModuleScope 'ConnectWiseAutomateAgent' -Parameters @{ ZipFile = $script:ZipTestFile; Destination = $destination } {
+            param($ZipFile, $Destination)
+            Mock Get-Command { return $null } -ParameterFilter { $Name -eq 'Expand-Archive' }
+            Expand-CWAAZipFile -Path $ZipFile -DestinationPath $Destination
+        }
+        Get-Content -Path (Join-Path $destination 'Agent_Install.msi') | Should -Be 'installer content'
+    }
+
+    It 'throws on the Windows shell path when the file is not a ZIP' {
+        $notZip = Join-Path $script:ZipTestRoot 'missing.zip'
+        {
+            InModuleScope 'ConnectWiseAutomateAgent' -Parameters @{ ZipFile = $notZip; Destination = (Join-Path $script:ZipTestRoot 'out none') } {
+                param($ZipFile, $Destination)
+                Mock Get-Command { return $null } -ParameterFilter { $Name -eq 'Expand-Archive' }
+                Expand-CWAAZipFile -Path $ZipFile -DestinationPath $Destination
+            }
+        } | Should -Throw '*Unable to open*as a ZIP file*'
     }
 }
