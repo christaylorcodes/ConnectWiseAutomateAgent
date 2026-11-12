@@ -73,6 +73,7 @@
                 $copyErrors = @()
                 Get-ChildItem $agentPath -Exclude 'Backup' -ErrorVariable +copyErrors | Copy-Item -Destination $BackupPath -Recurse -Force -ErrorVariable +copyErrors
                 if ($copyErrors) {
+                    Write-Error "There was a problem backing up the LTSvc folder. $(@($copyErrors).Count) item(s) could not be copied."
                     Write-CWAAEventLog -EventId 3012 -EntryType Error -Message "Agent backup incomplete (file copy). $(@($copyErrors).Count) item(s) could not be copied. First error: $($copyErrors[0])"
                 }
                 else {
@@ -88,11 +89,10 @@
         if ($PSCmdlet.ShouldProcess($Keys, 'Export and backup registry keys')) {
             Try {
                 Write-Debug 'Exporting registry data'
-                $registryCommandsSucceeded = $True
-                $Null = & "$env:windir\system32\reg.exe" export "$Keys" "$RegPath" /y 2>''
-                if ($LASTEXITCODE -ne 0) {
-                    Write-Warning "reg.exe export returned exit code $LASTEXITCODE. Registry backup may be incomplete."
-                    $registryCommandsSucceeded = $False
+                $exportExitCode = Invoke-CWAARegExe -Arguments @('export', "$Keys", "$RegPath", '/y')
+                if ($exportExitCode -ne 0) {
+                    # Stop here: carrying on would rewrite and import whatever older file is at $RegPath
+                    Throw "reg.exe export returned exit code $exportExitCode."
                 }
 
                 Write-Debug 'Loading and modifying registry key name'
@@ -103,12 +103,11 @@
                 $Reg | Out-File $RegPath
 
                 Write-Debug 'Importing registry data to backup path'
-                $Null = & "$env:windir\system32\reg.exe" import "$RegPath" 2>''
-                if ($LASTEXITCODE -ne 0) {
-                    Write-Warning "reg.exe import returned exit code $LASTEXITCODE. Registry backup restoration may have failed."
-                    $registryCommandsSucceeded = $False
+                $importExitCode = Invoke-CWAARegExe -Arguments @('import', "$RegPath")
+                if ($importExitCode -ne 0) {
+                    Throw "reg.exe import returned exit code $importExitCode."
                 }
-                $registryBackedUp = $registryCommandsSucceeded
+                $registryBackedUp = $True
             }
             Catch {
                 Write-Error "There was a problem backing up the LTSvc registry keys. $_"

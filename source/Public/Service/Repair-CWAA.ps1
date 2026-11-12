@@ -92,11 +92,13 @@
                 # Never terminate this process or the chain that launched it: a wrapper's
                 # command line carries the same Repair-CWAA text as the process it started.
                 $protectedProcessIds = @($PID)
-                $ancestorProcessId = $PID
-                while ($True) {
-                    $ancestorProcessId = ($allProcesses | Where-Object { $_.ProcessId -eq $ancestorProcessId } | Select-Object -First 1).ParentProcessId
-                    if (-not $ancestorProcessId -or $protectedProcessIds -contains $ancestorProcessId) { break }
-                    $protectedProcessIds += $ancestorProcessId
+                $childProcess = $allProcesses | Where-Object { $_.ProcessId -eq $PID } | Select-Object -First 1
+                while ($childProcess -and $childProcess.ParentProcessId) {
+                    $parentProcess = $allProcesses | Where-Object { $_.ProcessId -eq $childProcess.ParentProcessId } | Select-Object -First 1
+                    # A "parent" that started after its child is an unrelated process reusing the ID
+                    if (-not $parentProcess -or $protectedProcessIds -contains $parentProcess.ProcessId -or $parentProcess.CreationDate -gt $childProcess.CreationDate) { break }
+                    $protectedProcessIds += $parentProcess.ProcessId
+                    $childProcess = $parentProcess
                 }
 
                 $allProcesses | Where-Object {
@@ -265,9 +267,11 @@
                 }
 
                 # Step 1: Restart services
+                $servicesRestarted = $False
                 if ($PSCmdlet.ShouldProcess('LTService, LTSvcMon', 'Restart services to recover agent check-in')) {
                     Write-Verbose 'Restarting Automate agent services.'
                     Restart-CWAA
+                    $servicesRestarted = $True
 
                     # Wait up to 2 minutes for the agent to check in after restart
                     Write-Verbose 'Waiting for agent check-in after restart.'
@@ -329,7 +333,9 @@
                     if ($lastContact -ge $restartThreshold) {
                         # Only the heartbeat is stale. Reinstall is decided on the check-in alone, so say so and stop here.
                         $resultMessage = "Services restarted. Agent has not recovered yet: the last check-in is current but the heartbeat is still stale (last sent: $lastHeartbeat)."
-                        Write-CWAAEventLog -EventId 4001 -EntryType Warning -Message $resultMessage
+                        if ($servicesRestarted) {
+                            Write-CWAAEventLog -EventId 4001 -EntryType Warning -Message $resultMessage
+                        }
                     }
                     else {
                         $resultMessage = "Services restarted. Agent has not recovered yet but is within reinstall threshold ($([Math]::Abs($HoursReinstall)) hours)."

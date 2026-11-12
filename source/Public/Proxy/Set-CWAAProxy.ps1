@@ -161,9 +161,10 @@
                     }
                     if (-not ($Script:LTProxy.Enabled)) {
                         # Nothing found per server: fall back to the machine-wide WinHTTP proxy
-                        # netsh prints "Proxy Server(s) :  host:port" or "Proxy Server(s) :  http=host:port;https=host:port"
+                        # netsh prints "Proxy Server(s) :  host:port" or "Proxy Server(s) :  http=host:port;https=host:port".
+                        # The label is translated on non-English Windows ("Proxyserver:"), so match any label naming a proxy.
                         $Script:LTProxy.ProxyServerURL = ''
-                        $winHttpProxyLine = netsh winhttp show proxy | Select-String -Pattern '(?i)Proxy Server\(s\)\s*:\s*(\S+)' -EA 0 | Select-Object -First 1
+                        $winHttpProxyLine = netsh winhttp show proxy | Select-String -Pattern '(?i)prox[^:]*:\s*(\S+)' -EA 0 | Select-Object -First 1
                         if ($winHttpProxyLine) {
                             $winHttpProxyEntries = @($winHttpProxyLine.Matches[0].Groups[1].Value -split ';' | Where-Object { $_ })
                             # Prefer the http entry, then one that applies to every protocol, then https
@@ -181,6 +182,8 @@
                         else {
                             $Script:LTProxy.Enabled = $True
                             Write-Debug "Detected Proxy URL: $($Script:LTProxy.ProxyServerURL)"
+                            # The system proxy object reported nothing for these servers, so route through the detected one
+                            $Script:LTWebProxy = New-Object System.Net.WebProxy($Script:LTProxy.ProxyServerURL, $true)
                         }
                     }
                     $Script:LTProxy.ProxyUsername = ''
@@ -221,6 +224,11 @@
                         $secureProxyPassword = New-Object System.Security.SecureString
                         if ($resolvedProxyPassword) { $secureProxyPassword = ConvertTo-SecureString "$resolvedProxyPassword" -AsPlainText -Force }
                         $Script:LTWebProxy.Credentials = New-Object System.Management.Automation.PSCredential ($resolvedProxyUsername, $secureProxyPassword)
+                    }
+                    else {
+                        # A proxy set without credentials must not inherit the previous proxy's
+                        $Script:LTProxy.ProxyUsername = ''
+                        $Script:LTProxy.ProxyPassword = ''
                     }
                     $Script:LTServiceNetWebClient.Proxy = $Script:LTWebProxy
                 }
