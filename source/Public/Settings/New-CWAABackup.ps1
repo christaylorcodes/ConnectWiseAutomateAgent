@@ -73,8 +73,9 @@
                 $copyErrors = @()
                 Get-ChildItem $agentPath -Exclude 'Backup' -ErrorVariable +copyErrors | Copy-Item -Destination $BackupPath -Recurse -Force -ErrorVariable +copyErrors
                 if ($copyErrors) {
-                    Write-Error "There was a problem backing up the LTSvc folder. $(@($copyErrors).Count) item(s) could not be copied."
+                    # Event first: Write-Error ends the function when the caller uses -ErrorAction Stop
                     Write-CWAAEventLog -EventId 3012 -EntryType Error -Message "Agent backup incomplete (file copy). $(@($copyErrors).Count) item(s) could not be copied. First error: $($copyErrors[0])"
+                    Write-Error "There was a problem backing up the LTSvc folder. $(@($copyErrors).Count) item(s) could not be copied."
                 }
                 else {
                     $filesBackedUp = $True

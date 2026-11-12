@@ -328,16 +328,19 @@
                     }
                 }
                 else {
-                    # Restart was attempted but agent hasn't recovered yet. Not yet at reinstall threshold.
-                    $actionTaken = 'Restart'
-                    if ($lastContact -ge $restartThreshold) {
+                    # Agent hasn't recovered and is not yet at the reinstall threshold.
+                    if (-not $servicesRestarted) {
+                        # The restart was skipped (-WhatIf or declined), so nothing was done
+                        $resultMessage = 'Agent is not checking in. Services were not restarted.'
+                    }
+                    elseif ($lastContact -ge $restartThreshold) {
                         # Only the heartbeat is stale. Reinstall is decided on the check-in alone, so say so and stop here.
+                        $actionTaken = 'Restart'
                         $resultMessage = "Services restarted. Agent has not recovered yet: the last check-in is current but the heartbeat is still stale (last sent: $lastHeartbeat)."
-                        if ($servicesRestarted) {
-                            Write-CWAAEventLog -EventId 4001 -EntryType Warning -Message $resultMessage
-                        }
+                        Write-CWAAEventLog -EventId 4001 -EntryType Warning -Message $resultMessage
                     }
                     else {
+                        $actionTaken = 'Restart'
                         $resultMessage = "Services restarted. Agent has not recovered yet but is within reinstall threshold ($([Math]::Abs($HoursReinstall)) hours)."
                     }
                     Write-Verbose $resultMessage

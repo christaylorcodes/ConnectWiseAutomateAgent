@@ -353,8 +353,10 @@ Describe 'Repair-CWAA' {
                 Mock Start-Sleep {}
                 Mock Write-CWAAEventLog {}
 
-                $null = Repair-CWAA -InstallerToken 'abc123' -WhatIf
+                $result = Repair-CWAA -InstallerToken 'abc123' -WhatIf
 
+                $result.ActionTaken | Should -Be 'None'
+                $result.Message | Should -Match 'Services were not restarted'
                 Should -Invoke Restart-CWAA -Times 0 -Scope It
                 Should -Invoke Write-CWAAEventLog -Times 0 -Scope It -ParameterFilter { $Message -match 'Services restarted' }
             }
