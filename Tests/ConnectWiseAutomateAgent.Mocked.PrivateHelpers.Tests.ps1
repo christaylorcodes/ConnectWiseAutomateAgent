@@ -7,7 +7,7 @@
 .DESCRIPTION
     Tests ConvertTo/From-CWAASecurity edge cases, Test-CWAADownloadIntegrity,
     Remove-CWAAFolderRecursive, Resolve-CWAAServer, Wait-CWAACondition,
-    Test-CWAADotNetPrerequisite, Invoke-CWAAMsiInstaller, and Test-CWAAUrlAvailable using Pester mocks.
+    Test-CWAADotNetPrerequisite, Invoke-CWAAMsiInstaller, Test-CWAAUrlAvailable, and Get-CWAARelaunchArgument using Pester mocks.
 
     Supports dual-mode testing via $env:CWAA_TEST_LOAD_METHOD.
 
@@ -771,5 +771,39 @@ Describe 'Test-CWAAUrlAvailable' {
             }
         } | Should -Throw '*404*'
         $responder.Dispose()
+    }
+}
+
+# -----------------------------------------------------------------------------
+
+Describe 'Get-CWAARelaunchArgument' {
+
+    It 'returns the arguments unchanged for <Case>' -ForEach @(
+        @{ Case = 'a quoted executable with -Command'; CommandLine = '"C:\WINDOWS\SysWOW64\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -Command "iex (irm https://example.com/x.psm1); Install-CWAA -Server ''a b''"'; Expected = '-NoProfile -Command "iex (irm https://example.com/x.psm1); Install-CWAA -Server ''a b''"' }
+        @{ Case = 'an unquoted executable with -File and arguments'; CommandLine = 'powershell.exe -ExecutionPolicy Bypass -File "C:\Temp\Screen Connect\run.ps1" -Server automate.example.com'; Expected = '-ExecutionPolicy Bypass -File "C:\Temp\Screen Connect\run.ps1" -Server automate.example.com' }
+        @{ Case = '-EncodedCommand'; CommandLine = '"C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe" -NonInteractive -EncodedCommand SQBFAFgA'; Expected = '-NonInteractive -EncodedCommand SQBFAFgA' }
+        @{ Case = 'a command that only mentions -NoExit inside its text'; CommandLine = 'powershell.exe -Command "Write-Output ''-NoExitStrategy''"'; Expected = '-Command "Write-Output ''-NoExitStrategy''"' }
+    ) {
+        $result = InModuleScope 'ConnectWiseAutomateAgent' -Parameters @{ CommandLine = $CommandLine } {
+            param($CommandLine)
+            Get-CWAARelaunchArgument -CommandLine $CommandLine
+        }
+        $result | Should -BeExactly $Expected
+    }
+
+    It 'returns nothing for <Case>' -ForEach @(
+        @{ Case = 'an interactive console (no arguments)'; CommandLine = '"C:\WINDOWS\SysWOW64\WindowsPowerShell\v1.0\powershell.exe"' }
+        @{ Case = 'a script piped to -Command -'; CommandLine = 'powershell.exe -NoProfile -NonInteractive -Command -' }
+        @{ Case = 'a script piped to the short form -c -'; CommandLine = 'powershell.exe -c -' }
+        @{ Case = 'a script piped to -File -'; CommandLine = 'powershell.exe -File -' }
+        @{ Case = 'a session kept open with -NoExit'; CommandLine = 'powershell.exe -NoExit -Command "Import-Module X"' }
+        @{ Case = 'a session kept open with the short form -noe'; CommandLine = 'powershell.exe -noe -File C:\Temp\run.ps1' }
+        @{ Case = 'an empty command line'; CommandLine = '' }
+    ) {
+        $result = InModuleScope 'ConnectWiseAutomateAgent' -Parameters @{ CommandLine = $CommandLine } {
+            param($CommandLine)
+            Get-CWAARelaunchArgument -CommandLine $CommandLine
+        }
+        $result | Should -BeNullOrEmpty
     }
 }
