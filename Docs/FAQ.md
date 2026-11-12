@@ -40,7 +40,7 @@ Install-CWAA -Server 'automate.example.com' -InstallerToken 'MyToken' -LocationI
 
 | Version | Support Level |
 | --- | --- |
-| PowerShell 2.0 | Limited (no module manifest support, use direct download .psm1) |
+| PowerShell 2.0 | Limited (no module manifest support, use direct download .psm1). Written and statically checked for 2.0, but not yet run on a real Windows 7 / Server 2008 R2 machine: please [open an issue](https://github.com/christaylorcodes/ConnectWiseAutomateAgent/issues) with what you see, working or not |
 | PowerShell 3.0 - 5.1 | Full support |
 | PowerShell 7+ | Full support |
 
