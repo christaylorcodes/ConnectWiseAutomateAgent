@@ -10,8 +10,15 @@
         interval to stagger execution across multiple machines, and has a 1-hour execution timeout.
 
         If the task already exists and its configuration (InstallerToken, Server, LocationID, or
-        IntervalHours) has changed, the task is recreated to match. Use -Force to recreate
-        unconditionally.
+        IntervalHours) has changed, the task is replaced in place to match. Use -Force to
+        replace it unconditionally. A failed replacement leaves the existing task as it was.
+
+        Returns an object with TaskName, Created and Updated. Created is true when a new task
+        was registered and Updated when an existing one was replaced (including with -Force);
+        both are false when nothing changed, with -WhatIf, or on failure. A failure is written
+        to the Application event log (4022 when the task could not be created, 4023 when it
+        was created but is missing afterwards) and reported as an error that follows
+        -ErrorAction.
 
         A backup of the current agent configuration is created before task registration
         via New-CWAABackup.
@@ -118,19 +125,14 @@
                 }
                 return
             }
-            $updated = $True
         }
+        # Replacing a task that is already there (drifted, or -Force) is an update, not a creation
+        $taskExisted = [bool]$existingTaskXml
 
         if ($PSCmdlet.ShouldProcess("Scheduled Task '$TaskName'", 'Create health check task')) {
             # Back up agent settings before creating/updating the task
             Write-Verbose 'Backing up agent configuration.'
             New-CWAABackup -ErrorAction SilentlyContinue
-
-            # Delete existing task if present
-            Try {
-                $Null = schtasks /DELETE /TN $TaskName /F 2>&1
-            }
-            Catch { Write-Debug "Failed to delete existing task '$TaskName': $($_.Exception.Message)" }
 
             # Build the task XML definition
             # Runs as SYSTEM (S-1-5-18) with highest privileges
@@ -182,11 +184,20 @@
 </Task>
 "@
 
-            $taskFilePath = "$env:TEMP\CWAAHealthCheckTask.xml"
+            # Unique name: the file holds the InstallerToken, and a fixed name would let two
+            # registrations running at once overwrite or delete each other's file
+            $taskFilePath = Join-Path $env:TEMP ('CWAAHealthCheckTask-{0}.xml' -f [guid]::NewGuid().ToString('N'))
+            $failureEventId = $Null
+            # With an effective ErrorActionPreference of Stop, Windows PowerShell turns redirected
+            # native stderr into a terminating error, so relax it for the schtasks calls. The caller's
+            # preference is applied again when the failure is reported below.
+            $callerErrorAction = $ErrorActionPreference
+            $ErrorActionPreference = 'Continue'
             Try {
                 $taskXml.Save($taskFilePath)
 
-                $schtasksOutput = schtasks /CREATE /TN $TaskName /XML $taskFilePath /RU SYSTEM 2>&1
+                # /F replaces an existing task in place, so a failed create leaves the old task intact
+                $schtasksOutput = schtasks /CREATE /TN $TaskName /XML $taskFilePath /RU SYSTEM /F 2>&1
                 if ($LASTEXITCODE -ne 0) {
                     throw "schtasks returned exit code $LASTEXITCODE. Output: $schtasksOutput"
                 }
@@ -194,29 +205,36 @@
                 # Verify the task actually persists after creation — a task can be reported as created
                 # successfully by schtasks and then be removed immediately afterward (e.g. by AV/policy).
                 # Uses schtasks (not Get-ScheduledTask/ScheduledTasks module) to match this function's
-                # PowerShell 2.0/3.0 compatibility target and the existence check above.
+                # PowerShell 3.0 compatibility target and the existence check above.
                 $Null = schtasks /QUERY /TN $TaskName 2>&1
                 if ($LASTEXITCODE -ne 0) {
-                    $verifyMessage = "Task '$TaskName' reported successful creation but could not be found on verification (possible AV/policy removal)."
-                    Write-Error $verifyMessage -ErrorAction Continue
-                    Write-CWAAEventLog -EventId 4023 -EntryType Error -Message $verifyMessage
-                }
-                else {
-                    $created = -not $updated
-                    $resultMessage = if ($updated) { "Scheduled task '$TaskName' updated." } else { "Scheduled task '$TaskName' created." }
-                    Write-Output $resultMessage
-                    Write-CWAAEventLog -EventId 4020 -EntryType Information -Message "$resultMessage Interval: every $IntervalHours hours."
+                    $failureEventId = 4023
+                    $failureMessage = "Task '$TaskName' reported successful creation but could not be found on verification (possible AV/policy removal)."
                 }
             }
             Catch {
-                # -ErrorAction Continue ensures the event log call below still runs even when the caller
-                # has set $ErrorActionPreference = 'Stop' (Write-Error would otherwise terminate here).
-                Write-Error "Failed to create scheduled task '$TaskName'. Error: $($_.Exception.Message)" -ErrorAction Continue
-                Write-CWAAEventLog -EventId 4022 -EntryType Error -Message "Failed to create scheduled task '$TaskName'. Error: $($_.Exception.Message)"
+                $failureEventId = 4022
+                $failureMessage = "Failed to create scheduled task '$TaskName'. Error: $($_.Exception.Message)"
             }
             Finally {
                 # Clean up the temporary XML file
                 Remove-Item -Path $taskFilePath -Force -ErrorAction SilentlyContinue
+                # Put back for the next pipeline record, which captures it again
+                $ErrorActionPreference = $callerErrorAction
+            }
+
+            if ($failureEventId) {
+                # Event log first, so it is written even when the caller's -ErrorAction Stop makes
+                # Write-Error terminate.
+                Write-CWAAEventLog -EventId $failureEventId -EntryType Error -Message $failureMessage
+                Write-Error $failureMessage -ErrorAction $callerErrorAction
+            }
+            else {
+                $updated = $taskExisted
+                $created = -not $taskExisted
+                $resultMessage = if ($updated) { "Scheduled task '$TaskName' updated." } else { "Scheduled task '$TaskName' created." }
+                Write-Output $resultMessage
+                Write-CWAAEventLog -EventId 4020 -EntryType Information -Message "$resultMessage Interval: every $IntervalHours hours."
             }
         }
 

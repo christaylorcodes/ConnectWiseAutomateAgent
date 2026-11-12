@@ -1,4 +1,4 @@
-function Wait-CWAACondition {
+﻿function Wait-CWAACondition {
     <#
     .SYNOPSIS
         Polls a condition script block until it returns $true or a timeout is reached.

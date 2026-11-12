@@ -440,15 +440,15 @@ This cmdlet supports the common parameters: -Debug, -ErrorAction, -ErrorVariable
 
 ### System.String[]
 
-{{ Fill in the Description }}
+Bound from the pipeline by property name: `-Server`.
 
 ### System.String
 
-{{ Fill in the Description }}
+Bound from the pipeline by property name: `-ServerPassword`.
 
 ### System.Int32
 
-{{ Fill in the Description }}
+Bound from the pipeline by property name: `-LocationID`, `-TrayPort`.
 
 ## OUTPUTS
 

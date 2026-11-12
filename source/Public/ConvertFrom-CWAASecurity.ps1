@@ -1,4 +1,4 @@
-function ConvertFrom-CWAASecurity {
+﻿function ConvertFrom-CWAASecurity {
     <#
     .SYNOPSIS
         Decodes a Base64-encoded string using TripleDES decryption.
@@ -45,7 +45,6 @@ function ConvertFrom-CWAASecurity {
         $_initializationVector = [byte[]](240, 3, 45, 29, 0, 76, 173, 59)
         $NoKeyPassed = $False
         $DecodedString = $Null
-        $DecodeString = $Null
     }
 
     Process {
@@ -62,7 +61,7 @@ function ConvertFrom-CWAASecurity {
                         $NoKeyPassed = $True
                         $testKey = $DefaultKey
                     }
-                    Write-Debug "Attempting Decode for '$($testInput)' with Key '$($testKey)'"
+                    Write-Debug "Attempting Decode for '$($testInput)' with Key $(Get-CWAARedactedValue "$testKey")"
                     Try {
                         $inputBytes = [System.Convert]::FromBase64String($testInput)
                         $tripleDesProvider = New-Object System.Security.Cryptography.TripleDESCryptoServiceProvider
@@ -73,7 +72,7 @@ function ConvertFrom-CWAASecurity {
                         $DecodedString += @($DecodeString)
                     }
                     Catch {
-                        Write-Debug "Decode failed for '$($testInput)' with Key '$($testKey)': $_"
+                        Write-Debug "Decode failed for '$($testInput)' with Key $(Get-CWAARedactedValue "$testKey"): $_"
                     }
                     Finally {
                         if ((Get-Variable -Name cryptoTransform -Scope 0 -EA 0)) { try { $cryptoTransform.Dispose() } catch { $cryptoTransform.Clear() } }
@@ -83,17 +82,15 @@ function ConvertFrom-CWAASecurity {
             }
             if ($Null -eq $DecodeString) {
                 if ($Force) {
+                    # Retry with the alternate key: an empty key after the default failed, otherwise the default
                     if ($NoKeyPassed) {
                         $DecodeString = ConvertFrom-CWAASecurity -InputString "$($testInput)" -Key '' -Force:$False
-                        if (-not ($Null -eq $DecodeString)) {
-                            $DecodedString += @($DecodeString)
-                        }
                     }
                     else {
                         $DecodeString = ConvertFrom-CWAASecurity -InputString "$($testInput)"
-                        if (-not ($Null -eq $DecodeString)) {
-                            $DecodedString += @($DecodeString)
-                        }
+                    }
+                    if ($Null -ne $DecodeString) {
+                        $DecodedString += @($DecodeString)
                     }
                 }
                 else {

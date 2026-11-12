@@ -5,10 +5,10 @@
     Severity = @('Error', 'Warning')
 
     ExcludeRules = @(
-        # Set-CWAAProxy must convert a plain-text proxy password to SecureString
-        # for storage in the agent's registry configuration. The password originates
-        # from the user's -ProxyPassword parameter and there is no SecureString path
-        # through the LabTech agent registry format.
+        # The module holds the proxy password as plain text because the agent registry
+        # stores it re-encrypted with the agent key; there is no SecureString path through
+        # that format. Set-CWAAProxy and Install-CWAA convert it back to a SecureString
+        # for the WebProxy credential and for Set-CWAAProxy's -ProxyPassword parameter.
         'PSAvoidUsingConvertToSecureStringWithPlainText',
 
         # Repair-CWAA uses Get-CimInstance Win32_Process (not WMI) for process

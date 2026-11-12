@@ -1,4 +1,4 @@
-function Reset-CWAA {
+﻿function Reset-CWAA {
     <#
     .SYNOPSIS
         Removes local agent identity settings to force re-registration.

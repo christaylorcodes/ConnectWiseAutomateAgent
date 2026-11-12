@@ -1,4 +1,4 @@
-$InstallParameters = @{
+﻿$InstallParameters = @{
     Server         = 'automate.example.com'
     LocationID     = 1
     InstallerToken = 'MyGeneratedInstallerToken'
@@ -18,11 +18,11 @@ $InstallParameters = @{
 # a GitHub Release so the code is immutable after publication.
 #
 # PREFERRED: Use Install-Module from the PowerShell Gallery instead:
-#   Install-Module 'ConnectWiseAutomateAgent' -RequiredVersion '1.0.0'
+#   Install-Module 'ConnectWiseAutomateAgent' -RequiredVersion '2.2.0'
 # ==============================================================================
 
 $Module = 'ConnectWiseAutomateAgent'
-$ModuleVersion = '1.0.0'  # Pin to a tested version — update after validating new releases
+$ModuleVersion = '2.2.0'  # Pin to a tested version — update after validating new releases
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 try {

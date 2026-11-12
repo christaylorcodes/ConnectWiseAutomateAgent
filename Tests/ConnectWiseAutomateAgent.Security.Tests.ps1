@@ -1,4 +1,4 @@
-#Requires -Module Pester
+﻿#Requires -Module Pester
 
 <#
 .SYNOPSIS
@@ -123,6 +123,33 @@ Describe 'ConvertFrom-CWAASecurity' {
         $encoded = ConvertTo-CWAASecurity -InputString 'PipelineTest'
         $decoded = $encoded | ConvertFrom-CWAASecurity
         $decoded | Should -Be 'PipelineTest'
+    }
+}
+
+# =============================================================================
+# Debug Output Redaction
+# =============================================================================
+Describe 'Security debug output' {
+
+    It 'ConvertTo-CWAASecurity does not write the key or the plain text to the debug stream' {
+        $debugText = ConvertTo-CWAASecurity -InputString 'PlainTextSecret42' -Key 'DebugLeakKey42' -Debug 5>&1 | Out-String
+        $debugText | Should -Match 'Attempting Encode'
+        $debugText | Should -Not -Match 'DebugLeakKey42'
+        $debugText | Should -Not -Match 'PlainTextSecret42'
+    }
+
+    It 'ConvertFrom-CWAASecurity does not write the key to the debug stream' {
+        $encoded = ConvertTo-CWAASecurity -InputString 'RoundTripValue' -Key 'DebugLeakKey42'
+        $debugText = ConvertFrom-CWAASecurity -InputString $encoded -Key 'DebugLeakKey42' -Debug 5>&1 | Out-String
+        $debugText | Should -Match 'Attempting Decode'
+        $debugText | Should -Not -Match 'DebugLeakKey42'
+    }
+
+    It 'ConvertFrom-CWAASecurity does not write the key to the debug stream when decoding fails' {
+        $encoded = ConvertTo-CWAASecurity -InputString 'RoundTripValue' -Key 'CorrectKey'
+        $debugText = ConvertFrom-CWAASecurity -InputString $encoded -Key 'WrongDebugLeakKey' -Force:$False -Debug 5>&1 | Out-String
+        $debugText | Should -Match 'Decode failed'
+        $debugText | Should -Not -Match 'WrongDebugLeakKey'
     }
 }
 

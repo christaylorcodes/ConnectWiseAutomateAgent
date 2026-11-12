@@ -1,4 +1,4 @@
-function Initialize-CWAANetworking {
+﻿function Initialize-CWAANetworking {
     <#
     .SYNOPSIS
         Lazily initializes networking objects on first use rather than at module load.
@@ -113,6 +113,13 @@ public class ServerCertificateValidationCallback
     # excluded. Each version is added via bitwise OR to preserve already-enabled protocols.
     Try {
         if ([Net.SecurityProtocolType]::Tls12) { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 }
+        else {
+            # .NET 3.5 (PowerShell 2.0 on Windows 7 / Server 2008 R2) has no Tls12 name, but accepts its
+            # value (3072) once the TLS 1.2 update for .NET 3.5.1 is installed. Without it this throws.
+            # Enum.ToObject, because PowerShell refuses to convert a number the enum has no name for.
+            Try { [Net.ServicePointManager]::SecurityProtocol = [Enum]::ToObject([Net.SecurityProtocolType], ([int][Net.ServicePointManager]::SecurityProtocol -bor 3072)) }
+            Catch { Write-Debug "TLS 1.2 is not available on this .NET runtime: $_" }
+        }
         if ([Net.SecurityProtocolType]::Tls13) { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls13 }
     }
     Catch {
@@ -120,7 +127,7 @@ public class ServerCertificateValidationCallback
     }
 
     # WebClient and WebProxy are deprecated in .NET 6+ (SYSLIB0014) but still functional.
-    # They remain the only option compatible with PowerShell 3.0-5.1 (.NET Framework).
+    # They remain the only option compatible with PowerShell 2.0-5.1 (.NET Framework).
     Try {
         $Script:LTWebProxy = New-Object System.Net.WebProxy
 

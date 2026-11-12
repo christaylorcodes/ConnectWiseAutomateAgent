@@ -1,4 +1,4 @@
-function Invoke-CWAACommand {
+﻿function Invoke-CWAACommand {
     <#
     .SYNOPSIS
         Sends a service command to the ConnectWise Automate agent.
@@ -57,6 +57,26 @@ function Invoke-CWAACommand {
     Begin {
         Write-Debug "Starting $($MyInvocation.InvocationName)"
         $Service = Get-Service 'LTService' -ErrorAction SilentlyContinue
+        $commandIdByName = @{
+            'Update Schedule'                 = 128
+            'Send Inventory'                  = 129
+            'Send Drives'                     = 130
+            'Send Processes'                  = 131
+            'Send Spyware List'               = 132
+            'Send Apps'                       = 133
+            'Send Events'                     = 134
+            'Send Printers'                   = 135
+            'Send Status'                     = 136
+            'Send Screen'                     = 137
+            'Send Services'                   = 138
+            'Analyze Network'                 = 139
+            'Write Last Contact Date'         = 140
+            'Kill VNC'                        = 141
+            'Kill Trays'                      = 142
+            'Send Patch Reboot'               = 143
+            'Run App Care Update'             = 144
+            'Start App Care Daytime Patching' = 145
+        }
     }
 
     Process {
@@ -70,43 +90,20 @@ function Invoke-CWAACommand {
         }
 
         foreach ($Cmd in $Command) {
-            $CommandID = $Null
+            # ValidateSet guarantees every command has an ID in the map
+            $CommandID = $commandIdByName[$Cmd]
             Try {
-                switch ($Cmd) {
-                    'Update Schedule'                  { $CommandID = 128 }
-                    'Send Inventory'                   { $CommandID = 129 }
-                    'Send Drives'                      { $CommandID = 130 }
-                    'Send Processes'                    { $CommandID = 131 }
-                    'Send Spyware List'                { $CommandID = 132 }
-                    'Send Apps'                        { $CommandID = 133 }
-                    'Send Events'                      { $CommandID = 134 }
-                    'Send Printers'                    { $CommandID = 135 }
-                    'Send Status'                      { $CommandID = 136 }
-                    'Send Screen'                      { $CommandID = 137 }
-                    'Send Services'                    { $CommandID = 138 }
-                    'Analyze Network'                  { $CommandID = 139 }
-                    'Write Last Contact Date'          { $CommandID = 140 }
-                    'Kill VNC'                         { $CommandID = 141 }
-                    'Kill Trays'                       { $CommandID = 142 }
-                    'Send Patch Reboot'                { $CommandID = 143 }
-                    'Run App Care Update'              { $CommandID = 144 }
-                    'Start App Care Daytime Patching'  { $CommandID = 145 }
-                    default { Write-Debug "Unrecognized command: '$Cmd'" }
-                }
-
                 if ($PSCmdlet.ShouldProcess("LTService", "Send Service Command '$($Cmd)' ($($CommandID))")) {
-                    if ($Null -ne $CommandID) {
-                        Write-Debug "Sending service command '$($Cmd)' ($($CommandID)) to 'LTService'"
-                        Try {
-                            $Null = & "$env:windir\system32\sc.exe" control LTService $($CommandID) 2>''
-                            if ($LASTEXITCODE -ne 0) {
-                                Write-Warning "sc.exe control returned exit code $LASTEXITCODE for command '$Cmd' ($CommandID)."
-                            }
-                            Write-Output "Sent Command '$($Cmd)' to 'LTService'"
+                    Write-Debug "Sending service command '$($Cmd)' ($($CommandID)) to 'LTService'"
+                    Try {
+                        $Null = & "$env:windir\system32\sc.exe" control LTService $($CommandID) 2>''
+                        if ($LASTEXITCODE -ne 0) {
+                            Write-Warning "sc.exe control returned exit code $LASTEXITCODE for command '$Cmd' ($CommandID)."
                         }
-                        Catch {
-                            Write-Output "Error calling sc.exe. Failed to send command."
-                        }
+                        Write-Output "Sent Command '$($Cmd)' to 'LTService'"
+                    }
+                    Catch {
+                        Write-Output "Error calling sc.exe. Failed to send command."
                     }
                 }
             }

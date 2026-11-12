@@ -1,4 +1,4 @@
-function New-CWAAScriptOutput {
+﻿function New-CWAAScriptOutput {
     <#
     .SYNOPSIS
         Creates a structured output object for ConnectWise Automate script results.

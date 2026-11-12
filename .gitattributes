@@ -36,6 +36,8 @@
 # Scripts
 *.bash    text eol=lf
 *.sh      text eol=lf
+# Git hooks are sh scripts without an extension: CRLF line endings break them
+.githooks/pre-commit text eol=lf
 *.fish    text eol=lf
 *.zsh     text eol=lf
 *.bat     text eol=crlf

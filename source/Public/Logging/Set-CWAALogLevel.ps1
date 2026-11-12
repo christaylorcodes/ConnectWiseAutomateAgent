@@ -1,4 +1,4 @@
-function Set-CWAALogLevel {
+﻿function Set-CWAALogLevel {
     <#
     .SYNOPSIS
         Sets the logging level for the ConnectWise Automate Agent.
@@ -61,10 +61,10 @@ function Set-CWAALogLevel {
                 Stop-CWAA
                 Set-ItemProperty $registryPath -Name $registryName -Value $registryValue
                 Start-CWAA
+                Write-CWAAEventLog -EventId 3030 -EntryType Information -Message "Agent log level set to $Level."
             }
 
             Get-CWAALogLevel
-            Write-CWAAEventLog -EventId 3030 -EntryType Information -Message "Agent log level set to $Level."
         }
         Catch {
             Write-CWAAEventLog -EventId 3032 -EntryType Error -Message "Failed to set agent log level to '$Level'. Error: $($_.Exception.Message)"

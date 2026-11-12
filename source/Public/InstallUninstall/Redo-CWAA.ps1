@@ -1,4 +1,4 @@
-function Redo-CWAA {
+﻿function Redo-CWAA {
     <#
     .SYNOPSIS
         Reinstalls the ConnectWise Automate Agent on the local computer.
@@ -106,21 +106,17 @@ function Redo-CWAA {
     }
 
     Process {
+        if (-not $Server -and $Settings) {
+            $Server = $Settings | Select-Object -Expand 'Server' -EA 0
+        }
         if (-not $Server) {
-            if ($Settings) {
-                $Server = $Settings | Select-Object -Expand 'Server' -EA 0
-            }
-            if (-not $Server) {
-                $Server = Read-Host -Prompt 'Provide the URL to your Automate server (https://automate.domain.com):'
-            }
+            $Server = Read-Host -Prompt 'Provide the URL to your Automate server (https://automate.domain.com):'
+        }
+        if (-not $LocationID -and $Settings) {
+            $LocationID = $Settings | Select-Object -Expand LocationID -EA 0
         }
         if (-not $LocationID) {
-            if ($Settings) {
-                $LocationID = $Settings | Select-Object -Expand LocationID -EA 0
-            }
-            if (-not $LocationID) {
-                $LocationID = Read-Host -Prompt 'Provide the LocationID'
-            }
+            $LocationID = Read-Host -Prompt 'Provide the LocationID'
         }
         if (-not $LocationID) {
             $LocationID = '1'
@@ -147,8 +143,9 @@ function Redo-CWAA {
             $PasswordPresent = "-Password 'REDACTED'"
         }
 
-        Write-Output "Reinstalling Automate agent with the following information, -Server $($ServerList -join ',') $PasswordPresent -LocationID $LocationID $RenameArg"
-        Write-Verbose "Starting: UnInstall-CWAA -Server $($ServerList -join ',')"
+        $serverListText = $ServerList -join ','
+        Write-Output "Reinstalling Automate agent with the following information, -Server $serverListText $PasswordPresent -LocationID $LocationID $RenameArg"
+        Write-Verbose "Starting: UnInstall-CWAA -Server $serverListText"
         Try {
             Uninstall-CWAA -Server $ServerList -ErrorAction Stop -Force
         }
@@ -163,21 +160,30 @@ function Redo-CWAA {
             }
         }
 
-        Write-Verbose "Starting: Install-CWAA -Server $($ServerList -join ',') $PasswordPresent -LocationID $LocationID -Hide:`$$Hide $RenameArg"
+        Write-Verbose "Starting: Install-CWAA -Server $serverListText $PasswordPresent -LocationID $LocationID -Hide:`$$Hide $RenameArg"
+        $installParameters = @{
+            Server     = $ServerList
+            LocationID = $LocationID
+            Hide       = $Hide
+            Rename     = $Rename
+            SkipDotNet = $SkipDotNet
+            Force      = $True
+        }
+        if ($PSCmdlet.ParameterSetName -eq 'installertoken') {
+            $installParameters.InstallerToken = $InstallerToken
+        }
+        else {
+            $installParameters.ServerPassword = $ServerPassword
+        }
         Try {
-            if ($PSCmdlet.ParameterSetName -ne 'installertoken') {
-                Install-CWAA -Server $ServerList -ServerPassword $ServerPassword -LocationID $LocationID -Hide:$Hide -Rename $Rename -SkipDotNet:$SkipDotNet -Force
-            }
-            else {
-                Install-CWAA -Server $ServerList -InstallerToken $InstallerToken -LocationID $LocationID -Hide:$Hide -Rename $Rename -SkipDotNet:$SkipDotNet -Force
-            }
+            Install-CWAA @installParameters
         }
         Catch {
             Write-CWAAEventLog -EventId 1022 -EntryType Error -Message "Agent reinstall failed during install phase. Error: $($_.Exception.Message)"
             Write-Error "There was an error during the reinstall process while installing. $_" -ErrorAction Stop
         }
 
-        Write-CWAAEventLog -EventId 1020 -EntryType Information -Message "Agent reinstalled successfully. Server: $($ServerList -join ','), LocationID: $LocationID"
+        Write-CWAAEventLog -EventId 1020 -EntryType Information -Message "Agent reinstalled successfully. Server: $serverListText, LocationID: $LocationID"
         Write-Debug "Exiting $($myInvocation.InvocationName)"
     }
 }

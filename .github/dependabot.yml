@@ -7,6 +7,8 @@ version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
+    # PRs go to develop like every other change. A merge to main publishes a stable release.
+    target-branch: develop
     schedule:
       interval: weekly
     # Let new releases settle for a week before proposing them

@@ -12,12 +12,12 @@
 
 **ConnectWiseAutomateAgent** is a PowerShell module for managing the ConnectWise Automate (formerly LabTech) Windows agent. Used by MSPs to install, configure, troubleshoot, and manage the Automate agent on Windows systems.
 
-- **Language**: PowerShell 3.0+ (2.0 with limitations)
+- **Language**: PowerShell, in three tiers: 2.0+ for agent deployment, 5.1+ for everything that runs once an agent is installed, 7 for build and test tooling. See [PowerShell Version Tiers](#powershell-version-tiers)
 - **Build System**: Sampler/ModuleBuilder/InvokeBuild (`./build.ps1`)
 - **Test Framework**: Pester 6 (pinned range in `RequiredModules.psd1`)
 - **Linter**: PSScriptAnalyzer
 - **License**: MIT
-- **Platform**: Windows only (the module targets PowerShell 3.0+; build and test tooling requires PowerShell 7.6+)
+- **Platform**: Windows only (build and test tooling requires PowerShell 7.6+)
 
 ## Quick Start
 
@@ -58,7 +58,7 @@ ConnectWiseAutomateAgent/
   source/
     ConnectWiseAutomateAgent.psd1     # Module manifest
     ConnectWiseAutomateAgent.psm1     # Root module (auto-loads subdirectories)
-    en-US/                            # Localized help (MAML XML)
+    en-US/                            # about_ help topic (Get-Help for functions uses comment-based help)
     Private/                          # Internal helper functions (not exported)
       Initialize/                     # Module bootstrapping
     Public/                           # Exported functions (one file per function)
@@ -71,13 +71,14 @@ ConnectWiseAutomateAgent/
       Settings/                       # Agent configuration and backup
   output/                             # Build output (gitignored)
   Tests/
-    *.Tests.ps1                       # 12 test suites (Module, Mocked.*, Docs, Security, CrossVersion, Live)
+    *.Tests.ps1                       # 13 test suites (Module, Mocked.*, Docs, Security, Compatibility, CrossVersion, Live)
     Helpers/                          # Shared mock helpers
     TestBootstrap.ps1                 # Shared module loading bootstrap
     Invoke-AllTests.ps1               # Dual-mode test runner
     test-local.ps1                    # Pre-push validation script
   Scripts/
     Invoke-QuickTest.ps1              # Fast targeted test runner for dev loops
+    Get-CodacyResult.ps1              # Prints why Codacy failed a pull request (the GitHub check does not say)
     Update-MarkdownHelp.ps1           # PlatyPS 1.x markdown help generator (run via build.ps1 -Tasks docs)
   Docs/                               # Hand-written guides
     Help/
@@ -109,6 +110,8 @@ The build uses [Sampler](https://github.com/gaelcolas/Sampler) with ModuleBuilde
 - `./build.ps1 -Tasks docs` -- builds the module and regenerates `Docs/Help/ConnectWiseAutomateAgent/` with Microsoft.PowerShell.PlatyPS 1.x. Files are regenerated from scratch and validated; remaining `{{ ... }}` placeholders are listed so they can be filled in via comment-based help.
 - `Assert_RequiredModule_Versions` runs at the start of `build` and `test` and fails if a dependency is missing, duplicated, or outside its range.
 - Publishing is done by CI (`.github/workflows/ci.yml`), not a build task.
+- The version is calculated by GitVersion at build time (`GitVersion.yml`): `develop` produces `X.Y.0-alphaNNNN` prereleases, `main` produces stable versions. `ModuleVersion` and `Prerelease` in the source manifest are placeholders; never edit them. Use `+semver: major|minor|patch` in a commit message to force a bump. See [CONTRIBUTING.md](CONTRIBUTING.md#versioning).
+- Release notes come from `CHANGELOG.md`: the build labels the `[Unreleased]` section with the version being built and uses it for the manifest's `ReleaseNotes` and the GitHub Release body. Keep release content under `[Unreleased]` until the release is published; rename the heading to the version afterwards.
 - Custom tasks live in `.build/` and are referenced from `build.yaml`.
 
 ### CI/CD
@@ -121,7 +124,7 @@ CI runs build + a consolidated smoke test (PSScriptAnalyzer + Pester on one runn
 
 **SSL Callback Persistence.** The SSL certificate validation callback is compiled via `Add-Type` in `Initialize-CWAANetworking`. Because compiled .NET types cannot be unloaded from an AppDomain, the callback persists for the lifetime of the PowerShell process -- even across module re-imports.
 
-**Dual-Mode Testing.** The module ships as both a PSGallery module and a single `.ps1` file. Both loading methods must be tested. See `Get-Help .\Tests\TestBootstrap.ps1` for details on load methods.
+**Dual-Mode Testing.** The module ships as both a PSGallery module and a single compiled `.psm1` file attached to each GitHub Release. Both loading methods must be tested. See `Get-Help .\Tests\TestBootstrap.ps1` for details on load methods.
 
 **.psm1 Module Scoping.** PowerShell treats `.psm1` files differently from `.ps1` when dot-sourced. Dot-sourcing a `.psm1` applies module-scoping rules that make functions invisible to `Get-Command` and the `Function:` drive -- even in the global scope. This means `. .\Module.psm1` does not make functions callable the way `. .\Script.ps1` does. To execute `.psm1` content without module scoping, read the file as a string and execute via `Invoke-Expression` or `[scriptblock]::Create()`. The cross-version tests use the scriptblock approach for this reason.
 
@@ -129,7 +132,33 @@ CI runs build + a consolidated smoke test (PSScriptAnalyzer + Pester on one runn
 
 ## Code Conventions
 
-For the full contributing guide covering development setup, coding standards, and PR workflow, see [CONTRIBUTING.md](CONTRIBUTING.md). General PowerShell guidance shared across projects lives in the template repository: [PowerShell Style Guide](https://github.com/christaylorcodes/GitHub-Template/blob/main/docs/PowerShell-StyleGuide.md) and [PowerShell Deep Review](https://github.com/christaylorcodes/GitHub-Template/blob/main/docs/PowerShell-DeepReview.md). Where they differ, this file wins (for example, this module keeps PowerShell 3.0+ compatibility).
+For the full contributing guide covering development setup, coding standards, and PR workflow, see [CONTRIBUTING.md](CONTRIBUTING.md). General PowerShell guidance shared across projects lives in the template repository: [PowerShell Style Guide](https://github.com/christaylorcodes/GitHub-Template/blob/main/docs/PowerShell-StyleGuide.md) and [PowerShell Deep Review](https://github.com/christaylorcodes/GitHub-Template/blob/main/docs/PowerShell-DeepReview.md). Where they differ, this file wins (for example, this module keeps the PowerShell version tiers below).
+
+### PowerShell Version Tiers
+
+The module is deployed into environments where endpoints have not been managed and may never have been updated. Getting the agent onto those machines is the point, so how old a PowerShell a piece of code must support depends on when it runs.
+
+| Tier | Runs on | What is in it |
+| --- | --- | --- |
+| **Deployment** | Windows 7 / Server 2008 R2 as shipped: PowerShell 2.0, .NET 3.5 | Everything needed to load the module and install, reinstall or remove an agent. This is the default: a source file is in this tier unless it is listed as managed |
+| **Managed** | PowerShell 5.1 and 7 | Code that only runs once an agent is installed, when the machine can be assumed to be on the newest PowerShell it supports. Windows 7 stops at 5.1, so this tier must work on 5.1 as well as 7 |
+| **Tooling** | PowerShell 7 | The build, tests, `Scripts/`, `.build/` and anything else that is not shipped to endpoints |
+
+The managed tier is the list in `$managedTier` at the top of `Tests/ConnectWiseAutomateAgent.Compatibility.Tests.ps1`: the Script helpers, logging functions, `Repair-CWAA`, the health check functions, `Test-CWAAServerConnectivity`, `Update-CWAA`, `Invoke-CWAACommand` and `Reset-CWAA`. That test file is the source of truth; add a file to the list only when it cannot run before an agent exists.
+
+Rules:
+
+- **PowerShell 2.0 is reached through direct download mode only.** The module manifest declares `PowerShellVersion = '3.0'` and uses `RootModule`, which PowerShell 2.0 does not understand, so `Import-Module` needs 3.0 or later. On a stock Windows 7 / Server 2008 R2 machine the built `.psm1` is downloaded and run as text.
+- **Every shipped file must parse on PowerShell 2.0**, whatever its tier. Direct download mode loads the whole module text at once, so one piece of newer syntax anywhere stops the install. That rules out `-in` / `-notin` (use `-contains`), `[Parameter(Mandatory)]` without `= $True`, and redirecting streams other than output and error.
+- **Deployment tier code must also run on PowerShell 2.0 / .NET 3.5.** Common traps:
+  - `[PSCustomObject]@{}` quietly returns a hashtable. Use `New-Object PSObject -Property @{}`.
+  - No `Expand-Archive`, `Get-CimInstance`, `Invoke-WebRequest`, `Invoke-RestMethod`, `ConvertTo-Json` or `ConvertFrom-Json`. Use the private helpers (`Expand-CWAAZipFile`), `System.Net.WebClient` and `System.Net.WebRequest`.
+  - .NET 3.5 types expose less: a hash or crypto object has `.Clear()` but no public `.Dispose()`, and an enum value with no name (TLS 1.2 is 3072) needs `[Enum]::ToObject()`.
+  - No `$PSScriptRoot`, `::new()`, `.Where()` / `.ForEach()`, `Where-Object Name -eq x` without a script block, or `-ErrorAction Ignore`.
+  - `foreach` over `$null` runs once, and `$list.Name` does not read a property from every item. Guard the loop and use `ForEach-Object`.
+  - .NET 4 members such as `[string]::IsNullOrWhiteSpace` and `[Environment]::Is64BitOperatingSystem` do not exist.
+- `Tests/ConnectWiseAutomateAgent.Compatibility.Tests.ps1` enforces the first rule on every file and a block list of the second on deployment tier files. It reads the syntax tree; it cannot run PowerShell 2.0 (current Windows no longer has the engine) and cannot see run-time traps like the `foreach` one. A Windows 7 / Server 2008 R2 machine is the real check before a release.
+- PSScriptAnalyzer's `PSUseCompatibleSyntax` targets 3.0 and 5.1 only (it has no 2.0 target), so it does not replace the test above.
 
 ### Quick Reference
 
@@ -164,6 +193,7 @@ When modifying existing functions:
 - Maintain the `LT` alias (or the legacy ScriptHelper alias for Script helpers)
 - Rebuild: `./build.ps1 -Tasks build`
 - Consider 32-bit/64-bit WOW64 behavior for registry/file operations
+- Keep to the file's [PowerShell version tier](#powershell-version-tiers)
 
 ## Testing
 

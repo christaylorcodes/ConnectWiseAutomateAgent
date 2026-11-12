@@ -1,4 +1,4 @@
-# ==============================================================================
+﻿# ==============================================================================
 # ScriptHelper-PwshLauncher.ps1
 #
 # Demonstrates using Invoke-CWAAPwsh to run PowerShell 7 code from Automate.
@@ -91,9 +91,13 @@ Invoke-CWAAPwsh -ScriptBlock {
 
 Invoke-CWAAScript -EnableLogging -ScriptBlock {
     $ps7Output = Invoke-CWAAPwsh -ScriptBlock {
-        # PS7 ternary operator (not available in PS5)
-        $isServer = (Get-CimInstance Win32_OperatingSystem).ProductType -ne 1 ? 'Server' : 'Workstation'
-        "This machine is a $isServer running PS $($PSVersionTable.PSVersion)"
+        # This file is parsed by Windows PowerShell before pwsh runs the block, so PS7-only
+        # syntax (ternary, ??, &&) cannot appear here; put such code in a file and use -FilePath.
+        # PS7-only cmdlets and parameters are fine, such as ConvertFrom-Json -AsHashtable.
+        $os = Get-CimInstance Win32_OperatingSystem | Select-Object Caption, ProductType |
+            ConvertTo-Json | ConvertFrom-Json -AsHashtable
+        $role = if ($os['ProductType'] -ne 1) { 'Server' } else { 'Workstation' }
+        "This machine is a $role running PS $($PSVersionTable.PSVersion)"
     }
     if ($ps7Output -match '^Status=Error\|Result=([^|]*)') { throw "PowerShell 7 step failed: $($matches[1])" }
     # Invoke-CWAAPwsh returns pipe-delimited output; extract just the result

@@ -343,15 +343,15 @@ This cmdlet supports the common parameters: -Debug, -ErrorAction, -ErrorVariable
 
 ### System.String[]
 
-{{ Fill in the Description }}
+You can pipe a value to `-Server`.
 
 ### System.String
 
-{{ Fill in the Description }}
+You can pipe a value to `-ServerPassword`.
 
 ### System.Int32
 
-{{ Fill in the Description }}
+Bound from the pipeline by property name: `-LocationID`.
 
 ## OUTPUTS
 

@@ -79,4 +79,4 @@ Author: Chris Taylor
 
 ## RELATED LINKS
 
-[Uninstall-CWAA](../Uninstall-CWAA.md)
+[Uninstall-CWAA](../ConnectWiseAutomateAgent/Uninstall-CWAA.md)

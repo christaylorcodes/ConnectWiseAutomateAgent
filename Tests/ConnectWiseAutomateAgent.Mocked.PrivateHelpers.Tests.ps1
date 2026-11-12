@@ -1,4 +1,4 @@
-#Requires -Module Pester
+﻿#Requires -Module Pester
 
 <#
 .SYNOPSIS
@@ -7,7 +7,7 @@
 .DESCRIPTION
     Tests ConvertTo/From-CWAASecurity edge cases, Test-CWAADownloadIntegrity,
     Remove-CWAAFolderRecursive, Resolve-CWAAServer, Wait-CWAACondition,
-    Test-CWAADotNetPrerequisite, and Invoke-CWAAMsiInstaller using Pester mocks.
+    Test-CWAADotNetPrerequisite, Invoke-CWAAMsiInstaller, Test-CWAAUrlAvailable, Get-CWAARelaunchArgument, Invoke-CWAANativeRelaunch, and Expand-CWAAZipFile using Pester mocks.
 
     Supports dual-mode testing via $env:CWAA_TEST_LOAD_METHOD.
 
@@ -715,5 +715,214 @@ Describe 'Confirm-CWAADependencyService' {
             Should -Invoke Set-Service -Scope It -Times 0
             Should -Invoke Start-Service -Scope It -Times 0
         }
+    }
+}
+
+# -----------------------------------------------------------------------------
+
+Describe 'Test-CWAAUrlAvailable' {
+
+    BeforeAll {
+        # A real loopback listener: [System.Net.WebRequest] is a static .NET call that Pester cannot mock.
+        $portProbe = New-Object System.Net.Sockets.TcpListener ([System.Net.IPAddress]::Loopback, 0)
+        $portProbe.Start()
+        $script:UrlTestPort = $portProbe.LocalEndpoint.Port
+        $portProbe.Stop()
+
+        $script:UrlTestListener = New-Object System.Net.HttpListener
+        $script:UrlTestListener.Prefixes.Add("http://localhost:$($script:UrlTestPort)/")
+        $script:UrlTestListener.Start()
+
+        # Answers exactly one request with the given status code from a background runspace.
+        function Start-UrlTestResponse {
+            param([int]$StatusCode)
+            $responder = [powershell]::Create().AddScript({
+                    param($listener, $statusCode)
+                    $context = $listener.GetContext()
+                    $context.Response.StatusCode = $statusCode
+                    $context.Response.Close()
+                }).AddArgument($script:UrlTestListener).AddArgument($StatusCode)
+            $null = $responder.BeginInvoke()
+            $responder
+        }
+    }
+
+    AfterAll {
+        $script:UrlTestListener.Stop()
+        $script:UrlTestListener.Close()
+    }
+
+    It 'returns true when the URL answers 200' {
+        $responder = Start-UrlTestResponse -StatusCode 200
+        $result = InModuleScope 'ConnectWiseAutomateAgent' -ArgumentList "http://localhost:$($script:UrlTestPort)/file.msi" {
+            param($testUrl)
+            Test-CWAAUrlAvailable -Url $testUrl
+        }
+        $responder.Dispose()
+        $result | Should -BeTrue
+    }
+
+    It 'lets the request failure reach the caller when the URL answers 404' {
+        $responder = Start-UrlTestResponse -StatusCode 404
+        {
+            InModuleScope 'ConnectWiseAutomateAgent' -ArgumentList "http://localhost:$($script:UrlTestPort)/missing.msi" {
+                param($testUrl)
+                Test-CWAAUrlAvailable -Url $testUrl
+            }
+        } | Should -Throw '*404*'
+        $responder.Dispose()
+    }
+}
+
+# -----------------------------------------------------------------------------
+
+Describe 'Get-CWAARelaunchArgument' {
+
+    It 'returns the arguments unchanged for <Case>' -ForEach @(
+        @{ Case = 'a quoted executable with -Command'; CommandLine = '"C:\WINDOWS\SysWOW64\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -Command "iex (irm https://example.com/x.psm1); Install-CWAA -Server ''a b''"'; Expected = '-NoProfile -Command "iex (irm https://example.com/x.psm1); Install-CWAA -Server ''a b''"' }
+        @{ Case = 'an unquoted executable with -File and arguments'; CommandLine = 'powershell.exe -ExecutionPolicy Bypass -File "C:\Temp\Screen Connect\run.ps1" -Server automate.example.com'; Expected = '-ExecutionPolicy Bypass -File "C:\Temp\Screen Connect\run.ps1" -Server automate.example.com' }
+        @{ Case = '-EncodedCommand'; CommandLine = '"C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe" -NonInteractive -EncodedCommand SQBFAFgA'; Expected = '-NonInteractive -EncodedCommand SQBFAFgA' }
+        @{ Case = 'short switch forms (-ep, -c)'; CommandLine = 'powershell.exe -ep Bypass -c "Install-CWAA"'; Expected = '-ep Bypass -c "Install-CWAA"' }
+        @{ Case = 'short switch forms (-ex, -e)'; CommandLine = 'powershell.exe -ex Bypass -e SQBFAFgA'; Expected = '-ex Bypass -e SQBFAFgA' }
+        @{ Case = 'command text that mentions -NoExit'; CommandLine = 'powershell.exe -Command "Start-Process powershell -ArgumentList ''-NoExit -File x.ps1''"'; Expected = '-Command "Start-Process powershell -ArgumentList ''-NoExit -File x.ps1''"' }
+        @{ Case = 'a script whose own switch is -NoExit'; CommandLine = 'powershell.exe -File C:\Temp\run.ps1 -NoExit'; Expected = '-File C:\Temp\run.ps1 -NoExit' }
+        @{ Case = 'a script argument that is a lone dash'; CommandLine = 'powershell.exe -File C:\Temp\run.ps1 -Mode -'; Expected = '-File C:\Temp\run.ps1 -Mode -' }
+        @{ Case = 'a -Command script that spans several lines'; CommandLine = "powershell.exe -NoProfile -Command `"iex (irm https://example.com/x.psm1)`r`nInstall-CWAA -Server a`""; Expected = "-NoProfile -Command `"iex (irm https://example.com/x.psm1)`r`nInstall-CWAA -Server a`"" }
+    ) {
+        $result = InModuleScope 'ConnectWiseAutomateAgent' -Parameters @{ CommandLine = $CommandLine } {
+            param($CommandLine)
+            Get-CWAARelaunchArgument -CommandLine $CommandLine
+        }
+        $result | Should -BeExactly $Expected
+    }
+
+    It 'returns nothing for <Case>' -ForEach @(
+        @{ Case = 'an interactive console (no arguments)'; CommandLine = '"C:\WINDOWS\SysWOW64\WindowsPowerShell\v1.0\powershell.exe"' }
+        @{ Case = 'an interactive console started with switches only'; CommandLine = 'powershell.exe -NoProfile -ExecutionPolicy Bypass' }
+        @{ Case = 'a script piped in with no -Command'; CommandLine = 'powershell.exe -NoProfile -NonInteractive' }
+        @{ Case = 'a script piped to a bare dash'; CommandLine = 'powershell.exe -NoProfile -' }
+        @{ Case = 'a script piped to -Command -'; CommandLine = 'powershell.exe -NoProfile -NonInteractive -Command -' }
+        @{ Case = 'a script piped to the short form -c -'; CommandLine = 'powershell.exe -c -' }
+        @{ Case = 'a script piped to -File -'; CommandLine = 'powershell.exe -File -' }
+        @{ Case = 'a session kept open with -NoExit'; CommandLine = 'powershell.exe -NoExit -Command "Import-Module X"' }
+        @{ Case = 'a session kept open with the short form -noe'; CommandLine = 'powershell.exe -noe -File C:\Temp\run.ps1' }
+        @{ Case = 'a background job host'; CommandLine = 'powershell.exe -s -NoLogo -NoProfile' }
+        @{ Case = 'an empty command line'; CommandLine = '' }
+    ) {
+        $result = InModuleScope 'ConnectWiseAutomateAgent' -Parameters @{ CommandLine = $CommandLine } {
+            param($CommandLine)
+            Get-CWAARelaunchArgument -CommandLine $CommandLine
+        }
+        $result | Should -BeNullOrEmpty
+    }
+}
+
+# -----------------------------------------------------------------------------
+
+Describe 'Invoke-CWAANativeRelaunch' {
+
+    It 'starts the 64-bit host with the arguments unchanged and returns its exit code' {
+        $result = InModuleScope 'ConnectWiseAutomateAgent' {
+            Mock Test-Path { return $true }
+            Mock Start-Process {
+                $fakeProcess = New-Object PSObject -Property @{ Handle = 1; ExitCode = 42 }
+                $fakeProcess | Add-Member -MemberType ScriptMethod -Name WaitForExit -Value { } -PassThru
+            }
+
+            Invoke-CWAANativeRelaunch -Arguments '-NoProfile -File "C:\Temp\Screen Connect\run.ps1" -Server a'
+
+            Should -Invoke Start-Process -Times 1 -Exactly -Scope It -ParameterFilter {
+                $FilePath -like '*\sysnative\windowspowershell\v1.0\powershell.exe' -and
+                "$ArgumentList" -eq '-NoProfile -File "C:\Temp\Screen Connect\run.ps1" -Server a' -and
+                $NoNewWindow -and
+                -not $Wait -and
+                $WorkingDirectory -eq [Environment]::CurrentDirectory
+            }
+        }
+        $result | Should -Be 42
+    }
+
+    It 'returns nothing and warns when the 64-bit host cannot be started' {
+        InModuleScope 'ConnectWiseAutomateAgent' {
+            Mock Test-Path { return $true }
+            Mock Start-Process { throw 'This program is blocked by group policy.' }
+
+            $result = Invoke-CWAANativeRelaunch -Arguments '-Command "Install-CWAA"' -WarningAction SilentlyContinue -WarningVariable testWarn
+
+            $result | Should -BeNullOrEmpty
+            "$testWarn" | Should -Match 'Unable to start the 64-bit PowerShell session.*blocked by group policy'
+        }
+    }
+}
+
+# -----------------------------------------------------------------------------
+
+Describe 'Expand-CWAAZipFile' {
+
+    BeforeAll {
+        # The Windows shell needs real file system paths, not the TestDrive: drive name
+        $script:ZipTestRoot = (Get-Item -Path 'TestDrive:\').FullName
+        $zipSource = Join-Path $script:ZipTestRoot 'zip source'
+        $null = New-Item -Path (Join-Path $zipSource 'sub folder') -ItemType Directory -Force
+        Set-Content -Path (Join-Path $zipSource 'Agent_Install.msi') -Value 'installer content'
+        Set-Content -Path (Join-Path $zipSource 'Agent_Install.mst') -Value 'transform content'
+        Set-Content -Path (Join-Path $zipSource 'sub folder\nested.txt') -Value 'nested content'
+        $script:ZipTestFile = Join-Path $script:ZipTestRoot 'Agent_Install.zip'
+        Compress-Archive -Path (Join-Path $zipSource '*') -DestinationPath $script:ZipTestFile -Force
+    }
+
+    # Each method is forced by hiding the ones tried before it, the way an older machine would
+    It 'extracts every file, overwriting a stale one, using <Method>' -ForEach @(
+        @{ Method = 'Expand-Archive (PowerShell 5.0 and later)'; HideExpandArchive = $false; HideZipFile = $false }
+        @{ Method = '.NET ZipFile (PowerShell 3.0 and 4.0)'; HideExpandArchive = $true; HideZipFile = $false }
+        @{ Method = 'the Windows shell (PowerShell 2.0)'; HideExpandArchive = $true; HideZipFile = $true }
+    ) {
+        $destination = Join-Path $script:ZipTestRoot "out $($Method -replace '[^a-zA-Z0-9]', '')"
+        $null = New-Item -Path $destination -ItemType Directory -Force
+        Set-Content -Path (Join-Path $destination 'Agent_Install.msi') -Value 'stale content from an earlier run'
+
+        InModuleScope 'ConnectWiseAutomateAgent' -Parameters @{ ZipFile = $script:ZipTestFile; Destination = $destination; HideExpandArchive = $HideExpandArchive; HideZipFile = $HideZipFile } {
+            param($ZipFile, $Destination, $HideExpandArchive, $HideZipFile)
+            if ($HideExpandArchive) {
+                Mock Get-Command { return $null } -ParameterFilter { $Name -eq 'Expand-Archive' }
+                Mock Expand-Archive { throw 'Expand-Archive must not be used on this path.' }
+            }
+            if ($HideZipFile) {
+                Mock Add-Type { throw 'Could not load file or assembly System.IO.Compression.FileSystem.' } -ParameterFilter { $AssemblyName -eq 'System.IO.Compression.FileSystem' }
+            }
+
+            Expand-CWAAZipFile -Path $ZipFile -DestinationPath $Destination
+
+            if ($HideExpandArchive) { Should -Invoke Expand-Archive -Times 0 -Scope It }
+        }
+
+        Get-Content -Path (Join-Path $destination 'Agent_Install.msi') | Should -Be 'installer content'
+        Get-Content -Path (Join-Path $destination 'Agent_Install.mst') | Should -Be 'transform content'
+        Get-Content -Path (Join-Path $destination 'sub folder\nested.txt') | Should -Be 'nested content'
+    }
+
+    It 'reports a damaged ZIP as an error on the .NET path instead of falling through to the shell' {
+        $damaged = Join-Path $script:ZipTestRoot 'damaged.zip'
+        Set-Content -Path $damaged -Value 'this is not a zip archive'
+        {
+            InModuleScope 'ConnectWiseAutomateAgent' -Parameters @{ ZipFile = $damaged; Destination = (Join-Path $script:ZipTestRoot 'out damaged') } {
+                param($ZipFile, $Destination)
+                Mock Get-Command { return $null } -ParameterFilter { $Name -eq 'Expand-Archive' }
+                Mock New-Object { throw 'The shell must not be tried for a damaged archive.' } -ParameterFilter { $ComObject -eq 'Shell.Application' }
+                Expand-CWAAZipFile -Path $ZipFile -DestinationPath $Destination
+            }
+        } | Should -Throw
+    }
+
+    It 'explains what is needed when no extraction method can open the file' {
+        $missing = Join-Path $script:ZipTestRoot 'missing.zip'
+        {
+            InModuleScope 'ConnectWiseAutomateAgent' -Parameters @{ ZipFile = $missing; Destination = (Join-Path $script:ZipTestRoot 'out none') } {
+                param($ZipFile, $Destination)
+                Mock Get-Command { return $null } -ParameterFilter { $Name -eq 'Expand-Archive' }
+                Mock Add-Type { throw 'Could not load file or assembly System.IO.Compression.FileSystem.' } -ParameterFilter { $AssemblyName -eq 'System.IO.Compression.FileSystem' }
+                Expand-CWAAZipFile -Path $ZipFile -DestinationPath $Destination
+            }
+        } | Should -Throw '*needs PowerShell 5.0, .NET 4.5, or the Windows shell*'
     }
 }

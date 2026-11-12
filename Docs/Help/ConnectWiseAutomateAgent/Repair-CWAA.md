@@ -4,7 +4,7 @@ external help file: ConnectWiseAutomateAgent-Help.xml
 HelpUri: https://github.com/christaylorcodes/ConnectWiseAutomateAgent
 Locale: en-US
 Module Name: ConnectWiseAutomateAgent
-ms.date: 11/10/2026
+ms.date: 11/12/2026
 PlatyPS schema version: 2024-05-01
 title: Repair-CWAA
 ---
@@ -43,19 +43,19 @@ Checks the health of the installed Automate agent and takes corrective action
 using an escalating strategy:
 
 1.
-If the agent is installed and healthy � no action taken.
+If the agent is installed and healthy — no action taken.
 2.
-If the agent is installed but has not checked in within HoursRestart � restarts
+If the agent is installed but has not checked in within HoursRestart — restarts
    services and waits up to 2 minutes for the agent to recover.
 3.
-If the agent is still not checking in after HoursReinstall � reinstalls the agent
+If the agent is still not checking in after HoursReinstall — reinstalls the agent
    using Redo-CWAA.
 4.
-If the agent configuration is unreadable � uninstalls and reinstalls.
+If the agent configuration is unreadable — uninstalls and reinstalls.
 5.
-If the installed agent points to the wrong server � reinstalls with the correct server.
+If the installed agent points to the wrong server — reinstalls with the correct server.
 6.
-If the agent is not installed � performs a fresh install from provided parameters
+If the agent is not installed — performs a fresh install from provided parameters
    or from backup settings.
 
 All remediation actions are logged to the Windows Event Log (Application log,
@@ -259,11 +259,11 @@ This cmdlet supports the common parameters: -Debug, -ErrorAction, -ErrorVariable
 
 ### System.String
 
-{{ Fill in the Description }}
+Bound from the pipeline by property name: `-Server`.
 
 ### System.Int32
 
-{{ Fill in the Description }}
+Bound from the pipeline by property name: `-LocationID`.
 
 ## OUTPUTS
 

@@ -1,4 +1,4 @@
-function ConvertTo-CWAASecurity {
+﻿function ConvertTo-CWAASecurity {
     <#
     .SYNOPSIS
         Encodes a string using TripleDES encryption compatible with Automate operations.
@@ -52,18 +52,10 @@ function ConvertTo-CWAASecurity {
             $Key = $DefaultKey
         }
 
-        try {
-            $inputBytes = [System.Text.Encoding]::UTF8.GetBytes($InputString)
-        }
-        catch {
-            try { $inputBytes = [System.Text.Encoding]::ASCII.GetBytes($InputString) } catch {
-                Write-Debug "Failed to convert InputString to byte array: $_"
-            }
-        }
-
-        Write-Debug "Attempting Encode for '$($InputString)' with Key '$($Key)'"
+        Write-Debug "Attempting Encode for $(Get-CWAARedactedValue "$InputString") with Key $(Get-CWAARedactedValue "$Key")"
         $encodedString = ''
         try {
+            $inputBytes = [System.Text.Encoding]::UTF8.GetBytes($InputString)
             $tripleDesProvider = New-Object System.Security.Cryptography.TripleDESCryptoServiceProvider
             $tripleDesProvider.key = (New-Object Security.Cryptography.MD5CryptoServiceProvider).ComputeHash([Text.Encoding]::UTF8.GetBytes($Key))
             $tripleDesProvider.IV = $_initializationVector
@@ -71,7 +63,7 @@ function ConvertTo-CWAASecurity {
             $encodedString = [System.Convert]::ToBase64String($cryptoTransform.TransformFinalBlock($inputBytes, 0, ($inputBytes.Length)))
         }
         catch {
-            Write-Debug "Failed to Encode string: '$($InputString)'. $_"
+            Write-Debug "Failed to Encode string: $(Get-CWAARedactedValue "$InputString"). $_"
         }
         Finally {
             if ($cryptoTransform) { try { $cryptoTransform.Dispose() } catch { $cryptoTransform.Clear() } }

@@ -6,14 +6,14 @@
         Checks the health of the installed Automate agent and takes corrective action
         using an escalating strategy:
 
-        1. If the agent is installed and healthy � no action taken.
-        2. If the agent is installed but has not checked in within HoursRestart � restarts
+        1. If the agent is installed and healthy — no action taken.
+        2. If the agent is installed but has not checked in within HoursRestart — restarts
            services and waits up to 2 minutes for the agent to recover.
-        3. If the agent is still not checking in after HoursReinstall � reinstalls the agent
+        3. If the agent is still not checking in after HoursReinstall — reinstalls the agent
            using Redo-CWAA.
-        4. If the agent configuration is unreadable � uninstalls and reinstalls.
-        5. If the installed agent points to the wrong server � reinstalls with the correct server.
-        6. If the agent is not installed � performs a fresh install from provided parameters
+        4. If the agent configuration is unreadable — uninstalls and reinstalls.
+        5. If the installed agent points to the wrong server — reinstalls with the correct server.
+        6. If the agent is not installed — performs a fresh install from provided parameters
            or from backup settings.
 
         All remediation actions are logged to the Windows Event Log (Application log,
@@ -87,10 +87,24 @@
         # Uses CIM for reliable command-line matching (Get-Process cannot filter by arguments)
         if ($PSCmdlet.ShouldProcess('Duplicate Repair-CWAA processes', 'Terminate')) {
             Try {
-                Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
-                    $_.Name -eq 'powershell.exe' -and
-                    $_.CommandLine -match 'Repair-CWAA' -and
-                    $_.ProcessId -ne $PID
+                $allProcesses = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)
+
+                # Never terminate this process or the chain that launched it: a wrapper's
+                # command line carries the same Repair-CWAA text as the process it started.
+                $protectedProcessIds = @($PID)
+                $childProcess = $allProcesses | Where-Object { $_.ProcessId -eq $PID } | Select-Object -First 1
+                while ($childProcess -and $childProcess.ParentProcessId) {
+                    $parentProcess = $allProcesses | Where-Object { $_.ProcessId -eq $childProcess.ParentProcessId } | Select-Object -First 1
+                    # A "parent" that started after its child is an unrelated process reusing the ID
+                    if (-not $parentProcess -or $protectedProcessIds -contains $parentProcess.ProcessId -or $parentProcess.CreationDate -gt $childProcess.CreationDate) { break }
+                    $protectedProcessIds += $parentProcess.ProcessId
+                    $childProcess = $parentProcess
+                }
+
+                $allProcesses | Where-Object {
+                    $_.Name -match '^(powershell|pwsh)\.exe$' -and
+                    $_.CommandLine -match 'Repair-(CWAA|LTService)' -and
+                    $protectedProcessIds -notcontains $_.ProcessId
                 } | ForEach-Object {
                     Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
                 }
@@ -110,7 +124,7 @@
         $agentServiceExists = [bool](Get-Service 'LTService' -ErrorAction SilentlyContinue)
 
         if ($agentServiceExists) {
-            #region Agent is installed � check health and remediate
+            #region Agent is installed — check health and remediate
 
             # Verify we can read agent configuration
             $agentInfo = $Null
@@ -118,7 +132,7 @@
                 $agentInfo = Get-CWAAInfo -EA Stop -Verbose:$False -WhatIf:$False -Confirm:$False
             }
             Catch {
-                # Agent config is unreadable � uninstall so we can reinstall cleanly
+                # Agent config is unreadable — uninstall so we can reinstall cleanly
                 Write-Warning "Unable to read agent configuration. Uninstalling for clean reinstall."
                 Write-CWAAEventLog -EventId 4009 -EntryType Warning -Message "Agent configuration unreadable. Uninstalling for clean reinstall. Error: $($_.Exception.Message)"
 
@@ -159,19 +173,19 @@
                 }
 
                 if (-not $serverMatches) {
-                    Write-Warning "Wrong install server ($($currentServers -join ', ')). Expected '$Server'. Reinstalling."
-                    Write-CWAAEventLog -EventId 4004 -EntryType Warning -Message "Server mismatch detected. Installed: $($currentServers -join ', '). Expected: $Server. Reinstalling."
+                    $currentServerList = $currentServers -join ', '
+                    Write-Warning "Wrong install server ($currentServerList). Expected '$Server'. Reinstalling."
+                    Write-CWAAEventLog -EventId 4004 -EntryType Warning -Message "Server mismatch detected. Installed: $currentServerList. Expected: $Server. Reinstalling."
 
-                    if ($PSCmdlet.ShouldProcess('LTService', "Reinstall agent for server mismatch (current: $($currentServers -join ', '), expected: $Server)")) {
+                    if ($PSCmdlet.ShouldProcess('LTService', "Reinstall agent for server mismatch (current: $currentServerList, expected: $Server)")) {
                         Clear-CWAAInstallerArtifacts
+                        $actionTaken = 'Reinstall'
                         Try {
                             Redo-CWAA -Server $Server -LocationID $LocationID -InstallerToken $InstallerToken
-                            $actionTaken = 'Reinstall'
                             $resultMessage = "Reinstalled agent to correct server: $Server"
                             Write-CWAAEventLog -EventId 4004 -EntryType Information -Message $resultMessage
                         }
                         Catch {
-                            $actionTaken = 'Reinstall'
                             $success = $False
                             $resultMessage = "Failed to reinstall agent for server mismatch. Error: $($_.Exception.Message)"
                             Write-Error $resultMessage
@@ -198,7 +212,7 @@
                     [datetime]$lastContact = $agentInfo.HeartbeatLastReceived
                 }
                 Catch {
-                    # No valid contact timestamp � treat as very old
+                    # No valid contact timestamp — treat as very old
                     [datetime]$lastContact = (Get-Date).AddYears(-1)
                 }
             }
@@ -253,26 +267,35 @@
                 }
 
                 # Step 1: Restart services
+                $servicesRestarted = $False
                 if ($PSCmdlet.ShouldProcess('LTService, LTSvcMon', 'Restart services to recover agent check-in')) {
                     Write-Verbose 'Restarting Automate agent services.'
                     Restart-CWAA
+                    $servicesRestarted = $True
 
                     # Wait up to 2 minutes for the agent to check in after restart
                     Write-Verbose 'Waiting for agent check-in after restart.'
                     $waitStart = Get-Date
-                    while ($lastContact -lt $restartThreshold -and $waitStart.AddMinutes(2) -gt (Get-Date)) {
+                    while (($lastContact -lt $restartThreshold -or $lastHeartbeat -lt $restartThreshold) -and $waitStart.AddMinutes(2) -gt (Get-Date)) {
                         Start-Sleep -Seconds 2
+                        $refreshedAgentInfo = Get-CWAAInfo -EA 0 -Verbose:$False -WhatIf:$False -Confirm:$False
                         Try {
-                            [datetime]$lastContact = (Get-CWAAInfo -EA Stop -Verbose:$False -WhatIf:$False -Confirm:$False).LastSuccessStatus
+                            [datetime]$lastContact = $refreshedAgentInfo.LastSuccessStatus
                         }
                         Catch {
                             Write-Debug "Unable to re-read LastSuccessStatus during wait loop: $($_.Exception.Message)"
                         }
+                        Try {
+                            [datetime]$lastHeartbeat = $refreshedAgentInfo.HeartbeatLastSent
+                        }
+                        Catch {
+                            Write-Debug "Unable to re-read HeartbeatLastSent during wait loop: $($_.Exception.Message)"
+                        }
                     }
                 }
 
-                # Did the restart fix it?
-                if ($lastContact -ge $restartThreshold) {
+                # Did the restart fix it? Both the check-in and the heartbeat have to be current.
+                if ($lastContact -ge $restartThreshold -and $lastHeartbeat -ge $restartThreshold) {
                     $actionTaken = 'Restart'
                     $resultMessage = "Services restarted. Agent recovered. Last contact: $lastContact"
                     Write-Verbose $resultMessage
@@ -285,6 +308,7 @@
 
                     if ($PSCmdlet.ShouldProcess('LTService', 'Reinstall agent after failed restart recovery')) {
                         Clear-CWAAInstallerArtifacts
+                        $actionTaken = 'Reinstall'
                         Try {
                             if ($InstallerToken -and $Server -and $LocationID) {
                                 Redo-CWAA -Server $Server -LocationID $LocationID -InstallerToken $InstallerToken -Hide
@@ -292,12 +316,10 @@
                             else {
                                 Redo-CWAA -Hide -InstallerToken $InstallerToken
                             }
-                            $actionTaken = 'Reinstall'
                             $resultMessage = 'Agent reinstalled after extended offline period.'
                             Write-CWAAEventLog -EventId 4002 -EntryType Information -Message $resultMessage
                         }
                         Catch {
-                            $actionTaken = 'Reinstall'
                             $success = $False
                             $resultMessage = "Agent reinstall failed. Error: $($_.Exception.Message)"
                             Write-Error $resultMessage
@@ -306,10 +328,21 @@
                     }
                 }
                 else {
-                    # Restart was attempted but agent hasn't recovered yet. Not yet at reinstall threshold.
-                    $actionTaken = 'Restart'
-                    $success = $True
-                    $resultMessage = "Services restarted. Agent has not recovered yet but is within reinstall threshold ($([Math]::Abs($HoursReinstall)) hours)."
+                    # Agent hasn't recovered and is not yet at the reinstall threshold.
+                    if (-not $servicesRestarted) {
+                        # The restart was skipped (-WhatIf or declined), so nothing was done
+                        $resultMessage = 'Agent is not checking in. Services were not restarted.'
+                    }
+                    elseif ($lastContact -ge $restartThreshold) {
+                        # Only the heartbeat is stale. Reinstall is decided on the check-in alone, so say so and stop here.
+                        $actionTaken = 'Restart'
+                        $resultMessage = "Services restarted. Agent has not recovered yet: the last check-in is current but the heartbeat is still stale (last sent: $lastHeartbeat)."
+                        Write-CWAAEventLog -EventId 4001 -EntryType Warning -Message $resultMessage
+                    }
+                    else {
+                        $actionTaken = 'Restart'
+                        $resultMessage = "Services restarted. Agent has not recovered yet but is within reinstall threshold ($([Math]::Abs($HoursReinstall)) hours)."
+                    }
                     Write-Verbose $resultMessage
                 }
             }
@@ -323,7 +356,7 @@
             #endregion
         }
         else {
-            #region Agent is NOT installed � attempt install
+            #region Agent is NOT installed — attempt install
 
             Write-Verbose 'Agent service not found. Attempting installation.'
             Write-CWAAEventLog -EventId 4003 -EntryType Warning -Message 'Agent not installed. Attempting installation.'
@@ -343,18 +376,17 @@
                 else {
                     # Try to recover from existing settings or backup
                     $settings = $Null
-                    $hasBackup = $False
+                    $settingsFromInstalledAgent = $False
                     Try {
                         $settings = Get-CWAAInfo -EA Stop -Verbose:$False -WhatIf:$False -Confirm:$False
-                        $hasBackup = $True
+                        $settingsFromInstalledAgent = $True
                     }
                     Catch {
                         $settings = Get-CWAAInfoBackup -EA 0
-                        $hasBackup = $False
                     }
 
                     if ($settings) {
-                        if ($hasBackup) {
+                        if ($settingsFromInstalledAgent) {
                             Write-Verbose 'Backing up current settings before reinstall.'
                             New-CWAABackup -ErrorAction SilentlyContinue
                         }

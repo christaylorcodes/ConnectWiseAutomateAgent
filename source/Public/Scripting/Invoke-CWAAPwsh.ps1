@@ -1,4 +1,4 @@
-function Invoke-CWAAPwsh {
+﻿function Invoke-CWAAPwsh {
     <#
     .SYNOPSIS
         Executes a scriptblock or script file under PowerShell 7 (pwsh.exe).
@@ -27,13 +27,19 @@ function Invoke-CWAAPwsh {
         be told apart and also counts as an error; redirect it inside the scriptblock
         (2>&1) if a tool writes progress to stderr. On error, Result holds the stderr text
         (or stdout when stderr is empty) and Data holds ExitCode=<n> and, when stderr
-        replaced it, the stdout text as Output=<text>, always last.
+        replaced it, the stdout text as Output=<text>, always last. Error text is what pwsh
+        itself prints, which can include the script line that raised the error.
         ANSI color sequences are stripped from captured output.
 
         For both parameter sets the exit code follows pwsh -File semantics: an explicit
         exit <n> or an unhandled error fails the run, but a handled error or a leftover
         non-zero exit code from the last native command does not. Warning, verbose and
         Write-Host output from the child is captured into Result as plain text lines.
+
+        Objects the script outputs are formatted to text as PowerShell would display them.
+        An object shown as a table that is output immediately before exit or throw is not
+        captured; let the script end normally, or convert it to text first (for example
+        with Out-String).
 
         For the ScriptBlock parameter set, the scriptblock is Base64-encoded using
         Unicode (UTF-16LE) for transport via the -EncodedCommand parameter. Only the
@@ -42,7 +48,8 @@ function Invoke-CWAAPwsh {
         scriptblock, or use the FilePath parameter set with -Parameters instead.
 
         The encoded command, including any parameter values, appears on the pwsh.exe command
-        line, which process auditing and EDR tools record. Do not pass secrets this way.
+        line, which process auditing and EDR tools record, and a failing line of the script
+        can be echoed in Result. Do not pass secrets this way or write them into the script.
     .PARAMETER ScriptBlock
         A PowerShell scriptblock to encode and execute under pwsh.exe.
     .PARAMETER FilePath
@@ -56,8 +63,9 @@ function Invoke-CWAAPwsh {
         $null, NaN, infinity, arrays, hashtables and other object types are rejected.
     .PARAMETER PwshPath
         Optional override for the path to pwsh.exe. Use this when pwsh is installed
-        in a non-standard location. The path is resolved to a full path (a bare name is
-        never looked up on PATH) and then trusted as given: make sure the folder is not
+        in a non-standard location. It must be an .exe file on the file system. The path
+        is resolved to a full path (a bare name is never looked up on PATH) and then
+        trusted as given: make sure the folder is not
         writable by non-administrators, because this usually runs as SYSTEM.
     .EXAMPLE
         Invoke-CWAAPwsh -ScriptBlock { $PSVersionTable.PSVersion.ToString() }
@@ -107,7 +115,13 @@ function Invoke-CWAAPwsh {
                     Write-Error "Specified pwsh.exe path '$PwshPath' does not exist." -ErrorAction Stop
                 }
                 # Launch by full path so a bare name is never resolved through PATH
-                $resolvedPwshPath = (Resolve-Path -LiteralPath $PwshPath -ErrorAction Stop).ProviderPath
+                $resolvedPwsh = Resolve-Path -LiteralPath $PwshPath -ErrorAction Stop
+                $resolvedPwshPath = $resolvedPwsh.ProviderPath
+                # Anything else (a .ps1, a .cmd, a function: or variable: path) would run in or
+                # through this process, or be looked up by name
+                if ($resolvedPwsh.Provider.Name -ne 'FileSystem' -or [System.IO.Path]::GetExtension($resolvedPwshPath) -ne '.exe') {
+                    Write-Error "Specified pwsh.exe path '$PwshPath' is not an executable (.exe)." -ErrorAction Stop
+                }
             }
             else {
                 $programFilesRoots = @($env:ProgramW6432, $env:ProgramFiles) | Where-Object { $_ } | Select-Object -Unique
@@ -147,24 +161,31 @@ function Invoke-CWAAPwsh {
                 }
 
                 $resolvedPwshPath = $candidatePaths | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+                if (-not $resolvedPwshPath) {
+                    Write-Error "PowerShell 7 (pwsh.exe) was not found in Program Files or the PowerShellCore registry install locations.$registryNote Install PowerShell 7 or specify the path using -PwshPath." -ErrorAction Stop
+                }
             }
 
-            if (-not $resolvedPwshPath) {
-                Write-Error "PowerShell 7 (pwsh.exe) was not found in Program Files or the PowerShellCore registry install locations.$registryNote Install PowerShell 7 or specify the path using -PwshPath." -ErrorAction Stop
-            }
-
-            # Build the pwsh arguments. -OutputFormat Text makes the child write warning, verbose
-            # and host output as plain stdout lines (captured into Result) instead of serialized
-            # records the parent PowerShell would replay to its own host as extra lines.
-            $pwshArguments = @('-NoProfile', '-NonInteractive', '-OutputFormat', 'Text')
-
+            # The script's output is formatted to text inside the child before it exits. Left to
+            # the host, table-formatted objects are still waiting in the formatter when exit
+            # runs and are lost, along with everything output after them.
+            # No trap, try/catch or error redirection is put around the script: any of those
+            # would change which of its statements run.
+            # Out-String is loaded up front with progress silenced for that step only: loading
+            # its module in a Windows PowerShell child writes a progress record to stderr.
+            $commandPrefix = '& { $ProgressPreference = ''SilentlyContinue''; $null = '''' | Out-String }; ' +
+                '$global:LASTEXITCODE = 0; $__cwaaOk = $true; & { '
             # Match pwsh -File: $? is false only after an explicit non-zero exit or an
             # error, so a handled error or leftover native exit code on the last line is ignored.
             # (A terminating error already exits 1.)
-            $exitSuffix = '; if ($?) { exit 0 } elseif ($LASTEXITCODE) { exit $LASTEXITCODE } else { exit 1 }'
+            # -Stream passes each line on as it is produced, so text written before a throw or
+            # exit is kept. A table-formatted object written immediately before one is still
+            # lost: the formatter holds it until it sees what follows (see the help).
+            $commandSuffix = '; $script:__cwaaOk = $? } | Out-String -Stream -Width 4096; ' +
+                'if ($__cwaaOk) { exit 0 } elseif ($LASTEXITCODE) { exit $LASTEXITCODE } else { exit 1 }'
 
             if ($PSCmdlet.ParameterSetName -eq 'ScriptBlock') {
-                $commandText = "`$global:LASTEXITCODE = 0; & {`n$($ScriptBlock.ToString())`n}$exitSuffix"
+                $commandText = "$commandPrefix& {`n$($ScriptBlock.ToString())`n}$commandSuffix"
             }
             else {
                 # Pass the file and its parameters as PowerShell literals inside an encoded
@@ -174,9 +195,14 @@ function Invoke-CWAAPwsh {
                 if (-not (Test-Path -LiteralPath $FilePath -PathType Leaf)) {
                     Write-Error "Script file '$FilePath' was not found." -ErrorAction Stop
                 }
-                $resolvedFilePath = (Resolve-Path -LiteralPath $FilePath -ErrorAction Stop).ProviderPath
+                $resolvedFile = Resolve-Path -LiteralPath $FilePath -ErrorAction Stop
+                # A function: or env: path would reach the child as a bare name and be looked up there
+                if ($resolvedFile.Provider.Name -ne 'FileSystem') {
+                    Write-Error "Script file '$FilePath' is not a file system path." -ErrorAction Stop
+                }
+                $resolvedFilePath = $resolvedFile.ProviderPath
                 $commandParts = New-Object System.Collections.Generic.List[string]
-                $commandParts.Add("`$global:LASTEXITCODE = 0; & $(& $quoteLiteral $resolvedFilePath)")
+                $commandParts.Add("$commandPrefix& $(& $quoteLiteral $resolvedFilePath)")
                 if ($Parameters) {
                     foreach ($key in $Parameters.Keys) {
                         # \A and \z: '$' would also accept a trailing newline, which ends the statement
@@ -192,7 +218,12 @@ function Invoke-CWAAPwsh {
                             $commandParts.Add("-${key}:`$$(([bool]$value).ToString().ToLowerInvariant())")
                         }
                         elseif ($typeCode -eq [System.TypeCode]::String -or $typeCode -eq [System.TypeCode]::Char) {
-                            $commandParts.Add("-$key $(& $quoteLiteral ([string]$value))")
+                            # Parenthesized so a value such as '--%' stays a plain string argument
+                            $commandParts.Add("-$key ($(& $quoteLiteral ([string]$value)))")
+                        }
+                        elseif ($value -is [enum]) {
+                            # An enum reports its underlying integer type code but formats as its name
+                            Write-Error "Parameter '$key' has unsupported type '$($value.GetType().FullName)'. Only strings, numbers and booleans are supported." -ErrorAction Stop
                         }
                         elseif (($typeCode -eq [System.TypeCode]::Double -or $typeCode -eq [System.TypeCode]::Single) -and
                             ([double]::IsNaN($value) -or [double]::IsInfinity($value))) {
@@ -206,12 +237,15 @@ function Invoke-CWAAPwsh {
                         }
                     }
                 }
-                $commandText = ($commandParts -join ' ') + $exitSuffix
+                $commandText = ($commandParts -join ' ') + $commandSuffix
             }
 
-            # -EncodedCommand expects Base64 of Unicode (UTF-16LE) bytes
+            # -EncodedCommand expects Base64 of Unicode (UTF-16LE) bytes.
+            # -OutputFormat Text makes the child write warning, verbose and host output as plain
+            # stdout lines (captured into Result) instead of serialized records the parent
+            # PowerShell would replay to its own host as extra lines.
             $encodedScript = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($commandText))
-            $pwshArguments += '-EncodedCommand', $encodedScript
+            $pwshArguments = @('-NoProfile', '-NonInteractive', '-OutputFormat', 'Text', '-EncodedCommand', $encodedScript)
 
             # Execute pwsh and capture all output streams.
             # With an effective ErrorActionPreference of Stop, Windows PowerShell turns the first

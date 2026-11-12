@@ -1,7 +1,7 @@
 ---
 document type: module
 Help Version: 0.0.1
-HelpInfoUri: https://raw.githubusercontent.com/christaylorcodes/ConnectWiseAutomateAgent/main/source/en-US/ConnectWiseAutomateAgent-help.xml
+HelpInfoUri: 
 Locale: en-US
 Module Guid: 37424fc5-48d4-4d15-8b19-e1c2bf4bab67
 Module Name: ConnectWiseAutomateAgent

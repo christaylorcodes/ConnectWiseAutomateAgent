@@ -319,3 +319,49 @@ flowchart TD
     style D11 fill:#fff3cd,stroke:#ffc107
     style D12 fill:#d4edda,stroke:#28a745
 ```
+
+## Script Helpers
+
+The functions in `source/Public/Scripting/` support scripts that ConnectWise Automate runs on the endpoint (script steps and remote monitors). They do not manage the agent and do not use the networking initialization above.
+
+**Output contract.** Automate reads a script's result as text, so every helper that reports a result returns exactly one line:
+
+```text
+Status=Success|Result=Running|LogPath=C:\Windows\LTSVC\logs\MyScript_20261110-214501-123.log|Data=
+```
+
+`Status` is `Success`, `Failed`, or `Error`. Line breaks inside values become ` / ` and pipes become `/`, so a value can never add a field or a second line.
+
+| Function | Role |
+| --- | --- |
+| `New-CWAAScriptOutput` | Creates the result object (`Status`, `Result`, `LogPath`, `Data`) |
+| `ConvertTo-CWAAScriptOutput` | Formats a result object or hashtable as the one-line string |
+| `Initialize-CWAAScriptLog` | Creates a new log file (default directory `C:\Windows\LTSVC\logs`) and returns its path |
+| `Write-CWAAScriptLog` | Appends a timestamped `INFO`, `WARNING`, or `ERROR` entry to that log |
+| `Invoke-CWAAScript` | Runs a scriptblock (or a script downloaded over HTTPS) and returns the one-line result |
+| `Invoke-CWAAPwsh` | Runs a scriptblock or script file under PowerShell 7 and returns the one-line result |
+| `New-CWAARemoteMonitor` | Encodes a scriptblock as a `powershell.exe` command line for a remote monitor (8191-character limit) |
+
+```mermaid
+flowchart TD
+    A[Invoke-CWAAScript called] --> B{-EnableLogging?}
+    B -->|Yes| C[Initialize-CWAAScriptLog]
+    C -->|Log created| D{-URL specified?}
+    C -->|Log failed| C1[Record LogInitFailed in Data<br/>continue without a log]
+    C1 --> D
+    B -->|No| D
+    D -->|Yes| E[Download script over HTTPS<br/>TLS 1.2 ensured for the request]
+    D -->|No| F[Use -ScriptBlock]
+    E --> G[Run in the caller's scope<br/>capture output and errors]
+    F --> G
+    G -->|Completed, no errors| H[Status=Success<br/>Result = output]
+    G -->|Threw, wrote an error,<br/>or called exit| I[Status=Error<br/>Result = error messages<br/>Data = Output so far]
+    H --> J[ConvertTo-CWAAScriptOutput<br/>one line returned to Automate]
+    I --> J
+
+    style H fill:#d4edda,stroke:#28a745
+    style I fill:#f8d7da,stroke:#dc3545
+    style C1 fill:#fff3cd,stroke:#ffc107
+```
+
+`Invoke-CWAAPwsh` follows the same contract but runs the code in a separate pwsh.exe process: only the scriptblock text (or the script path and `-Parameters`) crosses over, and a non-zero exit code or any stderr output is reported as `Status=Error`. See [Security Model](Security.md#script-helpers) for how pwsh.exe is located and what the helpers refuse.

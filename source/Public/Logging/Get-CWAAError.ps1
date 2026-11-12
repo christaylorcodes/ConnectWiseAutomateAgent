@@ -1,4 +1,4 @@
-function Get-CWAAError {
+﻿function Get-CWAAError {
     <#
     .SYNOPSIS
         Reads the ConnectWise Automate Agent error log into structured objects.

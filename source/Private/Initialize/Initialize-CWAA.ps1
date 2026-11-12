@@ -23,7 +23,8 @@
     $sha256 = [System.Security.Cryptography.SHA256]::Create()
     $hashBytes = $sha256.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($InputString))
     $hashHex = -join ($hashBytes | ForEach-Object { $_.ToString('x2') })
-    $sha256.Dispose()
+    # Clear, not Dispose: on .NET 3.5 (PowerShell 2.0) Dispose is not a public method of a hash algorithm
+    $sha256.Clear()
     return "[SHA256:$($hashHex.Substring(0, 8))]"
 }
 
@@ -38,51 +39,37 @@ function Initialize-CWAA {
     }
 
     # WOW64 relaunch: When running as 32-bit PowerShell on a 64-bit OS, many registry
-    # and file system operations target the wrong hive/path. Re-launch under native
-    # 64-bit PowerShell to ensure consistent behavior with the Automate agent services.
-    # Note: This relaunch works correctly in direct download mode (.psm1 via Invoke-Expression).
-    # In module mode (Import-Module), the .psm1 emits a warning instead since relaunch
-    # cannot re-invoke Import-Module from within a function.
-    if ($env:PROCESSOR_ARCHITEW6432 -match '64' -and [IntPtr]::Size -ne 8) {
-        Write-Warning '32-bit PowerShell session detected on 64-bit OS. Attempting to launch 64-Bit session to process commands.'
-        $pshell = "${env:WINDIR}\sysnative\windowspowershell\v1.0\powershell.exe"
-        if (!(Test-Path -Path $pshell)) {
-            # sysnative virtual folder is unavailable (e.g. older OS or non-interactive context).
-            # Fall back to the real System32 path after disabling WOW64 file system redirection
-            # so the 64-bit powershell.exe is accessible instead of the 32-bit redirected copy.
-            Write-Warning 'SYSNATIVE PATH REDIRECTION IS NOT AVAILABLE. Attempting to access 64-bit PowerShell directly.'
-            $pshell = "${env:WINDIR}\System32\WindowsPowershell\v1.0\powershell.exe"
-            $FSRedirection = $True
-            Add-Type -Debug:$False -Name Wow64 -Namespace 'Kernel32' -MemberDefinition @'
-    [DllImport("kernel32.dll", SetLastError=true)]
-    public static extern bool Wow64DisableWow64FsRedirection(ref IntPtr ptr);
-
-    [DllImport("kernel32.dll", SetLastError=true)]
-    public static extern bool Wow64RevertWow64FsRedirection(ref IntPtr ptr);
-'@
-            [ref]$ptr = New-Object System.IntPtr
-            $Null = [Kernel32.Wow64]::Wow64DisableWow64FsRedirection($ptr)
+    # and file system operations target the wrong hive/path. Tools such as ScreenConnect
+    # start 32-bit PowerShell, so in direct download mode (.psm1 via Invoke-Expression) the
+    # whole session is re-run under native 64-bit PowerShell and this one exits.
+    # In module mode (Import-Module of this module) the .psm1 prefix emits a warning instead:
+    # Exit there would not end the caller, so its remaining commands would run again in 32-bit.
+    $loadedAsThisModule = $ExecutionContext.SessionState.Module -and $ExecutionContext.SessionState.Module.Name -eq 'ConnectWiseAutomateAgent'
+    if ($env:PROCESSOR_ARCHITEW6432 -match '64' -and [IntPtr]::Size -ne 8 -and -not $loadedAsThisModule) {
+        # The command line is the one reliable record of how this session was started:
+        # $MyInvocation here describes the Initialize-CWAA call, not the caller's script.
+        $relaunchArguments = $Null
+        if ([System.Diagnostics.Process]::GetCurrentProcess().ProcessName -eq 'powershell') {
+            $relaunchArguments = Get-CWAARelaunchArgument -CommandLine ([Environment]::CommandLine)
         }
 
-        # Re-invoke the original command/script under the 64-bit host
-        if ($myInvocation.Line) {
-            &"$pshell" -NonInteractive -NoProfile $myInvocation.Line
+        $relaunchExitCode = $Null
+        if ($relaunchArguments) {
+            Write-Warning '32-bit PowerShell session detected on 64-bit OS. Attempting to launch 64-Bit session to process commands.'
+            $relaunchExitCode = Invoke-CWAANativeRelaunch -Arguments $relaunchArguments
         }
-        elseif ($myInvocation.InvocationName) {
-            &"$pshell" -NonInteractive -NoProfile -File "$($myInvocation.InvocationName)" $args
-        }
-        else {
-            &"$pshell" -NonInteractive -NoProfile $myInvocation.MyCommand
-        }
-        $ExitResult = $LASTEXITCODE
 
-        # Restore file system redirection if it was disabled
-        if ($FSRedirection -eq $True) {
-            [ref]$defaultptr = New-Object System.IntPtr
-            $Null = [Kernel32.Wow64]::Wow64RevertWow64FsRedirection($defaultptr)
+        if ($Null -ne $relaunchExitCode) {
+            Write-Warning 'Exiting 32-bit session. The commands were processed in the native 64-bit PowerShell session.'
+            if ($ExecutionContext.SessionState.Module) {
+                # Loaded inside some other module (for example New-Module on the downloaded text). PowerShell
+                # swallows Exit while a module loads, and the caller's commands would then run again in 32-bit.
+                [Console]::Out.Flush()
+                [Environment]::Exit($relaunchExitCode)
+            }
+            Exit $relaunchExitCode
         }
-        Write-Warning 'Exiting 64-bit session. Module will only remain loaded in native 64-bit PowerShell environment.'
-        Exit $ExitResult
+        Write-Warning '32-bit PowerShell session detected on 64-bit OS, and it could not be re-run under 64-bit PowerShell (it is interactive, was not started with -Command, -File or -EncodedCommand, is hosted by another program, or the 64-bit session failed to start). Continuing in 32-bit: registry and file operations may target incorrect locations.'
     }
 
     # Module-level constants -- centralized to avoid duplication across functions.
@@ -161,14 +148,15 @@ function Initialize-CWAA {
     # Get-CimInstance calls). Kept as a list so additional dependencies are trivial to add.
     $Script:CWAADependencyServiceNames = @('winmgmt')
 
-    # Service credential storage -- populated on-demand by Get-CWAAProxy
-    $Script:LTServiceKeys = [PSCustomObject]@{
+    # Service credential storage -- populated on-demand by Get-CWAAProxy.
+    # New-Object, not [PSCustomObject]: that cast quietly returns a hashtable on PowerShell 2.0.
+    $Script:LTServiceKeys = New-Object PSObject -Property @{
         ServerPasswordString = ''
         PasswordString       = ''
     }
 
     # Proxy configuration -- populated on-demand by Initialize-CWAANetworking
-    $Script:LTProxy = [PSCustomObject]@{
+    $Script:LTProxy = New-Object PSObject -Property @{
         ProxyServerURL = ''
         ProxyUsername   = ''
         ProxyPassword   = ''

@@ -1,4 +1,4 @@
-function New-CWAABackup {
+﻿function New-CWAABackup {
     <#
     .SYNOPSIS
         Creates a complete backup of the ConnectWise Automate agent installation.
@@ -61,11 +61,25 @@ function New-CWAABackup {
             }
         }
 
+        # Success is only reported when both halves ran (not -WhatIf) and neither failed
+        $filesBackedUp = $False
+        $registryBackedUp = $False
+
         if ($PSCmdlet.ShouldProcess($agentPath, 'Copy agent files to backup')) {
             Try {
                 # Copy each top-level item individually, excluding the Backup directory
                 # itself to prevent recursive copy loop (Backup is inside the agent path)
-                Get-ChildItem $agentPath -Exclude 'Backup' | Copy-Item -Destination $BackupPath -Recurse -Force
+                # A locked or unreadable file is a non-terminating error, so collect those as well
+                $copyErrors = @()
+                Get-ChildItem $agentPath -Exclude 'Backup' -ErrorVariable +copyErrors | Copy-Item -Destination $BackupPath -Recurse -Force -ErrorVariable +copyErrors
+                if ($copyErrors) {
+                    # Event first: Write-Error ends the function when the caller uses -ErrorAction Stop
+                    Write-CWAAEventLog -EventId 3012 -EntryType Error -Message "Agent backup incomplete (file copy). $(@($copyErrors).Count) item(s) could not be copied. First error: $($copyErrors[0])"
+                    Write-Error "There was a problem backing up the LTSvc folder. $(@($copyErrors).Count) item(s) could not be copied."
+                }
+                else {
+                    $filesBackedUp = $True
+                }
             }
             Catch {
                 Write-Error "There was a problem backing up the LTSvc folder. $_"
@@ -76,9 +90,10 @@ function New-CWAABackup {
         if ($PSCmdlet.ShouldProcess($Keys, 'Export and backup registry keys')) {
             Try {
                 Write-Debug 'Exporting registry data'
-                $Null = & "$env:windir\system32\reg.exe" export "$Keys" "$RegPath" /y 2>''
-                if ($LASTEXITCODE -ne 0) {
-                    Write-Warning "reg.exe export returned exit code $LASTEXITCODE. Registry backup may be incomplete."
+                $exportExitCode = Invoke-CWAARegExe -Arguments @('export', "$Keys", "$RegPath", '/y')
+                if ($exportExitCode -ne 0) {
+                    # Stop here: carrying on would rewrite and import whatever older file is at $RegPath
+                    Throw "reg.exe export returned exit code $exportExitCode."
                 }
 
                 Write-Debug 'Loading and modifying registry key name'
@@ -89,11 +104,11 @@ function New-CWAABackup {
                 $Reg | Out-File $RegPath
 
                 Write-Debug 'Importing registry data to backup path'
-                $Null = & "$env:windir\system32\reg.exe" import "$RegPath" 2>''
-                if ($LASTEXITCODE -ne 0) {
-                    Write-Warning "reg.exe import returned exit code $LASTEXITCODE. Registry backup restoration may have failed."
+                $importExitCode = Invoke-CWAARegExe -Arguments @('import', "$RegPath")
+                if ($importExitCode -ne 0) {
+                    Throw "reg.exe import returned exit code $importExitCode."
                 }
-                $True | Out-Null
+                $registryBackedUp = $True
             }
             Catch {
                 Write-Error "There was a problem backing up the LTSvc registry keys. $_"
@@ -101,8 +116,10 @@ function New-CWAABackup {
             }
         }
 
-        Write-Output 'The Automate agent backup has been created.'
-        Write-CWAAEventLog -EventId 3010 -EntryType Information -Message "Agent backup created at $BackupPath."
+        if ($filesBackedUp -and $registryBackedUp) {
+            Write-Output 'The Automate agent backup has been created.'
+            Write-CWAAEventLog -EventId 3010 -EntryType Information -Message "Agent backup created at $BackupPath."
+        }
     }
 
     End {

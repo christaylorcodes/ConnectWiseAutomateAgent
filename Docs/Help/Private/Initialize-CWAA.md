@@ -21,6 +21,13 @@ Initialize-CWAA is the Phase 1 initialization function called once at module imp
 
 This function also handles the WOW64 relaunch guard: when running as 32-bit PowerShell on a 64-bit OS, it re-launches the script under the native 64-bit PowerShell host. This is critical because the Automate agent's registry keys and file paths differ between 32-bit and 64-bit views. The relaunch works in direct download mode (`.psm1` via `Invoke-Expression`); in module mode the `.psm1` emits a warning instead.
 
+The relaunch re-runs the process's own command line, because `$MyInvocation` inside this function describes the `Initialize-CWAA` call and not the caller's script. Two private helpers do the work:
+
+- `Get-CWAARelaunchArgument` takes `[Environment]::CommandLine` and returns the arguments after the executable, unchanged. It returns nothing when the session cannot be reproduced: no `-Command`, `-File` or `-EncodedCommand` among the host switches (an interactive console or a script piped to standard input), `-Command -` or `-File -`, or `-NoExit`. Only switches before the command are inspected, never the command text or script arguments.
+- `Invoke-CWAANativeRelaunch` starts the 64-bit `powershell.exe` (through `sysnative`, or `System32` with WOW64 file system redirection switched off for the launch) with those arguments in the directory the process was started in, waits for it, and returns its exit code. It returns nothing if the 64-bit host could not be started.
+
+When an exit code comes back, the 32-bit session exits with it. Otherwise (not re-runnable, the host process is not `powershell.exe`, or the launch failed) the function warns and continues in 32-bit. If the downloaded text was loaded inside another module (for example with `New-Module`), the process is ended with `[Environment]::Exit`, because PowerShell swallows `Exit` while a module loads and the caller's commands would otherwise run a second time in 32-bit.
+
 Phase 2 initialization (networking, SSL, proxy) is handled separately by `Initialize-CWAANetworking`, which runs on-demand at first networking call.
 
 **No network calls, registry reads, or side effects occur during Phase 1.** Module import remains fast and safe.

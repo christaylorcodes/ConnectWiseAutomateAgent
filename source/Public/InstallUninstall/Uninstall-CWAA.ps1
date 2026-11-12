@@ -100,7 +100,7 @@
             }
         }
 
-        $BasePath = Get-CWAAInfo -EA 0 -Verbose:$False -WhatIf:$False -Confirm:$False -Debug:$False | Select-Object -Expand BasePath -EA 0
+        $BasePath = $serviceInfo | Select-Object -Expand BasePath -EA 0
         if (-not $BasePath) { $BasePath = $Script:CWAAInstallPath }
 
         New-PSDrive HKU Registry HKEY_USERS -ErrorAction SilentlyContinue -WhatIf:$False -Confirm:$False -Debug:$False | Out-Null
@@ -143,12 +143,14 @@
             New-Item "$Script:CWAAInstallerTempPath\Installer" -type directory -ErrorAction SilentlyContinue | Out-Null
         }
 
-        $uninstallArguments = "/x ""$Script:CWAAInstallerTempPath\Installer\Agent_Uninstall.msi"" /qn"
+        $uninstallMsiPath = "$Script:CWAAInstallerTempPath\Installer\Agent_Uninstall.msi"
+        $uninstallExePath = "${env:windir}\temp\Agent_Uninstall.exe"
+        $uninstallArguments = "/x ""$uninstallMsiPath"" /qn"
     }
 
     Process {
         if (-not $Server) {
-            $Server = Get-CWAAInfo -EA 0 -Verbose:$False -WhatIf:$False -Confirm:$False -Debug:$False | Select-Object -Expand 'Server' -EA 0
+            $Server = $serviceInfo | Select-Object -Expand 'Server' -EA 0
         }
         if (-not $Server) {
             $Server = Read-Host -Prompt 'Provide the URL to your Automate server (https://automate.domain.com):'
@@ -166,24 +168,15 @@
         Try {
             # Download the uninstall MSI (same URL for all server versions)
             $installer = "$serverUrl/LabTech/Service/LabTechRemoteAgent.msi"
-            $installerTest = [System.Net.WebRequest]::Create($installer)
-            if (($Script:LTProxy.Enabled) -eq $True) {
-                Write-Debug "Proxy Configuration Needed. Applying Proxy Settings to request."
-                $installerTest.Proxy = $Script:LTWebProxy
-            }
-            $installerTest.KeepAlive = $False
-            $installerTest.ProtocolVersion = '1.0'
-            $installerResult = $installerTest.GetResponse()
-            $installerTest.Abort()
-            if ($installerResult.StatusCode -ne 200) {
+            if (-not (Test-CWAAUrlAvailable -Url $installer)) {
                 Write-Warning "Unable to download Agent_Uninstall.msi from server $serverUrl."
                 return
             }
 
             if ($PSCmdlet.ShouldProcess("$installer", 'DownloadFile')) {
                 Write-Debug "Downloading Agent_Uninstall.msi from $installer"
-                $Script:LTServiceNetWebClient.DownloadFile($installer, "$Script:CWAAInstallerTempPath\Installer\Agent_Uninstall.msi")
-                if (-not (Test-CWAADownloadIntegrity -FilePath "$Script:CWAAInstallerTempPath\Installer\Agent_Uninstall.msi" -FileName 'Agent_Uninstall.msi')) {
+                $Script:LTServiceNetWebClient.DownloadFile($installer, $uninstallMsiPath)
+                if (-not (Test-CWAADownloadIntegrity -FilePath $uninstallMsiPath -FileName 'Agent_Uninstall.msi')) {
                     return
                 }
                 $AlternateServer = $serverUrl
@@ -191,25 +184,16 @@
 
             # Download the uninstall EXE (same URI for all versions)
             $uninstaller = "$serverUrl/LabTech/Service/LabUninstall.exe"
-            $uninstallerTest = [System.Net.WebRequest]::Create($uninstaller)
-            if (($Script:LTProxy.Enabled) -eq $True) {
-                Write-Debug "Proxy Configuration Needed. Applying Proxy Settings to request."
-                $uninstallerTest.Proxy = $Script:LTWebProxy
-            }
-            $uninstallerTest.KeepAlive = $False
-            $uninstallerTest.ProtocolVersion = '1.0'
-            $uninstallerResult = $uninstallerTest.GetResponse()
-            $uninstallerTest.Abort()
-            if ($uninstallerResult.StatusCode -ne 200) {
+            if (-not (Test-CWAAUrlAvailable -Url $uninstaller)) {
                 Write-Warning "Unable to download Agent_Uninstall from server."
                 return
             }
 
             if ($PSCmdlet.ShouldProcess("$uninstaller", 'DownloadFile')) {
                 Write-Debug "Downloading Agent_Uninstall.exe from $uninstaller"
-                $Script:LTServiceNetWebClient.DownloadFile($uninstaller, "${env:windir}\temp\Agent_Uninstall.exe")
-                # Uninstall EXE is smaller than MSI � use 80 KB threshold
-                if (-not (Test-CWAADownloadIntegrity -FilePath "${env:windir}\temp\Agent_Uninstall.exe" -FileName 'Agent_Uninstall.exe' -MinimumSizeKB 80)) {
+                $Script:LTServiceNetWebClient.DownloadFile($uninstaller, $uninstallExePath)
+                # Uninstall EXE is smaller than MSI — use 80 KB threshold
+                if (-not (Test-CWAADownloadIntegrity -FilePath $uninstallExePath -FileName 'Agent_Uninstall.exe' -MinimumSizeKB 80)) {
                     return
                 }
             }
@@ -217,7 +201,7 @@
             if ($WhatIfPreference -eq $True) {
                 $GoodServer = $serverUrl
             }
-            Elseif ((Test-Path "$Script:CWAAInstallerTempPath\Installer\Agent_Uninstall.msi") -and (Test-Path "${env:windir}\temp\Agent_Uninstall.exe")) {
+            Elseif ((Test-Path $uninstallMsiPath) -and (Test-Path $uninstallExePath)) {
                 $GoodServer = $serverUrl
                 Write-Verbose "Successfully downloaded files from $serverUrl."
             }
@@ -232,7 +216,13 @@
 
     End {
         try {
-        if ($GoodServer -match 'https?://.+' -or $AlternateServer -match 'https?://.+') {
+            if (-not ($GoodServer -match 'https?://.+' -or $AlternateServer -match 'https?://.+')) {
+                if ($WhatIfPreference -ne $True) {
+                    Write-Error "No valid server was reached to use for the uninstall." -ErrorAction Stop
+                }
+                return
+            }
+
             Try {
                 Write-Output 'Starting Uninstall.'
                 if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Stopping services and processes' -PercentComplete 37 }
@@ -260,29 +250,29 @@
 
                 if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Running MSI uninstaller' -PercentComplete 50 }
                 if ($PSCmdlet.ShouldProcess("msiexec.exe $uninstallArguments", 'Execute MSI Uninstall')) {
-                    if (Test-Path "$Script:CWAAInstallerTempPath\Installer\Agent_Uninstall.msi") {
+                    if (Test-Path $uninstallMsiPath) {
                         Write-Verbose 'Launching MSI Uninstall.'
                         Write-Debug "Executing Command ""msiexec.exe $uninstallArguments"""
                         Start-Process -Wait -FilePath "$env:windir\system32\msiexec.exe" -ArgumentList $uninstallArguments -WorkingDirectory $env:TEMP
                         Start-Sleep -Seconds 5
                     }
                     else {
-                        Write-Verbose "$Script:CWAAInstallerTempPath\Installer\Agent_Uninstall.msi was not found."
+                        Write-Verbose "$uninstallMsiPath was not found."
                     }
                 }
 
                 if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Running agent uninstaller' -PercentComplete 62 }
-                if ($PSCmdlet.ShouldProcess("${env:windir}\temp\Agent_Uninstall.exe", 'Execute Agent Uninstall')) {
-                    if (Test-Path "${env:windir}\temp\Agent_Uninstall.exe") {
+                if ($PSCmdlet.ShouldProcess($uninstallExePath, 'Execute Agent Uninstall')) {
+                    if (Test-Path $uninstallExePath) {
                         # Remove previously extracted SFX files to prevent UnRAR overwrite prompts
                         Remove-Item "$env:TEMP\Uninstall.exe", "$env:TEMP\Uninstall.exe.config" -ErrorAction SilentlyContinue -Force -Confirm:$False
                         Write-Verbose 'Launching Agent Uninstaller'
-                        Write-Debug "Executing Command ""${env:windir}\temp\Agent_Uninstall.exe"""
-                        Start-Process -Wait -FilePath "${env:windir}\temp\Agent_Uninstall.exe" -WorkingDirectory $env:TEMP
+                        Write-Debug "Executing Command ""$uninstallExePath"""
+                        Start-Process -Wait -FilePath $uninstallExePath -WorkingDirectory $env:TEMP
                         Start-Sleep -Seconds 5
                     }
                     else {
-                        Write-Verbose "${env:windir}\temp\Agent_Uninstall.exe was not found."
+                        Write-Verbose "$uninstallExePath was not found."
                     }
                 }
 
@@ -314,13 +304,12 @@
 
                 Write-Verbose 'Removing agent installation msi file.'
                 if ($PSCmdlet.ShouldProcess('Agent_Uninstall.msi', 'Remove File')) {
-                    $MsiPath = "$Script:CWAAInstallerTempPath\Installer\Agent_Uninstall.msi"
                     $tries = 0
                     Try {
                         Do {
-                            $MsiExists = Test-Path $MsiPath
+                            $MsiExists = Test-Path $uninstallMsiPath
                             Start-Sleep -Seconds 10
-                            Remove-Item $MsiPath -ErrorAction SilentlyContinue
+                            Remove-Item $uninstallMsiPath -ErrorAction SilentlyContinue
                             $tries++
                         }
                         While ($MsiExists -and $tries -lt 4)
@@ -353,11 +342,14 @@
 
             if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Verifying uninstall' -PercentComplete 100 }
             if ($WhatIfPreference -ne $True) {
-                # Post Uninstall Check
-                If ((Test-Path $Script:CWAAInstallPath) -or (Test-Path "${env:windir}\temp\_ltupdate") -or (Test-Path registry::HKLM\Software\LabTech\Service) -or (Test-Path registry::HKLM\Software\WOW6432Node\Labtech\Service)) {
+                # Post Uninstall Check: give lingering removals one 10-second grace period
+                $remnantsDetected = {
+                    (Test-Path $Script:CWAAInstallPath) -or (Test-Path "${env:windir}\temp\_ltupdate") -or (Test-Path registry::HKLM\Software\LabTech\Service) -or (Test-Path registry::HKLM\Software\WOW6432Node\Labtech\Service)
+                }
+                If (& $remnantsDetected) {
                     Start-Sleep -Seconds 10
                 }
-                If ((Test-Path $Script:CWAAInstallPath) -or (Test-Path "${env:windir}\temp\_ltupdate") -or (Test-Path registry::HKLM\Software\LabTech\Service) -or (Test-Path registry::HKLM\Software\WOW6432Node\Labtech\Service)) {
+                If (& $remnantsDetected) {
                     Write-Error "Remnants of previous install still detected after uninstall attempt. Please reboot and try again."
                     Write-CWAAEventLog -EventId 1011 -EntryType Warning -Message 'Remnants of previous install detected after uninstall. Reboot recommended.'
                 }
@@ -366,10 +358,6 @@
                     Write-CWAAEventLog -EventId 1010 -EntryType Information -Message 'Agent uninstalled successfully.'
                 }
             }
-        }
-        Elseif ($WhatIfPreference -ne $True) {
-            Write-Error "No valid server was reached to use for the uninstall." -ErrorAction Stop
-        }
         }
         finally {
             if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Completed }

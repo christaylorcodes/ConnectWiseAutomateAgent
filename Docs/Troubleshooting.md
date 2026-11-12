@@ -268,7 +268,7 @@ $env:PROCESSOR_ARCHITEW6432  # Non-empty = running 32-bit on 64-bit OS
 ### Module Behavior
 
 - **Module mode:** If imported in 32-bit PowerShell on a 64-bit OS, the module emits a warning. Re-import in 64-bit PowerShell.
-- **Direct download mode (.psm1):** The script automatically relaunches under the native 64-bit PowerShell host via `Initialize-CWAA`.
+- **Direct download mode (.psm1):** The script automatically relaunches under the native 64-bit PowerShell host via `Initialize-CWAA`. This is what makes the module work from tools that start 32-bit PowerShell, such as ScreenConnect. The whole `powershell.exe` command line (`-Command`, `-File` with its arguments, or `-EncodedCommand`) is run again in 64-bit, and the 32-bit session then exits with the same exit code. Anything the script did before loading the module therefore runs twice, so load the module first. A session that cannot be run again gets a warning instead and continues in 32-bit: one not started with `-Command`, `-File` or `-EncodedCommand` (an interactive console, or a script piped to standard input), one started with `-NoExit`, PowerShell hosted inside another program, or a machine where the 64-bit `powershell.exe` could not be started.
 
 ### Resolution
 
@@ -317,6 +317,50 @@ Or connect by IP address (auto-bypassed):
 ```powershell
 Install-CWAA -Server '10.0.0.50' -InstallerToken 'MyToken' -LocationID 1
 ```
+
+---
+
+## Health Check Task Is Missing or Not Updating
+
+`Register-CWAAHealthCheckTask` reported an error, or the scheduled task is not there afterwards.
+
+### Diagnose
+
+```powershell
+# Is the task registered?
+Get-ScheduledTask -TaskName 'AAutomate' -ErrorAction SilentlyContinue
+
+# What did the module log?
+Get-WinEvent -FilterHashtable @{ LogName = 'Application'; ProviderName = 'ConnectWiseAutomateAgent'; Id = 4022, 4023 } -MaxEvents 10 -ErrorAction SilentlyContinue | Format-Table TimeCreated, Id, Message -Wrap
+```
+
+| Event ID | Meaning |
+| --- | --- |
+| 4022 | Creating the scheduled task failed |
+| 4023 | The task was created but was missing when checked straight afterwards (typically removed by antivirus or policy) |
+
+### Resolution
+
+- **4022:** run from an elevated session and read the event message for the `schtasks` error.
+- **4023:** add an exclusion for the task in your security software or policy, then register again.
+- The task is recreated when the token, server, location ID, or interval changes. An existing task is replaced in place, so a failed update leaves the previous task running.
+
+---
+
+## Scripts Run From Automate
+
+Problems with the Script helpers (`Invoke-CWAAScript`, `Invoke-CWAAPwsh`, `New-CWAARemoteMonitor`).
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| "PowerShell 7 (pwsh.exe) was not found in Program Files or the PowerShellCore registry install locations" | `Invoke-CWAAPwsh` does not search `PATH` | Install PowerShell 7 to Program Files, or pass `-PwshPath` |
+| `Invoke-CWAAPwsh` returns `Status=Error` although the script worked | A native command wrote to stderr; any stderr output fails the run | Redirect it inside the scriptblock (`2>&1`) |
+| A variable is empty inside an `Invoke-CWAAPwsh` scriptblock | Only the scriptblock text is sent to pwsh; caller variables are not | Write the value into the scriptblock, or use `-FilePath` with `-Parameters` |
+| "Parameter '...' has unsupported type" | `-Parameters` accepts only strings, numbers and booleans | Convert the value to a string, or split it into several parameters |
+| `Invoke-CWAAScript -URL` is rejected at parameter binding | The URL does not start with `https://` | Host the script over HTTPS |
+| `Data` contains `LogInitFailed=` and `LogPath` is empty | The log file could not be created (for example the log directory path passes through a junction or symbolic link); the script still ran | Fix the directory or pass `-LogDirectory` |
+| Automate shows extra lines before the `Status=` line | `Write-Host`, `Write-Warning` and `Write-Verbose` output is not captured by `Invoke-CWAAScript` | Remove it, or log with `Write-CWAAScriptLog` instead |
+| "Encoded command is N characters, which exceeds the Automate remote monitor limit of 8191 characters" | The scriptblock passed to `New-CWAARemoteMonitor` is too long | Shorten it, or have the monitor call a script file |
 
 ---
 
@@ -400,7 +444,7 @@ Repair-CWAA -Server 'automate.example.com' -InstallerToken 'MyToken' -LocationID
 Register-CWAAHealthCheckTask -Server 'automate.example.com' -InstallerToken 'MyToken' -LocationID 1
 
 # Check task status
-Get-ScheduledTask -TaskName 'CWAA Health Check' -ErrorAction SilentlyContinue
+Get-ScheduledTask -TaskName 'AAutomate' -ErrorAction SilentlyContinue
 
 # Remove when no longer needed
 Unregister-CWAAHealthCheckTask

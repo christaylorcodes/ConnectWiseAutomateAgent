@@ -1,4 +1,4 @@
-function Invoke-CWAAMsiInstaller {
+﻿function Invoke-CWAAMsiInstaller {
     <#
     .SYNOPSIS
         Executes the Automate agent MSI installer with retry logic.
@@ -42,7 +42,6 @@ function Invoke-CWAAMsiInstaller {
         }
 
         $installAttempt = 0
-        $serviceInstalled = $False
         Do {
             if ($installAttempt -gt 0) {
                 Write-Warning "Service Failed to Install. Retrying in $RetryDelaySeconds seconds." -WarningAction 'Continue'

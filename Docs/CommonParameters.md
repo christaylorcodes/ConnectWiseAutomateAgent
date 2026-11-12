@@ -48,7 +48,7 @@ Specifies the Automate location (site) to assign the agent to during installatio
 | **Pipeline** | `ValueFromPipelineByPropertyName` |
 | **Validation** | `[ValidateRange(1, [int]::MaxValue)]` on some functions |
 
-**Breaking change in 1.0.0:** `Redo-CWAA` changed `-LocationID` from `[string]` to `[int]`. Scripts passing string values like `'5'` instead of `5` may need updating. See [Migration Guide](Migration.md) for details.
+**Breaking change in 2.0.0:** `Redo-CWAA` changed `-LocationID` from `[string]` to `[int]`. Scripts passing string values like `'5'` instead of `5` may need updating. See [Migration Guide](Migration.md) for details.
 
 ### Functions that accept -LocationID
 

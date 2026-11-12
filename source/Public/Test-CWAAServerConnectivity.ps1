@@ -1,4 +1,4 @@
-function Test-CWAAServerConnectivity {
+﻿function Test-CWAAServerConnectivity {
     <#
     .SYNOPSIS
         Tests connectivity to a ConnectWise Automate server's agent endpoint.

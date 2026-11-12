@@ -1,4 +1,4 @@
-#requires -Version 7.6
+﻿#requires -Version 7.6
 
 <#
 .SYNOPSIS
@@ -24,7 +24,7 @@
 .PARAMETER TestFile
     Run a specific test file by short name or full path.
     Short names: Module, DataReaders, Commands, ServiceOps, CrossCutting,
-    PrivateHelpers, Installation, Documentation, Security,
+    PrivateHelpers, Installation, Scripting, Documentation, Security,
     CrossVersion, Live.
 
 .PARAMETER IncludeAnalyzer
@@ -87,6 +87,7 @@ $testFileMap = @{
     'CrossCutting'   = 'ConnectWiseAutomateAgent.Mocked.CrossCutting.Tests.ps1'
     'PrivateHelpers' = 'ConnectWiseAutomateAgent.Mocked.PrivateHelpers.Tests.ps1'
     'Installation'   = 'ConnectWiseAutomateAgent.Mocked.Installation.Tests.ps1'
+    'Scripting'      = 'ConnectWiseAutomateAgent.Mocked.Scripting.Tests.ps1'
     'Documentation'  = 'ConnectWiseAutomateAgent.Documentation.Tests.ps1'
     'Security'       = 'ConnectWiseAutomateAgent.Security.Tests.ps1'
     'CrossVersion'   = 'ConnectWiseAutomateAgent.CrossVersion.Tests.ps1'

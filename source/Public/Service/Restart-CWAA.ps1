@@ -1,4 +1,4 @@
-function Restart-CWAA {
+﻿function Restart-CWAA {
     <#
     .SYNOPSIS
         Restarts the ConnectWise Automate agent services.

@@ -15,9 +15,10 @@ LONG DESCRIPTION
     platform.
 
 DUAL NAMING CONVENTION
-    All functions use the CWAA prefix (e.g., Install-CWAA) and also declare
-    backward-compatible aliases using the legacy LabTech naming convention
-    (e.g., Install-LTService). Both names work identically.
+    All functions use the CWAA prefix (e.g., Install-CWAA). The agent
+    management functions also declare backward-compatible aliases using the
+    legacy LabTech naming convention (e.g., Install-LTService). Both names
+    work identically.
 
     Current Name            Legacy Alias
     ------------            ------------
@@ -25,6 +26,29 @@ DUAL NAMING CONVENTION
     Uninstall-CWAA          Uninstall-LTService
     Get-CWAAInfo            Get-LTServiceInfo
     Restart-CWAA            Restart-LTService
+
+    To list every alias:
+    Get-Alias -Definition *-CWAA*
+
+SCRIPT HELPERS
+    Helpers for scripts that run from ConnectWise Automate (script steps and
+    remote monitors). They provide a log file, a one-line pipe-delimited
+    result that Automate can parse (Status=...|Result=...|LogPath=...|Data=...),
+    and a way to run PowerShell 7 code from the agent's Windows PowerShell.
+    Their aliases keep the names from the legacy CW-Automate-ScriptHelper.ps1.
+
+    Current Name                  Legacy Alias
+    ------------                  ------------
+    Initialize-CWAAScriptLog      Initialize-AutomateLogging
+    Write-CWAAScriptLog           Write-AutomateLog
+    New-CWAAScriptOutput          New-AutomateOutput
+    ConvertTo-CWAAScriptOutput    ConvertTo-AutomateOutput
+    Invoke-CWAAScript             Invoke-CWAScript
+    Invoke-CWAAPwsh               Invoke-LTPwsh
+    New-CWAARemoteMonitor         New-CWARemoteMonitor
+
+    # Run a scriptblock and return one result line for Automate
+    Invoke-CWAAScript -ScriptBlock { (Get-Service LTService).Status } -EnableLogging
 
 GETTING STARTED
     # Import the module
@@ -61,4 +85,7 @@ SEE ALSO
     Uninstall-CWAA
     Update-CWAA
     Test-CWAAPort
+    Test-CWAAHealth
+    Invoke-CWAAScript
+    Invoke-CWAAPwsh
     https://github.com/christaylorcodes/ConnectWiseAutomateAgent

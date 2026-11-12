@@ -1,4 +1,4 @@
-function Write-CWAAEventLog {
+﻿function Write-CWAAEventLog {
     <#
     .SYNOPSIS
         Writes an entry to the Windows Event Log for ConnectWise Automate Agent operations.

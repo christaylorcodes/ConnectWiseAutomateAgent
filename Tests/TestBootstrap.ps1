@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Shared module loading bootstrap for ConnectWiseAutomateAgent tests.
 

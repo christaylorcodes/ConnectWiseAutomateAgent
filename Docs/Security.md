@@ -1,6 +1,6 @@
 # Security Model
 
-How ConnectWiseAutomateAgent handles SSL certificates, credential encryption, and sensitive data in logs.
+How ConnectWiseAutomateAgent handles SSL certificates, credential encryption, sensitive data in logs, and scripts run from Automate.
 
 This module manages a privileged Windows agent — it requires administrator access and interacts with services, registry keys, and network downloads. The security design balances practical MSP deployment needs (self-signed certs, legacy encryption, restricted networks) with defense-in-depth principles.
 
@@ -133,6 +133,25 @@ Install-CWAA -Server 'automate.example.com' -LocationID 1 -ServerPassword 'Legac
 
 ---
 
+## Script Helpers
+
+The Script helpers (`Invoke-CWAAScript`, `Invoke-CWAAPwsh`, `Initialize-CWAAScriptLog` and related functions) are meant for scripts that Automate runs as SYSTEM, so they avoid trusting anything a non-administrator can write to.
+
+| Function | Rule | Rationale |
+| --- | --- | --- |
+| `Invoke-CWAAPwsh` | pwsh.exe is resolved only from `-PwshPath`, the Program Files install (`PowerShell\7\pwsh.exe`), or PowerShellCore registry install locations inside Program Files. `PATH` is never searched. | A copy of the genuine signed pwsh.exe in a user-writable `PATH` folder would load unsigned DLLs planted beside it. |
+| `Invoke-CWAAPwsh` | `-PwshPath` must be an `.exe` on the file system and is then trusted as given. | Make sure the folder is not writable by non-administrators. |
+| `Invoke-CWAAPwsh` | `-Parameters` values must be strings, numbers, or booleans. | Values are passed as PowerShell literals inside the encoded command, so they cannot be reinterpreted as code. |
+| `Invoke-CWAAScript` | `-URL` must start with `https://`. TLS 1.2 is added for the download when the process setting lacks it, and the previous setting is restored afterwards. | A script fetched over plain HTTP could be replaced in transit and would run as SYSTEM. |
+| `Initialize-CWAAScriptLog` | Refuses a log directory whose path passes through a junction or symbolic link, and creates each log file exclusively (never appends to an existing file). | Prevents a planted link or pre-created file from redirecting SYSTEM writes. |
+| `ConvertTo-CWAAScriptOutput` | Line breaks in values become ` / ` and pipes become `/`. | Script output cannot add or spoof fields in the line Automate parses. |
+
+**Do not pass secrets through `Invoke-CWAAPwsh`.** The encoded command, including any `-Parameters` values, appears on the pwsh.exe command line, which process auditing and EDR tools record.
+
+`Invoke-CWAAScript -URL` downloads and runs code. Only point it at a URL you control, and prefer a versioned (immutable) URL for the same reasons given under [Version Locking](#version-locking).
+
+---
+
 ## Version Locking
 
 ### Why It Matters
@@ -151,17 +170,17 @@ Pin every production script to a specific version you have tested:
 
 ```powershell
 # Install a specific version
-Install-Module ConnectWiseAutomateAgent -RequiredVersion '1.0.0' -Force -Scope AllUsers
+Install-Module ConnectWiseAutomateAgent -RequiredVersion '2.2.0' -Force -Scope AllUsers
 
 # Import a specific version (when multiple versions are installed side by side)
-Import-Module ConnectWiseAutomateAgent -RequiredVersion '1.0.0'
+Import-Module ConnectWiseAutomateAgent -RequiredVersion '2.2.0'
 ```
 
 **Direct download (restricted networks):**
 
 ```powershell
 # Download from a version-locked GitHub Release — the URL is immutable after publication
-$ModuleVersion = '1.0.0'
+$ModuleVersion = '2.2.0'
 $URI = "https://github.com/christaylorcodes/ConnectWiseAutomateAgent/releases/download/v$ModuleVersion/ConnectWiseAutomateAgent.psm1"
 Invoke-RestMethod $URI | Invoke-Expression
 ```

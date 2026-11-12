@@ -1,4 +1,4 @@
-#Requires -Module Pester
+﻿#Requires -Module Pester
 
 <#
 .SYNOPSIS
@@ -193,6 +193,39 @@ Describe 'Update-CWAA' {
             }
         }
     }
+
+    Context 'when no -Version is given and no server can supply one' {
+        It 'warns that no valid server was detected instead of throwing' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock Initialize-CWAANetworking {}
+                Mock Get-CWAAInfo { [PSCustomObject]@{ Version = '200.100'; Server = @('automate.example.com') } }
+                Mock Resolve-CWAAServer { return $null }
+                Mock Test-Path { return $false }
+
+                { $null = Update-CWAA -Confirm:$false -WarningAction SilentlyContinue -WarningVariable testWarn } | Should -Not -Throw
+                $null = Update-CWAA -Confirm:$false -WarningAction SilentlyContinue -WarningVariable testWarn
+                "$testWarn" | Should -Match 'No valid server was detected'
+            }
+        }
+    }
+
+    Context 'when no -Version is given and the server is too old to offer updates' {
+        It 'warns about the server version and never probes a download URL' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock Initialize-CWAANetworking {}
+                Mock Get-CWAAInfo { [PSCustomObject]@{ Version = '90.100'; Server = @('automate.example.com') } }
+                Mock Resolve-CWAAServer { [PSCustomObject]@{ ServerUrl = 'https://automate.example.com'; ServerVersion = '100.100' } }
+                Mock Test-Path { return $false }
+                Mock Remove-CWAAFolderRecursive {}
+                Mock Test-CWAAUrlAvailable { return $true }
+
+                $null = Update-CWAA -Confirm:$false -WarningAction SilentlyContinue -WarningVariable testWarn
+                "$testWarn" | Should -Match 'below the minimum for agent updates'
+                "$testWarn" | Should -Not -Match 'No valid server was detected'
+                Should -Invoke Test-CWAAUrlAvailable -Times 0 -Scope It
+            }
+        }
+    }
 }
 
 # =============================================================================
@@ -263,6 +296,130 @@ Describe 'Repair-CWAA' {
             }
             $result.ActionTaken | Should -Be 'Restart'
             $result.Message | Should -Match 'recovered'
+        }
+
+        It 'does not report recovery while the heartbeat is still stale' {
+            $result = InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock Get-CimInstance { @() }
+                Mock Confirm-CWAADependencyService {}
+                Mock Stop-Process {}
+                Mock Get-Service { [PSCustomObject]@{ Name = 'LTService'; Status = 'Running' } }
+                # Check-in is current, heartbeat never catches up
+                Mock Get-CWAAInfo {
+                    [PSCustomObject]@{
+                        Server                = @('automate.example.com')
+                        LastSuccessStatus     = [datetime]::Now.AddMinutes(-1).ToString()
+                        HeartbeatLastSent     = [datetime]::Now.AddHours(-3).ToString()
+                        HeartbeatLastReceived = [datetime]::Now.AddMinutes(-1).ToString()
+                    }
+                }
+                Mock Get-CWAAInfoBackup { return $null }
+                Mock Uninstall-CWAA {}
+                Mock Redo-CWAA {}
+                Mock Test-CWAAServerConnectivity { return $true }
+                Mock Restart-CWAA {}
+                Mock Write-CWAAEventLog {}
+                # Each mocked sleep moves the clock a minute so the 2-minute wait ends at once.
+                # [datetime]::Now, not Get-Date: a mock cannot call the command it replaces.
+                $script:repairClockOffsetSeconds = 0
+                Mock Start-Sleep { $script:repairClockOffsetSeconds += 60 }
+                Mock Get-Date { [datetime]::Now.AddSeconds($script:repairClockOffsetSeconds) }
+
+                Repair-CWAA -InstallerToken 'abc123' -Confirm:$false
+            }
+            $result.ActionTaken | Should -Be 'Restart'
+            $result.Message | Should -Match 'has not recovered yet'
+        }
+
+        It 'does not log a restart for a stale heartbeat under -WhatIf' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock Get-CimInstance { @() }
+                Mock Confirm-CWAADependencyService {}
+                Mock Stop-Process {}
+                Mock Get-Service { [PSCustomObject]@{ Name = 'LTService'; Status = 'Running' } }
+                Mock Get-CWAAInfo {
+                    [PSCustomObject]@{
+                        Server                = @('automate.example.com')
+                        LastSuccessStatus     = (Get-Date).AddMinutes(-1).ToString()
+                        HeartbeatLastSent     = (Get-Date).AddHours(-3).ToString()
+                        HeartbeatLastReceived = (Get-Date).AddMinutes(-1).ToString()
+                    }
+                }
+                Mock Get-CWAAInfoBackup { return $null }
+                Mock Uninstall-CWAA {}
+                Mock Redo-CWAA {}
+                Mock Test-CWAAServerConnectivity { return $true }
+                Mock Restart-CWAA {}
+                Mock Start-Sleep {}
+                Mock Write-CWAAEventLog {}
+
+                $result = Repair-CWAA -InstallerToken 'abc123' -WhatIf
+
+                $result.ActionTaken | Should -Be 'None'
+                $result.Message | Should -Match 'Services were not restarted'
+                Should -Invoke Restart-CWAA -Times 0 -Scope It
+                Should -Invoke Write-CWAAEventLog -Times 0 -Scope It -ParameterFilter { $Message -match 'Services restarted' }
+            }
+        }
+    }
+
+    Context 'when another repair is already running' {
+        It 'terminates duplicates under either host and either command name, and nothing else' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock Get-CimInstance {
+                    [PSCustomObject]@{ Name = 'powershell.exe'; ProcessId = 111111; CommandLine = 'powershell.exe -Command Repair-CWAA' }
+                    [PSCustomObject]@{ Name = 'pwsh.exe'; ProcessId = 222222; CommandLine = 'pwsh.exe -Command Repair-LTService' }
+                    [PSCustomObject]@{ Name = 'pwsh.exe'; ProcessId = 333333; CommandLine = 'pwsh.exe -File Unrelated.ps1' }
+                    [PSCustomObject]@{ Name = 'notepad.exe'; ProcessId = 444444; CommandLine = 'notepad.exe Repair-CWAA.txt' }
+                }
+                Mock Confirm-CWAADependencyService {}
+                Mock Stop-Process {}
+                Mock Get-Service { [PSCustomObject]@{ Name = 'LTService'; Status = 'Running' } }
+                Mock Get-CWAAInfo {
+                    [PSCustomObject]@{
+                        Server                = @('automate.example.com')
+                        LastSuccessStatus     = (Get-Date).AddMinutes(-5).ToString()
+                        HeartbeatLastSent     = (Get-Date).AddMinutes(-5).ToString()
+                        HeartbeatLastReceived = (Get-Date).AddMinutes(-5).ToString()
+                    }
+                }
+                Mock Write-CWAAEventLog {}
+
+                $null = Repair-CWAA -InstallerToken 'abc123' -Confirm:$false
+
+                Should -Invoke Stop-Process -Times 1 -Exactly -Scope It -ParameterFilter { $Id -eq 111111 }
+                Should -Invoke Stop-Process -Times 1 -Exactly -Scope It -ParameterFilter { $Id -eq 222222 }
+                Should -Invoke Stop-Process -Times 2 -Exactly -Scope It
+            }
+        }
+
+        It 'never terminates the processes that launched it' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                # This process was started by 555555, which was started by 666666; both carry the command text.
+                Mock Get-CimInstance {
+                    [PSCustomObject]@{ Name = 'pwsh.exe'; ProcessId = $PID; ParentProcessId = 555555; CommandLine = 'pwsh.exe -Command Repair-CWAA' }
+                    [PSCustomObject]@{ Name = 'powershell.exe'; ProcessId = 555555; ParentProcessId = 666666; CommandLine = 'powershell.exe -Command "pwsh -Command Repair-CWAA"' }
+                    [PSCustomObject]@{ Name = 'pwsh.exe'; ProcessId = 666666; ParentProcessId = 4; CommandLine = 'pwsh.exe -File Wrapper.ps1 Repair-LTService' }
+                    [PSCustomObject]@{ Name = 'powershell.exe'; ProcessId = 777777; ParentProcessId = 4; CommandLine = 'powershell.exe -Command Repair-CWAA' }
+                }
+                Mock Confirm-CWAADependencyService {}
+                Mock Stop-Process {}
+                Mock Get-Service { [PSCustomObject]@{ Name = 'LTService'; Status = 'Running' } }
+                Mock Get-CWAAInfo {
+                    [PSCustomObject]@{
+                        Server                = @('automate.example.com')
+                        LastSuccessStatus     = (Get-Date).AddMinutes(-5).ToString()
+                        HeartbeatLastSent     = (Get-Date).AddMinutes(-5).ToString()
+                        HeartbeatLastReceived = (Get-Date).AddMinutes(-5).ToString()
+                    }
+                }
+                Mock Write-CWAAEventLog {}
+
+                $null = Repair-CWAA -InstallerToken 'abc123' -Confirm:$false
+
+                Should -Invoke Stop-Process -Times 1 -Exactly -Scope It -ParameterFilter { $Id -eq 777777 }
+                Should -Invoke Stop-Process -Times 1 -Exactly -Scope It
+            }
         }
     }
 
@@ -588,17 +745,28 @@ Describe 'Test-CWAAHealth' {
 
 Describe 'Register-CWAAHealthCheckTask' {
 
+    BeforeAll {
+        # Builds the schtasks /QUERY /XML output for an existing health-check task.
+        # Defaults match what Register-CWAAHealthCheckTask builds for -InstallerToken 'abc123'
+        # with no Server/LocationID and the default IntervalHours (6 -> PT6H).
+        function New-TestTaskXml {
+            param(
+                [string]$RepairArguments = "-InstallerToken 'abc123'",
+                [string]$Interval = 'PT6H'
+            )
+            "<Task><Actions><Exec><Arguments>-NoProfile -WindowStyle Hidden -Command `"Import-Module ConnectWiseAutomateAgent; Repair-CWAA $RepairArguments`"</Arguments></Exec></Actions><Triggers><TimeTrigger><Repetition><Interval>$Interval</Interval></Repetition></TimeTrigger></Triggers></Task>"
+        }
+    }
+
     Context 'when task does not exist' {
         It 'creates a new scheduled task and returns Created=$true' {
             $result = InModuleScope 'ConnectWiseAutomateAgent' {
                 Mock schtasks {
                     if ($args -contains '/QUERY' -and $args -contains '/XML') { throw 'Task not found' }
-                    elseif ($args -contains '/DELETE') { return $null }
                     elseif ($args -contains '/CREATE') { $global:LASTEXITCODE = 0; return 'SUCCESS' }
                     elseif ($args -contains '/QUERY') { $global:LASTEXITCODE = 0; return 'SUCCESS' }
                 }
                 Mock New-CWAABackup {}
-                Mock Remove-Item {}
                 Mock Write-CWAAEventLog {}
 
                 Register-CWAAHealthCheckTask -InstallerToken 'abc123' -Confirm:$false
@@ -611,14 +779,10 @@ Describe 'Register-CWAAHealthCheckTask' {
 
     Context 'when task exists with matching configuration' {
         It 'skips recreation and returns Created=$false, Updated=$false' {
-            $result = InModuleScope 'ConnectWiseAutomateAgent' {
+            $result = InModuleScope 'ConnectWiseAutomateAgent' -Parameters @{ TaskXml = (New-TestTaskXml) } {
+                param($TaskXml)
                 Mock schtasks {
-                    if ($args -contains '/QUERY') {
-                        # Arguments contains the exact command Register-CWAAHealthCheckTask would build for
-                        # -InstallerToken 'abc123' with no Server/LocationID, and Interval matches the
-                        # default IntervalHours (6 -> PT6H).
-                        return '<Task><Actions><Exec><Arguments>-NoProfile -WindowStyle Hidden -Command "Import-Module ConnectWiseAutomateAgent; Repair-CWAA -InstallerToken ''abc123''"</Arguments></Exec></Actions><Triggers><TimeTrigger><Repetition><Interval>PT6H</Interval></Repetition></TimeTrigger></Triggers></Task>'
-                    }
+                    if ($args -contains '/QUERY') { return $TaskXml }
                 }
 
                 Register-CWAAHealthCheckTask -InstallerToken 'abc123' -Confirm:$false
@@ -628,68 +792,94 @@ Describe 'Register-CWAAHealthCheckTask' {
         }
     }
 
-    Context 'when task exists with matching token but a different interval' {
-        It 'recreates the task' {
-            $result = InModuleScope 'ConnectWiseAutomateAgent' {
+    Context 'when task exists but must be recreated' {
+        It 'recreates the task when <Case>' -ForEach @(
+            @{
+                Case        = 'the token matches but the interval differs (PT12H vs default PT6H)'
+                TaskXmlArgs = @{ Interval = 'PT12H' }
+                Parameters  = @{ InstallerToken = 'abc123' }
+            }
+            @{
+                Case        = 'token/interval match but the LocationID differs (99 vs 42)'
+                TaskXmlArgs = @{ RepairArguments = "-Server 'https://automate.example.com' -LocationID 99 -InstallerToken 'abc123'" }
+                Parameters  = @{ Server = 'https://automate.example.com'; LocationID = 42; InstallerToken = 'abc123' }
+            }
+            @{
+                Case        = 'the token differs by a suffix (abc1234 vs abc123)'
+                TaskXmlArgs = @{ RepairArguments = "-InstallerToken 'abc1234'" }
+                Parameters  = @{ InstallerToken = 'abc123' }
+            }
+            @{
+                Case        = 'the Server differs'
+                TaskXmlArgs = @{ RepairArguments = "-Server 'https://old.example.com' -LocationID 42 -InstallerToken 'abc123'" }
+                Parameters  = @{ Server = 'https://automate.example.com'; LocationID = 42; InstallerToken = 'abc123' }
+            }
+            @{
+                Case        = '-Force is used with a matching task'
+                TaskXmlArgs = @{}
+                Parameters  = @{ InstallerToken = 'abc123'; Force = $true }
+            }
+        ) {
+            $result = InModuleScope 'ConnectWiseAutomateAgent' -Parameters @{ TaskXml = (New-TestTaskXml @TaskXmlArgs); TaskParameters = $Parameters } {
+                param($TaskXml, $TaskParameters)
                 Mock schtasks {
-                    if ($args -contains '/QUERY' -and $args -contains '/XML') {
-                        # Same command, but interval is PT12H instead of the requested default PT6H.
-                        return '<Task><Actions><Exec><Arguments>-NoProfile -WindowStyle Hidden -Command "Import-Module ConnectWiseAutomateAgent; Repair-CWAA -InstallerToken ''abc123''"</Arguments></Exec></Actions><Triggers><TimeTrigger><Repetition><Interval>PT12H</Interval></Repetition></TimeTrigger></Triggers></Task>'
-                    }
-                    elseif ($args -contains '/DELETE') { return $null }
+                    if ($args -contains '/QUERY' -and $args -contains '/XML') { return $TaskXml }
                     elseif ($args -contains '/CREATE') { $global:LASTEXITCODE = 0; return 'SUCCESS' }
                     elseif ($args -contains '/QUERY') { $global:LASTEXITCODE = 0; return 'SUCCESS' }
                 }
                 Mock New-CWAABackup {}
-                Mock Remove-Item {}
                 Mock Write-CWAAEventLog {}
 
-                Register-CWAAHealthCheckTask -InstallerToken 'abc123' -Confirm:$false
+                Register-CWAAHealthCheckTask @TaskParameters -Confirm:$false
+
+                # Replaced in place: a failed create must not leave the machine without a task
+                Should -Invoke schtasks -Times 1 -Exactly -ParameterFilter { $args -contains '/CREATE' -and $args -contains '/F' }
+                Should -Not -Invoke schtasks -ParameterFilter { $args -contains '/DELETE' }
             }
-            ($result.Created -or $result.Updated) | Should -BeTrue
+            # An existing task was replaced, with or without -Force: an update, not a creation
+            $result.Created | Should -BeFalse
+            $result.Updated | Should -BeTrue
         }
-    }
 
-    Context 'when task exists with matching token/interval but different Server or LocationID' {
-        It 'recreates the task' {
-            $result = InModuleScope 'ConnectWiseAutomateAgent' {
+        It 'reports Created=$false, Updated=$false and logs event <EventId> when <Case>' -ForEach @(
+            @{ Case = 'the replacement cannot be created'; CreateExit = 1; VerifyExit = 0; EventId = 4022 }
+            @{ Case = 'the replacement is missing on verification'; CreateExit = 0; VerifyExit = 1; EventId = 4023 }
+        ) {
+            $result = InModuleScope 'ConnectWiseAutomateAgent' -Parameters @{ TaskXml = (New-TestTaskXml -Interval 'PT12H'); CreateExit = $CreateExit; VerifyExit = $VerifyExit; ExpectedEventId = $EventId } {
+                param($TaskXml, $CreateExit, $VerifyExit, $ExpectedEventId)
                 Mock schtasks {
-                    if ($args -contains '/QUERY' -and $args -contains '/XML') {
-                        # Existing task was registered for a different LocationID (99, not 42).
-                        return '<Task><Actions><Exec><Arguments>-NoProfile -WindowStyle Hidden -Command "Import-Module ConnectWiseAutomateAgent; Repair-CWAA -Server ''https://automate.example.com'' -LocationID 99 -InstallerToken ''abc123''"</Arguments></Exec></Actions><Triggers><TimeTrigger><Repetition><Interval>PT6H</Interval></Repetition></TimeTrigger></Triggers></Task>'
-                    }
-                    elseif ($args -contains '/DELETE') { return $null }
-                    elseif ($args -contains '/CREATE') { $global:LASTEXITCODE = 0; return 'SUCCESS' }
-                    elseif ($args -contains '/QUERY') { $global:LASTEXITCODE = 0; return 'SUCCESS' }
+                    if ($args -contains '/QUERY' -and $args -contains '/XML') { return $TaskXml }
+                    elseif ($args -contains '/CREATE') { $global:LASTEXITCODE = $CreateExit; return 'CREATE' }
+                    elseif ($args -contains '/QUERY') { $global:LASTEXITCODE = $VerifyExit; return 'VERIFY' }
                 }
                 Mock New-CWAABackup {}
-                Mock Remove-Item {}
                 Mock Write-CWAAEventLog {}
 
-                Register-CWAAHealthCheckTask -Server 'https://automate.example.com' -LocationID 42 -InstallerToken 'abc123' -Confirm:$false
+                Register-CWAAHealthCheckTask -InstallerToken 'abc123' -Confirm:$false -ErrorAction SilentlyContinue
+
+                Should -Invoke Write-CWAAEventLog -Times 1 -Exactly -ParameterFilter { $EventId -eq $ExpectedEventId } -Because 'the failure is logged once'
+                Should -Not -Invoke Write-CWAAEventLog -ParameterFilter { $EventId -eq 4020 }
+                Should -Not -Invoke schtasks -ParameterFilter { $args -contains '/DELETE' }
             }
-            ($result.Created -or $result.Updated) | Should -BeTrue
+            $result.Created | Should -BeFalse
+            $result.Updated | Should -BeFalse
         }
-    }
 
-    Context 'when -Force is used with existing task' {
-        It 'recreates the task' {
-            $result = InModuleScope 'ConnectWiseAutomateAgent' {
-                Mock schtasks {
-                    if ($args -contains '/QUERY' -and $args -contains '/XML') {
-                        return '<Task><Actions><Exec><Arguments>-NoProfile -WindowStyle Hidden -Command "Import-Module ConnectWiseAutomateAgent; Repair-CWAA -InstallerToken ''abc123''"</Arguments></Exec></Actions><Triggers><TimeTrigger><Repetition><Interval>PT6H</Interval></Repetition></TimeTrigger></Triggers></Task>'
-                    }
-                    elseif ($args -contains '/DELETE') { return $null }
-                    elseif ($args -contains '/CREATE') { $global:LASTEXITCODE = 0; return 'SUCCESS' }
-                    elseif ($args -contains '/QUERY') { $global:LASTEXITCODE = 0; return 'SUCCESS' }
-                }
+        It 'changes nothing and reports Created=$false, Updated=$false with -WhatIf' {
+            $result = InModuleScope 'ConnectWiseAutomateAgent' -Parameters @{ TaskXml = (New-TestTaskXml -Interval 'PT12H') } {
+                param($TaskXml)
+                Mock schtasks { if ($args -contains '/QUERY' -and $args -contains '/XML') { return $TaskXml } }
                 Mock New-CWAABackup {}
-                Mock Remove-Item {}
                 Mock Write-CWAAEventLog {}
 
-                Register-CWAAHealthCheckTask -InstallerToken 'abc123' -Force -Confirm:$false
+                Register-CWAAHealthCheckTask -InstallerToken 'abc123' -WhatIf
+
+                Should -Not -Invoke schtasks -ParameterFilter { $args -contains '/CREATE' -or $args -contains '/DELETE' }
+                Should -Not -Invoke New-CWAABackup
+                Should -Not -Invoke Write-CWAAEventLog
             }
-            ($result.Created -or $result.Updated) | Should -BeTrue
+            $result.Created | Should -BeFalse
+            $result.Updated | Should -BeFalse
         }
     }
 
@@ -698,17 +888,42 @@ Describe 'Register-CWAAHealthCheckTask' {
             $result = InModuleScope 'ConnectWiseAutomateAgent' {
                 Mock schtasks {
                     if ($args -contains '/QUERY' -and $args -contains '/XML') { throw 'Task not found' }
-                    elseif ($args -contains '/DELETE') { return $null }
                     elseif ($args -contains '/CREATE') { $global:LASTEXITCODE = 0; return 'SUCCESS' }
                     elseif ($args -contains '/QUERY') { $global:LASTEXITCODE = 0; return 'SUCCESS' }
                 }
                 Mock New-CWAABackup {}
-                Mock Remove-Item {}
                 Mock Write-CWAAEventLog {}
 
                 Register-CWAAHealthCheckTask -InstallerToken 'abc123' -TaskName 'MyHealthCheck' -IntervalHours 12 -Confirm:$false
             }
             $result.TaskName | Should -Be 'MyHealthCheck'
+        }
+
+        It 'registers a SYSTEM task with the requested command and interval, and removes its temporary file' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock schtasks {
+                    if ($args -contains '/QUERY' -and $args -contains '/XML') { throw 'Task not found' }
+                    elseif ($args -contains '/CREATE') {
+                        $script:CWAATestTaskFile = $args[[array]::IndexOf($args, '/XML') + 1]
+                        $script:CWAATestTaskXml = [xml](Get-Content -LiteralPath $script:CWAATestTaskFile -Raw)
+                        $global:LASTEXITCODE = 0
+                        return 'SUCCESS'
+                    }
+                    elseif ($args -contains '/QUERY') { $global:LASTEXITCODE = 0; return 'SUCCESS' }
+                }
+                Mock New-CWAABackup {}
+                Mock Write-CWAAEventLog {}
+
+                $null = Register-CWAAHealthCheckTask -InstallerToken 'abc123' -Server 'https://a.example.com', 'https://b.example.com' -LocationID 42 -IntervalHours 12 -Confirm:$false
+
+                $task = $script:CWAATestTaskXml.Task
+                $task.Actions.Exec.Arguments | Should -Be "-NoProfile -WindowStyle Hidden -Command `"Import-Module ConnectWiseAutomateAgent; Repair-CWAA -Server 'https://a.example.com','https://b.example.com' -LocationID 42 -InstallerToken 'abc123'`""
+                $task.Triggers.TimeTrigger.Repetition.Interval | Should -Be 'PT12H'
+                $task.Triggers.TimeTrigger.RandomDelay | Should -Be 'PT12H'
+                $task.Principals.Principal.UserId | Should -Be 'S-1-5-18'
+                # The file holds the installer token
+                $script:CWAATestTaskFile | Should -Not -Exist
+            }
         }
     }
 
@@ -717,14 +932,12 @@ Describe 'Register-CWAAHealthCheckTask' {
             $result = InModuleScope 'ConnectWiseAutomateAgent' {
                 Mock schtasks {
                     if ($args -contains '/QUERY' -and $args -contains '/XML') { throw 'Task not found' }
-                    elseif ($args -contains '/DELETE') { return $null }
                     elseif ($args -contains '/CREATE') { $global:LASTEXITCODE = 0; return 'SUCCESS' }
                     # Task is reported as created by schtasks but is gone by the time we verify it —
                     # simulates AV/policy removing it immediately after creation.
                     elseif ($args -contains '/QUERY') { $global:LASTEXITCODE = 1; return 'ERROR: The system cannot find the file specified.' }
                 }
                 Mock New-CWAABackup {}
-                Mock Remove-Item {}
                 Mock Write-CWAAEventLog {}
 
                 $taskResult = Register-CWAAHealthCheckTask -InstallerToken 'abc123' -Confirm:$false -ErrorAction SilentlyContinue
@@ -739,21 +952,61 @@ Describe 'Register-CWAAHealthCheckTask' {
     }
 
     Context 'when task creation fails' {
-        It 'still writes the failure event log even when the caller sets $ErrorActionPreference = Stop' {
+        It 'writes the failure event log when the error is silenced under $ErrorActionPreference = Stop' {
             InModuleScope 'ConnectWiseAutomateAgent' {
                 Mock schtasks {
                     if ($args -contains '/QUERY' -and $args -contains '/XML') { throw 'Task not found' }
-                    elseif ($args -contains '/DELETE') { return $null }
                     elseif ($args -contains '/CREATE') { $global:LASTEXITCODE = 1; return 'FAILURE' }
                 }
                 Mock New-CWAABackup {}
-                Mock Remove-Item {}
                 Mock Write-CWAAEventLog {}
 
                 $ErrorActionPreference = 'Stop'
                 Register-CWAAHealthCheckTask -InstallerToken 'abc123' -Confirm:$false -ErrorAction SilentlyContinue
 
                 Should -Invoke Write-CWAAEventLog -ParameterFilter { $EventId -eq 4022 }
+            }
+        }
+
+        It 'writes the failure event log and then throws for a caller using -ErrorAction Stop' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock schtasks {
+                    if ($args -contains '/QUERY' -and $args -contains '/XML') { throw 'Task not found' }
+                    elseif ($args -contains '/CREATE') { $global:LASTEXITCODE = 1; return 'FAILURE' }
+                }
+                Mock New-CWAABackup {}
+                Mock Write-CWAAEventLog {}
+
+                { Register-CWAAHealthCheckTask -InstallerToken 'abc123' -Confirm:$false -ErrorAction Stop } |
+                    Should -Throw '*Failed to create scheduled task*'
+
+                Should -Invoke Write-CWAAEventLog -Times 1 -Exactly -ParameterFilter { $EventId -eq 4022 }
+            }
+        }
+
+        It 'still throws under -ErrorAction Stop for a later pipeline record' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                $script:CWAATestCreateCalls = 0
+                Mock schtasks {
+                    if ($args -contains '/QUERY' -and $args -contains '/XML') { throw 'Task not found' }
+                    elseif ($args -contains '/CREATE') {
+                        $script:CWAATestCreateCalls++
+                        # First record succeeds, second fails
+                        $global:LASTEXITCODE = [int]($script:CWAATestCreateCalls -gt 1)
+                        return 'CREATE'
+                    }
+                    elseif ($args -contains '/QUERY') { $global:LASTEXITCODE = 0; return 'SUCCESS' }
+                }
+                Mock New-CWAABackup {}
+                Mock Write-CWAAEventLog {}
+
+                $records = @(
+                    [PSCustomObject]@{ Server = 'https://one.example.com'; LocationID = 1 }
+                    [PSCustomObject]@{ Server = 'https://two.example.com'; LocationID = 2 }
+                )
+                { $records | Register-CWAAHealthCheckTask -InstallerToken 'abc123' -Confirm:$false -ErrorAction Stop } |
+                    Should -Throw '*Failed to create scheduled task*'
+                $script:CWAATestCreateCalls | Should -Be 2 -Because 'the first record succeeds and the second fails'
             }
         }
     }
@@ -952,6 +1205,17 @@ Describe 'Test-CWAAPort' {
 
 Describe 'Set-CWAAProxy' {
 
+    BeforeAll {
+        # -DetectProxy asks the real system proxy about these two hosts, and GetSystemWebProxy is a
+        # static call Pester cannot mock. The detection tests skip on a machine that really proxies them.
+        # With no proxy, GetProxy returns nothing (PowerShell 7) or the host itself (Windows PowerShell).
+        $script:SystemProxyInUse = $false
+        foreach ($probeHost in 'automate.example.com', 'www.connectwise.com') {
+            $systemProxyUri = [System.Net.WebRequest]::GetSystemWebProxy().GetProxy([uri]"http://$probeHost")
+            if ($systemProxyUri -and $systemProxyUri.Authority -ne $probeHost) { $script:SystemProxyInUse = $true }
+        }
+    }
+
     BeforeEach {
         # Reset module proxy state and ensure LTServiceNetWebClient exists before each test.
         # Set-CWAAProxy assigns to $Script:LTServiceNetWebClient.Proxy which requires a real
@@ -1057,6 +1321,193 @@ Describe 'Set-CWAAProxy' {
         }
     }
 
+    Context 'when proxy credentials are provided' {
+        It 'keeps the real password when given -ProxyPassword' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock Initialize-CWAANetworking {}
+                Mock Get-CWAASettings { return $null }
+                Mock Get-Service { return $null }
+                $securePassword = ConvertTo-SecureString 'S3cret!Pass' -AsPlainText -Force
+
+                Set-CWAAProxy -ProxyServerURL 'http://proxy.example.com:8080' -ProxyUsername 'proxyuser' -ProxyPassword $securePassword -Confirm:$false
+
+                $Script:LTProxy.ProxyUsername | Should -Be 'proxyuser'
+                $Script:LTProxy.ProxyPassword | Should -Be 'S3cret!Pass'
+                $Script:LTWebProxy.Credentials.UserName | Should -Be 'proxyuser'
+                $Script:LTWebProxy.Credentials.Password | Should -Be 'S3cret!Pass'
+            }
+        }
+
+        It 'accepts -ProxyCredential and keeps the real password' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock Initialize-CWAANetworking {}
+                Mock Get-CWAASettings { return $null }
+                Mock Get-Service { return $null }
+                $credential = New-Object System.Management.Automation.PSCredential ('creduser', (ConvertTo-SecureString 'Cred!Pass9' -AsPlainText -Force))
+
+                Set-CWAAProxy -ProxyServerURL 'http://proxy.example.com:8080' -ProxyCredential $credential -Confirm:$false
+
+                $Script:LTProxy.ProxyUsername | Should -Be 'creduser'
+                $Script:LTProxy.ProxyPassword | Should -Be 'Cred!Pass9'
+                $Script:LTWebProxy.Credentials.Password | Should -Be 'Cred!Pass9'
+            }
+        }
+
+        It 'decodes -EncodedProxyUsername and -EncodedProxyPassword with the agent key' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock Initialize-CWAANetworking {}
+                Mock Get-CWAASettings { return $null }
+                Mock Get-Service { return $null }
+                $originalAgentKey = $Script:LTServiceKeys.PasswordString
+                try {
+                    $Script:LTServiceKeys.PasswordString = 'AgentKeyForTest'
+                    $encodedUser = ConvertTo-CWAASecurity -InputString 'encuser' -Key 'AgentKeyForTest'
+                    $encodedPassword = ConvertTo-SecureString (ConvertTo-CWAASecurity -InputString 'Enc!Pass7' -Key 'AgentKeyForTest') -AsPlainText -Force
+
+                    Set-CWAAProxy -ProxyServerURL 'http://proxy.example.com:8080' -EncodedProxyUsername $encodedUser -EncodedProxyPassword $encodedPassword -Confirm:$false
+
+                    $Script:LTProxy.ProxyUsername | Should -Be 'encuser'
+                    $Script:LTProxy.ProxyPassword | Should -Be 'Enc!Pass7'
+                }
+                finally {
+                    $Script:LTServiceKeys.PasswordString = $originalAgentKey
+                }
+            }
+        }
+
+        It 'splits a DOMAIN\user name into domain and user for the proxy credential' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock Initialize-CWAANetworking {}
+                Mock Get-CWAASettings { return $null }
+                Mock Get-Service { return $null }
+
+                Set-CWAAProxy -ProxyServerURL 'http://proxy.example.com:8080' -ProxyUsername 'CORP\svcproxy' -ProxyPassword (ConvertTo-SecureString 'Dom!Pass3' -AsPlainText -Force) -Confirm:$false
+
+                $Script:LTProxy.ProxyUsername | Should -Be 'CORP\svcproxy'
+                $Script:LTWebProxy.Credentials.Domain | Should -Be 'CORP'
+                $Script:LTWebProxy.Credentials.UserName | Should -Be 'svcproxy'
+            }
+        }
+
+        It 'fails and leaves the proxy unchanged when encoded credentials cannot be decoded' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock Initialize-CWAANetworking {}
+                Mock Get-CWAASettings { return $null }
+                Mock Get-Service { return $null }
+                Mock ConvertFrom-CWAASecurity { return $null }
+                Mock Write-CWAAEventLog {}
+                $notDecodable = ConvertTo-SecureString 'bm90LWVuY29kZWQ=' -AsPlainText -Force
+
+                { Set-CWAAProxy -ProxyServerURL 'http://proxy.example.com:8080' -EncodedProxyUsername 'bm90LWVuY29kZWQ=' -EncodedProxyPassword $notDecodable -Confirm:$false } |
+                    Should -Throw '*could not be decoded*'
+
+                $Script:LTProxy.Enabled | Should -BeFalse
+                $Script:LTProxy.ProxyServerURL | Should -Be ''
+                Should -Invoke Write-CWAAEventLog -Times 1 -Exactly -Scope It -ParameterFilter { $EventId -eq 3022 }
+            }
+        }
+    }
+
+    Context 'when a proxy URL is set without credentials' {
+        It 'clears credentials left over from a previous proxy' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock Initialize-CWAANetworking {}
+                Mock Get-CWAASettings { return $null }
+                Mock Get-Service { return $null }
+                $Script:LTProxy.ProxyUsername = 'olduser'
+                $Script:LTProxy.ProxyPassword = 'OldPass!1'
+
+                Set-CWAAProxy -ProxyServerURL 'http://other-proxy.example.com:8080' -Confirm:$false
+
+                $Script:LTProxy.ProxyUsername | Should -Be ''
+                $Script:LTProxy.ProxyPassword | Should -Be ''
+                $Script:LTWebProxy.Credentials | Should -BeNullOrEmpty
+            }
+        }
+    }
+
+    Context 'when -DetectProxy falls back to the WinHTTP proxy' {
+        It 'reads the proxy from netsh output written as <Format>' -ForEach @(
+            @{ Format = 'one proxy for all protocols'; NetshLine = '    Proxy Server(s) :  proxy.corp.example:8080'; Expected = 'proxy.corp.example:8080' }
+            @{ Format = 'per-protocol entries'; NetshLine = '    Proxy Server(s) :  http=proxy.corp.example:8080;https=secure.corp.example:8443'; Expected = 'proxy.corp.example:8080' }
+            @{ Format = 'an https entry only'; NetshLine = '    Proxy Server(s) :  https=secure.corp.example:8443'; Expected = 'secure.corp.example:8443' }
+            @{ Format = 'a translated label (German)'; NetshLine = '    Proxyserver:  http=proxy.corp.example:8080;https=secure.corp.example:8443'; Expected = 'proxy.corp.example:8080' }
+        ) {
+            if ($script:SystemProxyInUse) {
+                Set-ItResult -Skipped -Because 'this machine routes the test hosts through a system proxy'
+                return
+            }
+            InModuleScope 'ConnectWiseAutomateAgent' -Parameters @{ NetshLine = $NetshLine; Expected = $Expected } {
+                param($NetshLine, $Expected)
+                Mock Initialize-CWAANetworking {}
+                Mock Get-CWAASettings { [PSCustomObject]@{ ServerAddress = 'automate.example.com' } }
+                Mock Get-Service { return $null }
+                # Mock bodies cannot see the test's local variables, so hand the line over in module scope
+                $script:netshProxyLine = $NetshLine
+                try {
+                    Mock netsh { 'Current WinHTTP proxy settings:', '', $script:netshProxyLine, '    Bypass List     :  (none)' }
+
+                    Set-CWAAProxy -DetectProxy -Confirm:$false
+
+                    $Script:LTProxy.Enabled | Should -BeTrue
+                    $Script:LTProxy.ProxyServerURL | Should -Be $Expected
+                    # The module's own requests have to go through the detected proxy too
+                    $Script:LTWebProxy.Address.Authority | Should -Be $Expected
+                }
+                finally {
+                    Remove-Variable -Name netshProxyLine -Scope Script -ErrorAction SilentlyContinue
+                }
+            }
+        }
+    }
+
+    Context 'when -DetectProxy finds no proxy' {
+        It 'leaves the proxy disabled instead of using the server as its own proxy' {
+            if ($script:SystemProxyInUse) {
+                Set-ItResult -Skipped -Because 'this machine routes the test hosts through a system proxy'
+                return
+            }
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock Initialize-CWAANetworking {}
+                Mock Get-CWAASettings { [PSCustomObject]@{ ServerAddress = 'automate.example.com' } }
+                Mock Get-Service { return $null }
+                Mock netsh { 'Current WinHTTP proxy settings:', '', '    Direct access (no proxy server).' }
+
+                Set-CWAAProxy -DetectProxy -Confirm:$false
+
+                $Script:LTProxy.Enabled | Should -BeFalse
+                $Script:LTProxy.ProxyServerURL | Should -Be ''
+                Should -Invoke netsh -Times 1 -Exactly -Scope It
+            }
+        }
+    }
+
+    Context 'when run with -WhatIf' {
+        It 'does not log the proxy-updated event' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock Initialize-CWAANetworking {}
+                Mock Get-CWAASettings {
+                    [PSCustomObject]@{
+                        ProxyServerURL = 'http://old-proxy.example.com:8080'
+                        ProxyUsername  = ''
+                        ProxyPassword  = ''
+                    }
+                }
+                Mock Get-Service { [PSCustomObject]@{ Name = 'LTService'; Status = 'Running' } }
+                Mock Stop-CWAA {}
+                Mock Start-CWAA {}
+                Mock Set-ItemProperty {}
+                Mock ConvertFrom-CWAASecurity { return '' }
+                Mock Write-CWAAEventLog {}
+
+                Set-CWAAProxy -ProxyServerURL 'http://new-proxy.example.com:8080' -WhatIf
+
+                Should -Invoke Set-ItemProperty -Times 0 -Scope It
+                Should -Invoke Write-CWAAEventLog -Times 0 -Scope It -ParameterFilter { $EventId -eq 3020 }
+            }
+        }
+    }
+
     Context 'when no parameters are provided' {
         It 'writes error about missing parameters' {
             {
@@ -1109,8 +1560,7 @@ Describe 'New-CWAABackup' {
                 Mock New-Item {}
                 Mock Get-ChildItem { @() }
                 Mock Copy-Item {}
-                # Mock reg.exe operations
-                $env_windir = $env:windir
+                Mock Invoke-CWAARegExe { return 0 }
                 Mock Get-Content { @('[HKEY_LOCAL_MACHINE\SOFTWARE\LabTech]', '"Key"="Value"') }
                 Mock Out-File {}
                 Mock Write-CWAAEventLog {}
@@ -1118,6 +1568,108 @@ Describe 'New-CWAABackup' {
                 $result = New-CWAABackup -Confirm:$false -ErrorAction SilentlyContinue
 
                 Should -Invoke New-Item -Scope It
+            }
+        }
+
+        It 'reports success and logs event 3010 when the copy and both reg.exe steps succeed' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock Get-CWAAInfo { [PSCustomObject]@{ BasePath = 'TestDrive:\LTSVC' } }
+                Mock Test-Path { return $true }
+                Mock New-Item {}
+                Mock Get-ChildItem { [PSCustomObject]@{ FullName = 'TestDrive:\LTSVC\LTSvc.exe' } }
+                Mock Copy-Item {}
+                Mock Invoke-CWAARegExe { return 0 }
+                Mock Get-Content { @('[HKEY_LOCAL_MACHINE\SOFTWARE\LabTech]', '"Key"="Value"') }
+                Mock Out-File {}
+                Mock Write-CWAAEventLog {}
+
+                $result = New-CWAABackup -Confirm:$false
+
+                "$result" | Should -Match 'backup has been created'
+                Should -Invoke Invoke-CWAARegExe -Times 1 -Exactly -Scope It -ParameterFilter { $Arguments[0] -eq 'export' }
+                Should -Invoke Invoke-CWAARegExe -Times 1 -Exactly -Scope It -ParameterFilter { $Arguments[0] -eq 'import' }
+                Should -Invoke Write-CWAAEventLog -Times 1 -Exactly -Scope It -ParameterFilter { $EventId -eq 3010 }
+            }
+        }
+
+        It 'stops before the import and does not report success when reg.exe export fails' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock Get-CWAAInfo { [PSCustomObject]@{ BasePath = 'TestDrive:\LTSVC' } }
+                Mock Test-Path { return $true }
+                Mock New-Item {}
+                Mock Get-ChildItem { @() }
+                Mock Copy-Item {}
+                Mock Invoke-CWAARegExe { return 1 }
+                Mock Get-Content { @('[HKEY_LOCAL_MACHINE\SOFTWARE\LabTech]', '"Key"="Value"') }
+                Mock Out-File {}
+                Mock Write-CWAAEventLog {}
+
+                $result = New-CWAABackup -Confirm:$false -ErrorAction SilentlyContinue -ErrorVariable testError
+
+                "$testError" | Should -Match 'reg\.exe export returned exit code 1'
+                "$result" | Should -Not -Match 'backup has been created'
+                Should -Invoke Invoke-CWAARegExe -Times 0 -Scope It -ParameterFilter { $Arguments[0] -eq 'import' }
+                Should -Invoke Out-File -Times 0 -Scope It
+                Should -Invoke Write-CWAAEventLog -Times 1 -Exactly -Scope It -ParameterFilter { $EventId -eq 3012 }
+                Should -Invoke Write-CWAAEventLog -Times 0 -Scope It -ParameterFilter { $EventId -eq 3010 }
+            }
+        }
+
+        It 'does not report success when some files could not be copied' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock Get-CWAAInfo { [PSCustomObject]@{ BasePath = 'TestDrive:\LTSVC' } }
+                Mock Test-Path { return $true }
+                Mock New-Item {}
+                Mock Get-ChildItem { [PSCustomObject]@{ FullName = 'TestDrive:\LTSVC\LTSvc.exe' } }
+                # A locked file is a non-terminating error, as the real Copy-Item reports it
+                Mock Copy-Item { Write-Error 'The process cannot access the file because it is being used by another process.' }
+                Mock Invoke-CWAARegExe { return 0 }
+                Mock Get-Content { @('[HKEY_LOCAL_MACHINE\SOFTWARE\LabTech]', '"Key"="Value"') }
+                Mock Out-File {}
+                Mock Write-CWAAEventLog {}
+
+                $result = New-CWAABackup -Confirm:$false -ErrorAction SilentlyContinue -ErrorVariable testError
+
+                "$testError" | Should -Match 'could not be copied'
+                "$result" | Should -Not -Match 'backup has been created'
+                Should -Invoke Write-CWAAEventLog -Times 1 -Exactly -Scope It -ParameterFilter { $EventId -eq 3012 -and $Message -match 'could not be copied' }
+                Should -Invoke Write-CWAAEventLog -Times 0 -Scope It -ParameterFilter { $EventId -eq 3010 }
+            }
+        }
+
+        It 'does not report success when the file copy fails' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock Get-CWAAInfo { [PSCustomObject]@{ BasePath = 'TestDrive:\LTSVC' } }
+                Mock Test-Path { return $true }
+                Mock New-Item {}
+                Mock Get-ChildItem { throw 'Access to the path is denied.' }
+                Mock Copy-Item {}
+                Mock Invoke-CWAARegExe { return 0 }
+                Mock Get-Content { @('[HKEY_LOCAL_MACHINE\SOFTWARE\LabTech]', '"Key"="Value"') }
+                Mock Out-File {}
+                Mock Write-CWAAEventLog {}
+
+                $result = New-CWAABackup -Confirm:$false -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+
+                "$result" | Should -Not -Match 'backup has been created'
+                Should -Invoke Write-CWAAEventLog -Times 1 -Exactly -Scope It -ParameterFilter { $EventId -eq 3012 }
+                Should -Invoke Write-CWAAEventLog -Times 0 -Scope It -ParameterFilter { $EventId -eq 3010 }
+            }
+        }
+
+        It 'does not report success under -WhatIf' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock Get-CWAAInfo { [PSCustomObject]@{ BasePath = 'TestDrive:\LTSVC' } }
+                Mock Test-Path { return $true }
+                Mock New-Item {}
+                Mock Copy-Item {}
+                Mock Write-CWAAEventLog {}
+
+                $result = New-CWAABackup -WhatIf
+
+                "$result" | Should -Not -Match 'backup has been created'
+                Should -Invoke Copy-Item -Times 0 -Scope It
+                Should -Invoke Write-CWAAEventLog -Times 0 -Scope It
             }
         }
     }

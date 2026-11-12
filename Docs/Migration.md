@@ -1,11 +1,11 @@
-# Migration Guide: 0.1.4.0 to 1.0.0
+# Migration Guide: 0.1.4.0 to 2.0.0
 
 ## Quick Start
 
-**Your existing scripts will keep working.** All 32 legacy `LT` aliases are preserved in 1.0.0. No function was removed from the public API. Upgrade the module and your existing scripts will run without changes:
+**Your existing scripts will keep working.** All 32 legacy `LT` aliases are preserved in 2.0.0. No function was removed from the public API. Upgrade the module and your existing scripts will run without changes:
 
 ```powershell
-Update-Module ConnectWiseAutomateAgent -AllowPrerelease
+Update-Module ConnectWiseAutomateAgent
 ```
 
 Read on if you want to adopt the new naming, use the new features, or need to handle the one breaking change.
@@ -20,7 +20,7 @@ Every public function was renamed from `Verb-LT*` to `Verb-CWAA*`. All original 
 
 ### Complete Function-to-Alias Mapping
 
-| CWAA Function (1.0.0) | LT Alias (legacy) | Category |
+| CWAA Function (2.0.0) | LT Alias (legacy) | Category |
 | --- | --- | --- |
 | `Install-CWAA` | `Install-LTService` | Install & Lifecycle |
 | `Uninstall-CWAA` | `Uninstall-LTService` | Install & Lifecycle |
@@ -59,7 +59,7 @@ To list all available aliases in a running session:
 Get-Alias -Definition *-CWAA* | Format-Table Name, Definition
 ```
 
-### New Functions in 1.0.0
+### New Functions in 2.0.0
 
 Five new public functions (no legacy equivalents existed):
 
@@ -70,6 +70,22 @@ Five new public functions (no legacy equivalents existed):
 | `Test-CWAAServerConnectivity` | Tests HTTPS reachability of the Automate server |
 | `Register-CWAAHealthCheckTask` | Creates a Windows scheduled task for recurring health checks |
 | `Unregister-CWAAHealthCheckTask` | Removes the scheduled health check task |
+
+### Script Helpers (added in 2.2.0)
+
+Version 2.2.0 adds seven Script helper functions that replace the standalone `CW-Automate-ScriptHelper.ps1`. They are not part of the LT-to-CWAA rename: their aliases are the old ScriptHelper names, not `LT` names.
+
+| CWAA Function | ScriptHelper Alias |
+| --- | --- |
+| `Initialize-CWAAScriptLog` | `Initialize-AutomateLogging` |
+| `Write-CWAAScriptLog` | `Write-AutomateLog` |
+| `New-CWAAScriptOutput` | `New-AutomateOutput` |
+| `ConvertTo-CWAAScriptOutput` | `ConvertTo-AutomateOutput` |
+| `Invoke-CWAAScript` | `Invoke-CWAScript` |
+| `Invoke-CWAAPwsh` | `Invoke-LTPwsh` |
+| `New-CWAARemoteMonitor` | `New-CWARemoteMonitor` |
+
+Scripts that dot-source `CW-Automate-ScriptHelper.ps1` can import the module instead and keep calling the old names. Behavior is stricter than the old file in a few places (for example `Invoke-CWAAPwsh` does not search `PATH`, and `Invoke-CWAAScript -URL` requires HTTPS); see [Security Model](Security.md#script-helpers).
 
 ### Removed Private Functions
 
@@ -95,7 +111,7 @@ Three internal functions were removed (not part of the public API — no script 
 # Before (0.1.4.0) — worked with string
 Redo-LTService -Server 'https://automate.example.com' -LocationID '5' -ServerPassword 'pwd'
 
-# After (1.0.0) — use integer, and prefer InstallerToken
+# After (2.0.0) — use integer, and prefer InstallerToken
 Redo-CWAA -Server 'https://automate.example.com' -LocationID 5 -InstallerToken 'MyToken'
 ```
 
@@ -105,7 +121,7 @@ Redo-CWAA -Server 'https://automate.example.com' -LocationID 5 -InstallerToken '
 
 ### ServerPassword (Legacy) to InstallerToken (Modern)
 
-`InstallerToken` is the preferred authentication method in 1.0.0. It is scoped, revocable, and more secure than the server-wide `ServerPassword`. See [Security Model](Security.md#authentication-installertoken-vs-serverpassword) for details.
+`InstallerToken` is the preferred authentication method in 2.0.0. It is scoped, revocable, and more secure than the server-wide `ServerPassword`. See [Security Model](Security.md#authentication-installertoken-vs-serverpassword) for details.
 
 **Before (ServerPassword):**
 ```powershell
@@ -143,7 +159,7 @@ Reinstall-LTService -Server 'https://automate.example.com' -ServerPassword 'pwd'
 Redo-CWAA -Server 'https://automate.example.com' -InstallerToken 'MyToken' -LocationID 1
 ```
 
-### Health Check (new in 1.0.0)
+### Health Check (new in 2.0.0)
 
 ```powershell
 # No equivalent in 0.1.4.0
@@ -153,7 +169,7 @@ if (-not $health.Healthy) {
 }
 ```
 
-### Automated Monitoring (new in 1.0.0)
+### Automated Monitoring (new in 2.0.0)
 
 ```powershell
 # No equivalent in 0.1.4.0

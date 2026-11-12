@@ -133,7 +133,7 @@ This cmdlet supports the common parameters: -Debug, -ErrorAction, -ErrorVariable
 
 ### System.String[]
 
-{{ Fill in the Description }}
+Bound from the pipeline by property name: `-Server`.
 
 ## OUTPUTS
 

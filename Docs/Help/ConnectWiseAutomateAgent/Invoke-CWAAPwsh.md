@@ -70,6 +70,8 @@ be told apart and also counts as an error; redirect it inside the scriptblock
 On error, Result holds the stderr text
 (or stdout when stderr is empty) and Data holds ExitCode=<n> and, when stderr
 replaced it, the stdout text as Output=<text>, always last.
+Error text is what pwsh
+itself prints, which can include the script line that raised the error.
 ANSI color sequences are stripped from captured output.
 
 For both parameter sets the exit code follows pwsh -File semantics: an explicit
@@ -77,6 +79,11 @@ exit <n> or an unhandled error fails the run, but a handled error or a leftover
 non-zero exit code from the last native command does not.
 Warning, verbose and
 Write-Host output from the child is captured into Result as plain text lines.
+
+Objects the script outputs are formatted to text as PowerShell would display them.
+An object shown as a table that is output immediately before exit or throw is not
+captured; let the script end normally, or convert it to text first (for example
+with Out-String).
 
 For the ScriptBlock parameter set, the scriptblock is Base64-encoded using
 Unicode (UTF-16LE) for transport via the -EncodedCommand parameter.
@@ -87,8 +94,9 @@ Write values literally into the
 scriptblock, or use the FilePath parameter set with -Parameters instead.
 
 The encoded command, including any parameter values, appears on the pwsh.exe command
-line, which process auditing and EDR tools record.
-Do not pass secrets this way.
+line, which process auditing and EDR tools record, and a failing line of the script
+can be echoed in Result.
+Do not pass secrets this way or write them into the script.
 
 ## EXAMPLES
 
@@ -166,8 +174,10 @@ HelpMessage: ''
 Optional override for the path to pwsh.exe.
 Use this when pwsh is installed
 in a non-standard location.
-The path is resolved to a full path (a bare name is
-never looked up on PATH) and then trusted as given: make sure the folder is not
+It must be an .exe file on the file system.
+The path
+is resolved to a full path (a bare name is never looked up on PATH) and then
+trusted as given: make sure the folder is not
 writable by non-administrators, because this usually runs as SYSTEM.
 
 ```yaml

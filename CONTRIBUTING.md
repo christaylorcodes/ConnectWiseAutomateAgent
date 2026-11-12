@@ -30,7 +30,7 @@ Open an issue describing what you would like to see and why. Include use cases s
 
 ## Development Setup
 
-Build and test tooling requires **PowerShell 7.6+**. The module itself supports PowerShell 3.0+.
+Build and test tooling requires **PowerShell 7.6+**. The module itself is written to three PowerShell version tiers: code that deploys an agent must run on Windows 7 / Server 2008 R2 as shipped (PowerShell 2.0), and code that only runs once an agent is installed can assume 5.1 or later. See [PowerShell Version Tiers](AGENTS.md#powershell-version-tiers) before changing anything under `source/`.
 
 ```powershell
 # Clone the repository
@@ -65,7 +65,7 @@ See the [Code Conventions](AGENTS.md#code-conventions) section in AGENTS.md for 
 
 The key points:
 
-- Functions use `Verb-CWAA<Noun>` naming with `[Alias('Verb-LT<LegacyNoun>')]` for backward compatibility
+- Functions use `Verb-CWAA<Noun>` naming with `[Alias('Verb-LT<LegacyNoun>')]` for backward compatibility (Script helpers use their legacy ScriptHelper name as the alias instead)
 - `[CmdletBinding()]` on everything; `SupportsShouldProcess=$True` on destructive operations
 - Zero PSScriptAnalyzer errors required (settings in `.PSScriptAnalyzerSettings.psd1`)
 - PowerShell files use UTF-8 with BOM, CRLF line endings
@@ -90,20 +90,26 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) 
 | **MINOR** | New functions, new optional parameters, new features (backward-compatible) | Adding `Test-CWAAHealth`, adding `-Quiet` switch to existing function |
 | **PATCH** | Bug fixes, documentation improvements, internal refactoring (no behavior change) | Fixing a regex bug, updating help text, extracting a private helper |
 
-### Prerelease Tags
+### How the Version Is Set
 
-Prerelease versions use the format `MAJOR.MINOR.PATCH-TAG` where TAG follows this progression:
+The version is calculated by [GitVersion](https://gitversion.net/) at build time from the branch and git history (`GitVersion.yml`). Do not edit `ModuleVersion` or `PrivateData.PSData.Prerelease` in `source/ConnectWiseAutomateAgent.psd1`; they are placeholders (`0.0.1` and empty) that the build overwrites.
 
-1. `alpha001`, `alpha002`, ... — early development, API may change
-2. `beta001`, `beta002`, ... — feature-complete, testing in progress
-3. `rc001`, `rc002`, ... — release candidate, final validation
-4. *(no tag)* — stable release
+| Branch | Version produced | Published as |
+| --- | --- | --- |
+| `develop` | Next minor with an `alpha` tag, e.g. `2.2.0-alpha0001`, `2.2.0-alpha0002`, ... | Prerelease on the PowerShell Gallery |
+| `main` | Stable, e.g. `2.2.0` | Stable release on the PowerShell Gallery and a GitHub Release |
 
-The prerelease tag is set in `source/ConnectWiseAutomateAgent.psd1` under `PrivateData.PSData.Prerelease`. Remove the tag entirely for a stable release.
+To force a specific bump, include `+semver: major`, `+semver: minor`, or `+semver: patch` in a commit message (`+semver: none` to skip).
+
+A local build without GitVersion installed produces version `0.0.1`. That is expected and only affects local output.
 
 ### Changelog
 
-All notable changes are documented in [CHANGELOG.md](CHANGELOG.md) using [Keep a Changelog](https://keepachangelog.com/) format. Update the changelog as part of any PR that changes behavior.
+All notable changes are documented in [CHANGELOG.md](CHANGELOG.md) using [Keep a Changelog](https://keepachangelog.com/) format. Update the `[Unreleased]` section as part of any PR that changes behavior.
+
+The build takes everything under `[Unreleased]`, labels it with the version being built, and uses it as the module's release notes on the PowerShell Gallery and as the GitHub Release body. So leave release content under `[Unreleased]` until the release is published. Renaming the heading to a version beforehand leaves `[Unreleased]` empty and produces empty release notes (this happened with 2.1.0).
+
+After a stable release is published, rename `[Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` and add a new empty `[Unreleased]` section above it.
 
 ## Code of Conduct
 

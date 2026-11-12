@@ -84,6 +84,7 @@ $files = @(New-MarkdownCommandHelp @newParams)
 # Tidy:
 # - .LINK entries without a title render as "[](url)"
 # - PlatyPS 1.0.3 leaves the ALIASES section as a placeholder; fill it from the module's exports
+# - PlatyPS 1.0.3 leaves INPUTS descriptions as placeholders; fill them from the parameters
 $aliasesByCommand = @{}
 foreach ($alias in $module.ExportedAliases.Values) {
     $aliasesByCommand[$alias.ResolvedCommandName] += @($alias.Name)
@@ -97,6 +98,27 @@ foreach ($file in Get-ChildItem -LiteralPath $moduleFolder -Filter '*.md' -File)
         'This cmdlet has no aliases.'
     }
     $fixed = [regex]::Replace($fixed, '(?m)^This cmdlet has the following aliases,\r?\n\s*\{\{Insert list of aliases\}\}', $aliasText.Replace('$', '$$'))
+
+    # PlatyPS 1.0.3 lists each pipeline input type under INPUTS with a placeholder description,
+    # even when comment-based help has .INPUTS. Describe it from the parameters that accept it.
+    $command = $module.ExportedFunctions[$file.BaseName]
+    if ($command) {
+        $fixed = [regex]::Replace($fixed, '(?m)^(?<head>### (?<type>\S+)\r?\n\r?\n)\{\{ Fill in the Description \}\}', {
+                param($match)
+                $byValue = @(); $byName = @()
+                foreach ($parameter in $command.Parameters.Values) {
+                    if ($parameter.ParameterType.FullName -ne $match.Groups['type'].Value) { continue }
+                    $attributes = @($parameter.Attributes | Where-Object { $_ -is [System.Management.Automation.ParameterAttribute] })
+                    if ($attributes | Where-Object ValueFromPipeline) { $byValue += "``-$($parameter.Name)``" }
+                    elseif ($attributes | Where-Object ValueFromPipelineByPropertyName) { $byName += "``-$($parameter.Name)``" }
+                }
+                $sentences = @()
+                if ($byValue) { $sentences += "You can pipe a value to $($byValue -join ', ')." }
+                if ($byName) { $sentences += "Bound from the pipeline by property name: $($byName -join ', ')." }
+                if (-not $sentences) { return $match.Value }
+                $match.Groups['head'].Value + ($sentences -join ' ')
+            })
+    }
     if ($fixed -ne $content) {
         [IO.File]::WriteAllText($file.FullName, $fixed, [Text.UTF8Encoding]::new($false))
     }
