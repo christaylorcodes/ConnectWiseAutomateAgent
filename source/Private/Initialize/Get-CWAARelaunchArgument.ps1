@@ -36,9 +36,10 @@
     # Drop the executable: a quoted path, or everything up to the first space
     $relaunchArguments = ("$CommandLine" -replace '^\s*(?:"[^"]*"|\S+)\s*', '').Trim()
 
-    # Walk the host switches one token at a time until the one that introduces the command
+    # Walk the host switches one token at a time until the one that introduces the command.
+    # (?s): a -Command script can span several lines, and the rest of the text has to match across them.
     $remainingText = $relaunchArguments
-    while ($remainingText -match '^\s*("[^"]*"|\S+)(.*)$') {
+    while ($remainingText -match '(?s)^\s*("[^"]*"|\S+)(.*)$') {
         $token = $Matches[1]
         $remainingText = $Matches[2]
         if ($token -notmatch '^[-/]([a-z]+):?$') { continue }

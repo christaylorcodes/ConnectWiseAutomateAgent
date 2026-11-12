@@ -787,6 +787,7 @@ Describe 'Get-CWAARelaunchArgument' {
         @{ Case = 'command text that mentions -NoExit'; CommandLine = 'powershell.exe -Command "Start-Process powershell -ArgumentList ''-NoExit -File x.ps1''"'; Expected = '-Command "Start-Process powershell -ArgumentList ''-NoExit -File x.ps1''"' }
         @{ Case = 'a script whose own switch is -NoExit'; CommandLine = 'powershell.exe -File C:\Temp\run.ps1 -NoExit'; Expected = '-File C:\Temp\run.ps1 -NoExit' }
         @{ Case = 'a script argument that is a lone dash'; CommandLine = 'powershell.exe -File C:\Temp\run.ps1 -Mode -'; Expected = '-File C:\Temp\run.ps1 -Mode -' }
+        @{ Case = 'a -Command script that spans several lines'; CommandLine = "powershell.exe -NoProfile -Command `"iex (irm https://example.com/x.psm1)`r`nInstall-CWAA -Server a`""; Expected = "-NoProfile -Command `"iex (irm https://example.com/x.psm1)`r`nInstall-CWAA -Server a`"" }
     ) {
         $result = InModuleScope 'ConnectWiseAutomateAgent' -Parameters @{ CommandLine = $CommandLine } {
             param($CommandLine)
