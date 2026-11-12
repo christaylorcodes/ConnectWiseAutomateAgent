@@ -91,6 +91,11 @@ function Update-CWAA {
             Write-Verbose "Using detected version ($Version) from server: $GoodServer."
             $updater = "$GoodServer/Labtech/Updates/LabtechUpdate_$Version.zip"
         }
+        else {
+            Write-Warning "Server $GoodServer reports version $serverVersion, which is below the minimum for agent updates ($($Script:CWAAVersionUpdateMinimum)). Use -Version to request a specific update."
+            $GoodServer = $null
+            return
+        }
 
         # Kill all running processes from $updaterPath before cleanup
         if (Test-Path $updaterPath) {
@@ -150,6 +155,11 @@ function Update-CWAA {
                 Write-Error "No existing installation was found." -ErrorAction Stop
                 Return
             }
+            # No target version means no -Version was given and no usable server supplied one
+            if (-not $Version) {
+                Write-Warning "No valid server was detected."
+                Return
+            }
             if ([System.Version]$detectedVersion -ge [System.Version]$Version) {
                 Write-Warning "Installed version detected ($detectedVersion) is higher than or equal to the requested version ($Version)."
                 Return
@@ -180,12 +190,14 @@ function Update-CWAA {
                     if (Test-Path "$updaterPath\LabtechUpdate.exe") {
                         Write-Verbose 'Launching LabtechUpdate Self-Extractor.'
                         Write-Debug "Executing Command ""LabtechUpdate.exe $extractArguments"""
+                        $locationPushed = $False
                         Try {
                             Push-Location $updaterPath
+                            $locationPushed = $True
                             & "$updaterPath\LabtechUpdate.exe" $extractArguments 2>''
-                            Pop-Location
                         }
                         Catch { Write-Output 'Error calling LabtechUpdate.exe.' }
+                        Finally { if ($locationPushed) { Pop-Location } }
                         Start-Sleep -Seconds 5
                     }
                     else {

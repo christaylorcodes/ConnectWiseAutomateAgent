@@ -325,7 +325,15 @@ function Install-CWAA {
                         else {
                             Write-Debug "LTService Initial Startup failed to complete within expected period."
                         }
-                        Set-CWAAProxy -ProxyServerURL $Script:LTProxy.ProxyServerURL -ProxyUsername $Script:LTProxy.ProxyUsername -ProxyPassword $Script:LTProxy.ProxyPassword -Confirm:$False -WhatIf:$False
+                        # Set-CWAAProxy takes the password as a SecureString; the module holds it as plain text
+                        $proxyParameters = @{ ProxyServerURL = $Script:LTProxy.ProxyServerURL }
+                        if ($Script:LTProxy.ProxyUsername -and $Script:LTProxy.ProxyPassword) {
+                            $secureProxyPassword = New-Object System.Security.SecureString
+                            foreach ($passwordCharacter in "$($Script:LTProxy.ProxyPassword)".ToCharArray()) { $secureProxyPassword.AppendChar($passwordCharacter) }
+                            $proxyParameters.ProxyUsername = $Script:LTProxy.ProxyUsername
+                            $proxyParameters.ProxyPassword = $secureProxyPassword
+                        }
+                        Set-CWAAProxy @proxyParameters -Confirm:$False -WhatIf:$False
                     }
                 }
                 else {

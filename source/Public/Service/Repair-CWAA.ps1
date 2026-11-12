@@ -88,8 +88,8 @@
         if ($PSCmdlet.ShouldProcess('Duplicate Repair-CWAA processes', 'Terminate')) {
             Try {
                 Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
-                    $_.Name -eq 'powershell.exe' -and
-                    $_.CommandLine -match 'Repair-CWAA' -and
+                    $_.Name -match '^(powershell|pwsh)\.exe$' -and
+                    $_.CommandLine -match 'Repair-(CWAA|LTService)' -and
                     $_.ProcessId -ne $PID
                 } | ForEach-Object {
                     Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
@@ -260,19 +260,26 @@
                     # Wait up to 2 minutes for the agent to check in after restart
                     Write-Verbose 'Waiting for agent check-in after restart.'
                     $waitStart = Get-Date
-                    while ($lastContact -lt $restartThreshold -and $waitStart.AddMinutes(2) -gt (Get-Date)) {
+                    while (($lastContact -lt $restartThreshold -or $lastHeartbeat -lt $restartThreshold) -and $waitStart.AddMinutes(2) -gt (Get-Date)) {
                         Start-Sleep -Seconds 2
+                        $refreshedAgentInfo = Get-CWAAInfo -EA 0 -Verbose:$False -WhatIf:$False -Confirm:$False
                         Try {
-                            [datetime]$lastContact = (Get-CWAAInfo -EA Stop -Verbose:$False -WhatIf:$False -Confirm:$False).LastSuccessStatus
+                            [datetime]$lastContact = $refreshedAgentInfo.LastSuccessStatus
                         }
                         Catch {
                             Write-Debug "Unable to re-read LastSuccessStatus during wait loop: $($_.Exception.Message)"
                         }
+                        Try {
+                            [datetime]$lastHeartbeat = $refreshedAgentInfo.HeartbeatLastSent
+                        }
+                        Catch {
+                            Write-Debug "Unable to re-read HeartbeatLastSent during wait loop: $($_.Exception.Message)"
+                        }
                     }
                 }
 
-                # Did the restart fix it?
-                if ($lastContact -ge $restartThreshold) {
+                # Did the restart fix it? Both the check-in and the heartbeat have to be current.
+                if ($lastContact -ge $restartThreshold -and $lastHeartbeat -ge $restartThreshold) {
                     $actionTaken = 'Restart'
                     $resultMessage = "Services restarted. Agent recovered. Last contact: $lastContact"
                     Write-Verbose $resultMessage

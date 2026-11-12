@@ -16,16 +16,16 @@ function Set-CWAAProxy {
         Plain text username for proxy authentication.
         Must be used with ProxyServerURL and ProxyPassword.
     .PARAMETER ProxyPassword
-        Plain text password for proxy authentication.
+        Password for proxy authentication, as a SecureString.
         Must be used with ProxyServerURL and ProxyUsername.
     .PARAMETER EncodedProxyUsername
         Encoded username for proxy authentication, encrypted with the agent password.
         Will be decoded using the agent password. Must be used with ProxyServerURL
         and EncodedProxyPassword.
     .PARAMETER EncodedProxyPassword
-        Encoded password for proxy authentication, encrypted with the agent password.
-        Will be decoded using the agent password. Must be used with ProxyServerURL
-        and EncodedProxyUsername.
+        Encoded password for proxy authentication, encrypted with the agent password
+        and passed as a SecureString. Will be decoded using the agent password.
+        Must be used with ProxyServerURL and EncodedProxyUsername.
     .PARAMETER DetectProxy
         Automatically detect system proxy settings for module operations.
         Discovered settings are applied to the installed agent (if present).
@@ -105,7 +105,7 @@ function Set-CWAAProxy {
         # This is the preferred secure alternative to passing plain text proxy credentials.
         if ($ProxyCredential) {
             $ProxyUsername = $ProxyCredential.UserName
-            $ProxyPassword = $ProxyCredential.GetNetworkCredential().Password
+            $ProxyPassword = $ProxyCredential.Password
         }
 
         # Valid combinations: -ResetProxy alone, -DetectProxy alone, or -ProxyServerURL
@@ -147,19 +147,21 @@ function Set-CWAAProxy {
                         if ($Script:LTProxy.Enabled) { break }
                         if ($serverUrl -notmatch $Script:CWAAServerValidationRegex) { continue }
                         $serverUrl = $serverUrl -replace 'https?://', ''
+                        $detectedProxy = $Null
                         Try {
-                            $Script:LTProxy.ProxyServerURL = $Script:LTWebProxy.GetProxy("http://$($serverUrl)").Authority
+                            $detectedProxy = $Script:LTWebProxy.GetProxy("http://$($serverUrl)").Authority
                         }
                         catch { Write-Debug "Failed to get proxy for server $serverUrl. $_" }
-                        if (($Null -ne $Script:LTProxy.ProxyServerURL) -and ($Script:LTProxy.ProxyServerURL -ne '') -and ($Script:LTProxy.ProxyServerURL -notcontains "$($serverUrl)")) {
-                            Write-Debug "Detected Proxy URL: $($Script:LTProxy.ProxyServerURL) on server $($serverUrl)"
+                        # With no proxy in the way, GetProxy hands back the server's own address
+                        if ($detectedProxy -and $detectedProxy -ne $serverUrl) {
+                            Write-Debug "Detected Proxy URL: $detectedProxy on server $serverUrl"
+                            $Script:LTProxy.ProxyServerURL = $detectedProxy
                             $Script:LTProxy.Enabled = $True
                         }
                     }
                     if (-not ($Script:LTProxy.Enabled)) {
-                        if (($Script:LTProxy.ProxyServerURL -eq '') -or ($Script:LTProxy.ProxyServerURL -contains '$serverUrl')) {
-                            $Script:LTProxy.ProxyServerURL = netsh winhttp show proxy | Select-String -Pattern '(?i)(?<=Proxyserver.*http\=)([^;\r\n]*)' -EA 0 | ForEach-Object { $_.matches } | Select-Object -Expand value
-                        }
+                        # Nothing found per server: fall back to the machine-wide WinHTTP proxy
+                        $Script:LTProxy.ProxyServerURL = netsh winhttp show proxy | Select-String -Pattern '(?i)(?<=Proxyserver.*http\=)([^;\r\n]*)' -EA 0 | ForEach-Object { $_.matches } | Select-Object -Expand value
                         if (($Null -eq $Script:LTProxy.ProxyServerURL) -or ($Script:LTProxy.ProxyServerURL -eq '')) {
                             $Script:LTProxy.ProxyServerURL = ''
                             $Script:LTProxy.Enabled = $False
@@ -181,17 +183,22 @@ function Set-CWAAProxy {
                     $Script:LTProxy.ProxyServerURL = $ProxyServerURL
                     Write-Verbose "Setting Proxy URL to: $($ProxyServerURL)"
                     # The parameter check above guarantees at most one credential pair (plain or encoded) is present.
+                    # Passwords arrive as SecureString. The module keeps the plain value in $Script:LTProxy
+                    # because the agent registry stores it re-encrypted with the agent key.
+                    $proxyCredentialSupplied = $False
                     if ($ProxyUsername -and $ProxyPassword) {
                         $Script:LTProxy.ProxyUsername = $ProxyUsername
-                        $Script:LTProxy.ProxyPassword = $ProxyPassword
-                        $passwd = ConvertTo-SecureString $ProxyPassword -AsPlainText -Force
-                        $Script:LTWebProxy.Credentials = New-Object System.Management.Automation.PSCredential ($Script:LTProxy.ProxyUsername, $passwd)
+                        $Script:LTProxy.ProxyPassword = (New-Object System.Management.Automation.PSCredential ('unused', $ProxyPassword)).GetNetworkCredential().Password
+                        $proxyCredentialSupplied = $True
                     }
                     elseif ($EncodedProxyUsername -and $EncodedProxyPassword) {
+                        $encodedProxyPasswordText = (New-Object System.Management.Automation.PSCredential ('unused', $EncodedProxyPassword)).GetNetworkCredential().Password
                         $Script:LTProxy.ProxyUsername = $(ConvertFrom-CWAASecurity -InputString "$($EncodedProxyUsername)" -Key ("$($Script:LTServiceKeys.PasswordString)", ''))
-                        $Script:LTProxy.ProxyPassword = $(ConvertFrom-CWAASecurity -InputString "$($EncodedProxyPassword)" -Key ("$($Script:LTServiceKeys.PasswordString)", ''))
-                        $passwd = ConvertTo-SecureString $Script:LTProxy.ProxyPassword -AsPlainText -Force
-                        $Script:LTWebProxy.Credentials = New-Object System.Management.Automation.PSCredential ($Script:LTProxy.ProxyUsername, $passwd)
+                        $Script:LTProxy.ProxyPassword = $(ConvertFrom-CWAASecurity -InputString $encodedProxyPasswordText -Key ("$($Script:LTServiceKeys.PasswordString)", ''))
+                        $proxyCredentialSupplied = $True
+                    }
+                    if ($proxyCredentialSupplied) {
+                        $Script:LTWebProxy.Credentials = New-Object System.Net.NetworkCredential ("$($Script:LTProxy.ProxyUsername)", "$($Script:LTProxy.ProxyPassword)")
                     }
                     $Script:LTServiceNetWebClient.Proxy = $Script:LTWebProxy
                 }
@@ -255,7 +262,9 @@ function Set-CWAAProxy {
                     try { Stop-CWAA -EA 0 -WA 0 } catch { Write-Debug "Failed to stop services before proxy update. $_" }
                 }
                 Write-Verbose 'Updating Automate agent proxy configuration.'
+                $registryUpdated = $False
                 if ( $PSCmdlet.ShouldProcess('LTService Registry', 'Update') ) {
+                    $registryUpdated = $True
                     $agentProxyServerUrl = $($Script:LTProxy.ProxyServerURL)
                     if (($agentProxyServerUrl -ne '') -and ($agentProxyServerUrl -notmatch 'https?://')) { $agentProxyServerUrl = "http://$($agentProxyServerUrl)" }
                     @{'ProxyServerURL'  = $agentProxyServerUrl;
@@ -269,7 +278,9 @@ function Set-CWAAProxy {
                 if ($serviceRestartNeeded -eq $True) {
                     try { Start-CWAA -EA 0 -WA 0 } catch { Write-Debug "Failed to restart services after proxy update. $_" }
                 }
-                Write-CWAAEventLog -EventId 3020 -EntryType Information -Message "Proxy settings updated. Enabled: $($Script:LTProxy.Enabled), Server: $($Script:LTProxy.ProxyServerURL)"
+                if ($registryUpdated) {
+                    Write-CWAAEventLog -EventId 3020 -EntryType Information -Message "Proxy settings updated. Enabled: $($Script:LTProxy.Enabled), Server: $($Script:LTProxy.ProxyServerURL)"
+                }
             }
         }
         Catch {

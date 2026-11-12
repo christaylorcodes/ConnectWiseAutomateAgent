@@ -61,7 +61,7 @@ function ConvertFrom-CWAASecurity {
                         $NoKeyPassed = $True
                         $testKey = $DefaultKey
                     }
-                    Write-Debug "Attempting Decode for '$($testInput)' with Key '$($testKey)'"
+                    Write-Debug "Attempting Decode for '$($testInput)' with Key $(Get-CWAARedactedValue "$testKey")"
                     Try {
                         $inputBytes = [System.Convert]::FromBase64String($testInput)
                         $tripleDesProvider = New-Object System.Security.Cryptography.TripleDESCryptoServiceProvider
@@ -72,7 +72,7 @@ function ConvertFrom-CWAASecurity {
                         $DecodedString += @($DecodeString)
                     }
                     Catch {
-                        Write-Debug "Decode failed for '$($testInput)' with Key '$($testKey)': $_"
+                        Write-Debug "Decode failed for '$($testInput)' with Key $(Get-CWAARedactedValue "$testKey"): $_"
                     }
                     Finally {
                         if ((Get-Variable -Name cryptoTransform -Scope 0 -EA 0)) { try { $cryptoTransform.Dispose() } catch { $cryptoTransform.Clear() } }

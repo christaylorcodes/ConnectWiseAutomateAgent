@@ -371,4 +371,33 @@ Describe 'Set-CWAALogLevel' {
         }
         $result | Should -Be 'Current logging level: Normal'
     }
+
+    It 'logs event 3030 after the level is changed' {
+        InModuleScope 'ConnectWiseAutomateAgent' {
+            Mock Stop-CWAA {}
+            Mock Start-CWAA {}
+            Mock Set-ItemProperty {}
+            Mock Get-CWAALogLevel { 'Current logging level: Verbose' }
+            Mock Write-CWAAEventLog {}
+
+            $null = Set-CWAALogLevel -Level Verbose -Confirm:$false
+
+            Should -Invoke Write-CWAAEventLog -Times 1 -Exactly -Scope It -ParameterFilter { $EventId -eq 3030 }
+        }
+    }
+
+    It 'changes nothing and logs no event with -WhatIf' {
+        InModuleScope 'ConnectWiseAutomateAgent' {
+            Mock Stop-CWAA {}
+            Mock Start-CWAA {}
+            Mock Set-ItemProperty {}
+            Mock Get-CWAALogLevel { 'Current logging level: Normal' }
+            Mock Write-CWAAEventLog {}
+
+            $null = Set-CWAALogLevel -Level Verbose -WhatIf
+
+            Should -Invoke Set-ItemProperty -Times 0 -Scope It
+            Should -Invoke Write-CWAAEventLog -Times 0 -Scope It
+        }
+    }
 }

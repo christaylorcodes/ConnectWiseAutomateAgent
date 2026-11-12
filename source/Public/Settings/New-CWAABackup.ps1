@@ -61,11 +61,16 @@ function New-CWAABackup {
             }
         }
 
+        # Success is only reported when both halves ran (not -WhatIf) and neither failed
+        $filesBackedUp = $False
+        $registryBackedUp = $False
+
         if ($PSCmdlet.ShouldProcess($agentPath, 'Copy agent files to backup')) {
             Try {
                 # Copy each top-level item individually, excluding the Backup directory
                 # itself to prevent recursive copy loop (Backup is inside the agent path)
                 Get-ChildItem $agentPath -Exclude 'Backup' | Copy-Item -Destination $BackupPath -Recurse -Force
+                $filesBackedUp = $True
             }
             Catch {
                 Write-Error "There was a problem backing up the LTSvc folder. $_"
@@ -93,6 +98,7 @@ function New-CWAABackup {
                 if ($LASTEXITCODE -ne 0) {
                     Write-Warning "reg.exe import returned exit code $LASTEXITCODE. Registry backup restoration may have failed."
                 }
+                $registryBackedUp = $True
             }
             Catch {
                 Write-Error "There was a problem backing up the LTSvc registry keys. $_"
@@ -100,8 +106,10 @@ function New-CWAABackup {
             }
         }
 
-        Write-Output 'The Automate agent backup has been created.'
-        Write-CWAAEventLog -EventId 3010 -EntryType Information -Message "Agent backup created at $BackupPath."
+        if ($filesBackedUp -and $registryBackedUp) {
+            Write-Output 'The Automate agent backup has been created.'
+            Write-CWAAEventLog -EventId 3010 -EntryType Information -Message "Agent backup created at $BackupPath."
+        }
     }
 
     End {

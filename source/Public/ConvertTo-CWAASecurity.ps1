@@ -52,7 +52,7 @@ function ConvertTo-CWAASecurity {
             $Key = $DefaultKey
         }
 
-        Write-Debug "Attempting Encode for '$($InputString)' with Key '$($Key)'"
+        Write-Debug "Attempting Encode for $(Get-CWAARedactedValue "$InputString") with Key $(Get-CWAARedactedValue "$Key")"
         $encodedString = ''
         try {
             $inputBytes = [System.Text.Encoding]::UTF8.GetBytes($InputString)

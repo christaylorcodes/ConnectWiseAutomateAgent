@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Invoke-CWAAScript -URL` only accepts `https://` URLs. TLS 1.2 is added for the download when the process setting lacks it, and the previous setting is restored afterwards.
 - `Initialize-CWAAScriptLog` refuses a log directory whose path passes through a junction or symbolic link, and creates each log file exclusively instead of appending to an existing file. The default log directory is `%windir%\LTSVC\logs`.
 - `Invoke-CWAAPwsh` never searches `PATH` for pwsh.exe (see Added). Parameter values passed with `-Parameters` are visible on the pwsh.exe command line, so do not pass secrets that way.
+- `ConvertTo-CWAASecurity` and `ConvertFrom-CWAASecurity` no longer write the encryption key (or, when encoding, the plain text) to the debug stream. `-Debug` output shows a short hash instead.
 
 ### Changed
 
@@ -38,6 +39,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `Set-CWAAProxy -ProxyPassword` and `-EncodedProxyPassword` stored the text "System.Security.SecureString" as the proxy password, and `-ProxyCredential` failed with a conversion error. All three now apply the real password.
+- `Install-CWAA` with a proxy enabled failed after the MSI had installed, because it passed the proxy password to `Set-CWAAProxy` as plain text. The install was logged as failed and installer cleanup, `-Hide` and `-Rename` were skipped.
+- `Set-CWAAProxy -DetectProxy` could enable the Automate server's own address as the proxy when no proxy was in use. It now falls back to the WinHTTP proxy setting, and leaves the proxy disabled when there is none.
+- `Update-CWAA` without `-Version` threw a version conversion error when no server could be reached or the server was too old to offer updates. It now writes a warning that says which.
+- `Update-CWAA` could leave the session in the updater's temporary folder when the update extractor failed to start.
+- `Repair-CWAA` only detected another running repair when it ran under `powershell.exe` and was called as `Repair-CWAA`. It now also detects `pwsh.exe` and the `Repair-LTService` alias.
+- `Repair-CWAA` reported "Agent recovered" after a service restart whenever the last check-in was recent, even if the heartbeat that triggered the restart was still stale. It now waits for both (up to two minutes) and otherwise reports that the agent has not recovered yet.
+- `-WhatIf` no longer writes "success" events: `Set-CWAAProxy` (event 3020), `Set-CWAALogLevel` (event 3030) and `New-CWAABackup` (event 3010). `New-CWAABackup` also no longer reports "backup has been created" after the file copy or registry export failed.
 - Pester configuration in `build.yaml` used the `Script` key, which Sampler ignores; test discovery could fall back to a lowercase `tests` path on case-sensitive runners.
 - Per-function and per-alias export tests in `ConnectWiseAutomateAgent.Module.Tests.ps1` were silently generating zero test cases because their data was defined after discovery.
 - `Register-CWAAHealthCheckTask` now recreates the scheduled task when `-IntervalHours`, `-Server`, or `-LocationID` change, not only when `-InstallerToken` changes.
