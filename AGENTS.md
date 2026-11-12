@@ -78,6 +78,7 @@ ConnectWiseAutomateAgent/
     test-local.ps1                    # Pre-push validation script
   Scripts/
     Invoke-QuickTest.ps1              # Fast targeted test runner for dev loops
+    Get-CodacyResult.ps1              # Prints why Codacy failed a pull request (the GitHub check does not say)
     Update-MarkdownHelp.ps1           # PlatyPS 1.x markdown help generator (run via build.ps1 -Tasks docs)
   Docs/                               # Hand-written guides
     Help/
