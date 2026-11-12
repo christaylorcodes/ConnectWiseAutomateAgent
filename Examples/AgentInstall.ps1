@@ -1,4 +1,4 @@
-$InstallParameters = @{
+﻿$InstallParameters = @{
     Server         = 'automate.example.com'
     LocationID     = 1
     InstallerToken = 'MyGeneratedInstallerToken'

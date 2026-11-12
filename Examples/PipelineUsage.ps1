@@ -1,4 +1,4 @@
-# ==============================================================================
+﻿# ==============================================================================
 # PipelineUsage.ps1
 #
 # Demonstrates PowerShell pipeline patterns with ConnectWiseAutomateAgent

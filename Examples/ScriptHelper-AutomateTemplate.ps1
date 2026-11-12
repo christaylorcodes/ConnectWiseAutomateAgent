@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Template for ConnectWise Automate deployed scripts using the ScriptHelper functions.
 

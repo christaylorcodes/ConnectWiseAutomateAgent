@@ -1,4 +1,4 @@
-# ==============================================================================
+﻿# ==============================================================================
 # GPOScheduledTaskDeployment.ps1
 #
 # Deploys the ConnectWise Automate agent via a GPO-delivered scheduled task.

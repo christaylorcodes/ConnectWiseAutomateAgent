@@ -1,4 +1,4 @@
-# Local test script - run this before pushing to catch issues early
+﻿# Local test script - run this before pushing to catch issues early
 param(
     [switch]$SkipBuild,
     [switch]$SkipTests,

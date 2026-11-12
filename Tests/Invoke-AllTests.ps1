@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Runs the full test suite against both module loading methods in separate processes.
 

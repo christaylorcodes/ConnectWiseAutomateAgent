@@ -1,4 +1,4 @@
-# ==============================================================================
+﻿# ==============================================================================
 # ScriptHelper-PwshLauncher.ps1
 #
 # Demonstrates using Invoke-CWAAPwsh to run PowerShell 7 code from Automate.

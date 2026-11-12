@@ -1,4 +1,4 @@
-# ==============================================================================
+﻿# ==============================================================================
 # ScriptHelper-BasicUsage.ps1
 #
 # Demonstrates the basic usage of the Scripting helper functions for writing

@@ -1,4 +1,4 @@
-#Requires -Module Pester
+﻿#Requires -Module Pester
 
 <#
 .SYNOPSIS
@@ -166,5 +166,23 @@ Describe 'PowerShell 2.0 compatibility' {
                 $DeploymentFiles | Should -Contain $required
             }
         }
+    }
+}
+
+Describe 'PowerShell file encoding' {
+
+    # Windows PowerShell reads a file without a byte order mark as ANSI, so any non-ASCII character
+    # in it is corrupted there. PSScriptAnalyzer reports this as PSUseBOMForUnicodeEncodedFile, and
+    # Codacy fails the pull request on it without saying why in the GitHub check.
+    It 'every PowerShell file with non-ASCII characters starts with a UTF-8 byte order mark' {
+        $repositoryRoot = Split-Path -Path $PSScriptRoot -Parent
+        $missing = foreach ($file in Get-ChildItem -Path $repositoryRoot -Recurse -File -Force -Include *.ps1, *.psm1, *.psd1) {
+            $relativePath = $file.FullName.Substring($repositoryRoot.Length + 1) -replace '\\', '/'
+            if ($relativePath -match '^(output|\.git|node_modules)/') { continue }
+            $bytes = [System.IO.File]::ReadAllBytes($file.FullName)
+            $hasBom = $bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF
+            if (-not $hasBom -and [Array]::FindIndex($bytes, [Predicate[byte]] { param($b) $b -gt 127 }) -ge 0) { $relativePath }
+        }
+        ($missing -join ', ') | Should -BeNullOrEmpty
     }
 }

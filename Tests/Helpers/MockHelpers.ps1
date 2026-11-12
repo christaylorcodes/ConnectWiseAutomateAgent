@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Shared mock data factories for ConnectWiseAutomateAgent Pester tests.
 

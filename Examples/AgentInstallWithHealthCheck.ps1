@@ -1,4 +1,4 @@
-# ==============================================================================
+﻿# ==============================================================================
 # AgentInstallWithHealthCheck.ps1
 #
 # Installs the ConnectWise Automate agent and registers a recurring scheduled
