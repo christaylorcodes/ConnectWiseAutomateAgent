@@ -4,7 +4,7 @@ external help file: ConnectWiseAutomateAgent-Help.xml
 HelpUri: https://github.com/christaylorcodes/ConnectWiseAutomateAgent
 Locale: en-US
 Module Name: ConnectWiseAutomateAgent
-ms.date: 11/10/2026
+ms.date: 11/12/2026
 PlatyPS schema version: 2024-05-01
 title: Set-CWAAProxy
 ---
@@ -107,10 +107,10 @@ HelpMessage: ''
 
 ### -EncodedProxyPassword
 
-Encoded password for proxy authentication, encrypted with the agent password.
+Encoded password for proxy authentication, encrypted with the agent password
+and passed as a SecureString.
 Will be decoded using the agent password.
-Must be used with ProxyServerURL
-and EncodedProxyUsername.
+Must be used with ProxyServerURL and EncodedProxyUsername.
 
 ```yaml
 Type: System.Security.SecureString
@@ -179,7 +179,7 @@ HelpMessage: ''
 
 ### -ProxyPassword
 
-Plain text password for proxy authentication.
+Password for proxy authentication, as a SecureString.
 Must be used with ProxyServerURL and ProxyUsername.
 
 ```yaml
