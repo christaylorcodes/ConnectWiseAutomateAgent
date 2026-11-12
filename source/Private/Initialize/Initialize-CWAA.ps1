@@ -41,9 +41,10 @@ function Initialize-CWAA {
     # and file system operations target the wrong hive/path. Tools such as ScreenConnect
     # start 32-bit PowerShell, so in direct download mode (.psm1 via Invoke-Expression) the
     # whole session is re-run under native 64-bit PowerShell and this one exits.
-    # In module mode (Import-Module) the .psm1 prefix emits a warning instead: Exit there
-    # would not end the caller, so its remaining commands would run a second time in 32-bit.
-    if ($env:PROCESSOR_ARCHITEW6432 -match '64' -and [IntPtr]::Size -ne 8 -and -not $ExecutionContext.SessionState.Module) {
+    # In module mode (Import-Module of this module) the .psm1 prefix emits a warning instead:
+    # Exit there would not end the caller, so its remaining commands would run again in 32-bit.
+    $loadedAsThisModule = $ExecutionContext.SessionState.Module -and $ExecutionContext.SessionState.Module.Name -eq 'ConnectWiseAutomateAgent'
+    if ($env:PROCESSOR_ARCHITEW6432 -match '64' -and [IntPtr]::Size -ne 8 -and -not $loadedAsThisModule) {
         # The command line is the one reliable record of how this session was started:
         # $MyInvocation here describes the Initialize-CWAA call, not the caller's script.
         $relaunchArguments = $Null
@@ -51,46 +52,23 @@ function Initialize-CWAA {
             $relaunchArguments = Get-CWAARelaunchArgument -CommandLine ([Environment]::CommandLine)
         }
 
-        if (-not $relaunchArguments) {
-            Write-Warning '32-bit PowerShell session detected on 64-bit OS. This session cannot be re-run automatically (it is interactive, reads its script from standard input, or is hosted by another program). Registry and file operations may target incorrect locations. Please use 64-bit PowerShell for reliable operation.'
-        }
-        else {
+        $relaunchExitCode = $Null
+        if ($relaunchArguments) {
             Write-Warning '32-bit PowerShell session detected on 64-bit OS. Attempting to launch 64-Bit session to process commands.'
-            $pshell = "${env:WINDIR}\sysnative\windowspowershell\v1.0\powershell.exe"
-            $FSRedirection = $False
-            if (!(Test-Path -Path $pshell)) {
-                # sysnative virtual folder is unavailable (e.g. older OS or non-interactive context).
-                # Fall back to the real System32 path after disabling WOW64 file system redirection
-                # so the 64-bit powershell.exe is accessible instead of the 32-bit redirected copy.
-                Write-Warning 'SYSNATIVE PATH REDIRECTION IS NOT AVAILABLE. Attempting to access 64-bit PowerShell directly.'
-                $pshell = "${env:WINDIR}\System32\WindowsPowershell\v1.0\powershell.exe"
-                $FSRedirection = $True
-                if (-not ('Kernel32.Wow64' -as [type])) {
-                    Add-Type -Debug:$False -Name Wow64 -Namespace 'Kernel32' -MemberDefinition @"
-    [DllImport("kernel32.dll", SetLastError=true)]
-    public static extern bool Wow64DisableWow64FsRedirection(ref IntPtr ptr);
-
-    [DllImport("kernel32.dll", SetLastError=true)]
-    public static extern bool Wow64RevertWow64FsRedirection(ref IntPtr ptr);
-"@
-                }
-                [ref]$ptr = New-Object System.IntPtr
-                $Null = [Kernel32.Wow64]::Wow64DisableWow64FsRedirection($ptr)
-            }
-
-            # Re-run the same command line under the 64-bit host. The arguments are passed as one
-            # string so their original quoting is kept, and the child shares this console and its
-            # output streams.
-            $relaunchedProcess = Start-Process -FilePath $pshell -ArgumentList $relaunchArguments -NoNewWindow -Wait -PassThru
-            $ExitResult = $relaunchedProcess.ExitCode
-
-            # Restore file system redirection if it was disabled
-            if ($FSRedirection -eq $True) {
-                $Null = [Kernel32.Wow64]::Wow64RevertWow64FsRedirection($ptr)
-            }
-            Write-Warning 'Exiting 32-bit session. The commands were processed in the native 64-bit PowerShell session.'
-            Exit $ExitResult
+            $relaunchExitCode = Invoke-CWAANativeRelaunch -Arguments $relaunchArguments
         }
+
+        if ($Null -ne $relaunchExitCode) {
+            Write-Warning 'Exiting 32-bit session. The commands were processed in the native 64-bit PowerShell session.'
+            if ($ExecutionContext.SessionState.Module) {
+                # Loaded inside some other module (for example New-Module on the downloaded text). PowerShell
+                # swallows Exit while a module loads, and the caller's commands would then run again in 32-bit.
+                [Console]::Out.Flush()
+                [Environment]::Exit($relaunchExitCode)
+            }
+            Exit $relaunchExitCode
+        }
+        Write-Warning '32-bit PowerShell session detected on 64-bit OS, and it could not be re-run under 64-bit PowerShell (it is interactive, was not started with -Command, -File or -EncodedCommand, is hosted by another program, or the 64-bit session failed to start). Continuing in 32-bit: registry and file operations may target incorrect locations.'
     }
 
     # Module-level constants -- centralized to avoid duplication across functions.

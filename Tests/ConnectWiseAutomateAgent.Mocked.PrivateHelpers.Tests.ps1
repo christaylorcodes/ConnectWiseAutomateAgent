@@ -7,7 +7,7 @@
 .DESCRIPTION
     Tests ConvertTo/From-CWAASecurity edge cases, Test-CWAADownloadIntegrity,
     Remove-CWAAFolderRecursive, Resolve-CWAAServer, Wait-CWAACondition,
-    Test-CWAADotNetPrerequisite, Invoke-CWAAMsiInstaller, Test-CWAAUrlAvailable, and Get-CWAARelaunchArgument using Pester mocks.
+    Test-CWAADotNetPrerequisite, Invoke-CWAAMsiInstaller, Test-CWAAUrlAvailable, Get-CWAARelaunchArgument, and Invoke-CWAANativeRelaunch using Pester mocks.
 
     Supports dual-mode testing via $env:CWAA_TEST_LOAD_METHOD.
 
@@ -782,7 +782,11 @@ Describe 'Get-CWAARelaunchArgument' {
         @{ Case = 'a quoted executable with -Command'; CommandLine = '"C:\WINDOWS\SysWOW64\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -Command "iex (irm https://example.com/x.psm1); Install-CWAA -Server ''a b''"'; Expected = '-NoProfile -Command "iex (irm https://example.com/x.psm1); Install-CWAA -Server ''a b''"' }
         @{ Case = 'an unquoted executable with -File and arguments'; CommandLine = 'powershell.exe -ExecutionPolicy Bypass -File "C:\Temp\Screen Connect\run.ps1" -Server automate.example.com'; Expected = '-ExecutionPolicy Bypass -File "C:\Temp\Screen Connect\run.ps1" -Server automate.example.com' }
         @{ Case = '-EncodedCommand'; CommandLine = '"C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe" -NonInteractive -EncodedCommand SQBFAFgA'; Expected = '-NonInteractive -EncodedCommand SQBFAFgA' }
-        @{ Case = 'a command that only mentions -NoExit inside its text'; CommandLine = 'powershell.exe -Command "Write-Output ''-NoExitStrategy''"'; Expected = '-Command "Write-Output ''-NoExitStrategy''"' }
+        @{ Case = 'short switch forms (-ep, -c)'; CommandLine = 'powershell.exe -ep Bypass -c "Install-CWAA"'; Expected = '-ep Bypass -c "Install-CWAA"' }
+        @{ Case = 'short switch forms (-ex, -e)'; CommandLine = 'powershell.exe -ex Bypass -e SQBFAFgA'; Expected = '-ex Bypass -e SQBFAFgA' }
+        @{ Case = 'command text that mentions -NoExit'; CommandLine = 'powershell.exe -Command "Start-Process powershell -ArgumentList ''-NoExit -File x.ps1''"'; Expected = '-Command "Start-Process powershell -ArgumentList ''-NoExit -File x.ps1''"' }
+        @{ Case = 'a script whose own switch is -NoExit'; CommandLine = 'powershell.exe -File C:\Temp\run.ps1 -NoExit'; Expected = '-File C:\Temp\run.ps1 -NoExit' }
+        @{ Case = 'a script argument that is a lone dash'; CommandLine = 'powershell.exe -File C:\Temp\run.ps1 -Mode -'; Expected = '-File C:\Temp\run.ps1 -Mode -' }
     ) {
         $result = InModuleScope 'ConnectWiseAutomateAgent' -Parameters @{ CommandLine = $CommandLine } {
             param($CommandLine)
@@ -793,11 +797,15 @@ Describe 'Get-CWAARelaunchArgument' {
 
     It 'returns nothing for <Case>' -ForEach @(
         @{ Case = 'an interactive console (no arguments)'; CommandLine = '"C:\WINDOWS\SysWOW64\WindowsPowerShell\v1.0\powershell.exe"' }
+        @{ Case = 'an interactive console started with switches only'; CommandLine = 'powershell.exe -NoProfile -ExecutionPolicy Bypass' }
+        @{ Case = 'a script piped in with no -Command'; CommandLine = 'powershell.exe -NoProfile -NonInteractive' }
+        @{ Case = 'a script piped to a bare dash'; CommandLine = 'powershell.exe -NoProfile -' }
         @{ Case = 'a script piped to -Command -'; CommandLine = 'powershell.exe -NoProfile -NonInteractive -Command -' }
         @{ Case = 'a script piped to the short form -c -'; CommandLine = 'powershell.exe -c -' }
         @{ Case = 'a script piped to -File -'; CommandLine = 'powershell.exe -File -' }
         @{ Case = 'a session kept open with -NoExit'; CommandLine = 'powershell.exe -NoExit -Command "Import-Module X"' }
         @{ Case = 'a session kept open with the short form -noe'; CommandLine = 'powershell.exe -noe -File C:\Temp\run.ps1' }
+        @{ Case = 'a background job host'; CommandLine = 'powershell.exe -s -NoLogo -NoProfile' }
         @{ Case = 'an empty command line'; CommandLine = '' }
     ) {
         $result = InModuleScope 'ConnectWiseAutomateAgent' -Parameters @{ CommandLine = $CommandLine } {
@@ -805,5 +813,43 @@ Describe 'Get-CWAARelaunchArgument' {
             Get-CWAARelaunchArgument -CommandLine $CommandLine
         }
         $result | Should -BeNullOrEmpty
+    }
+}
+
+# -----------------------------------------------------------------------------
+
+Describe 'Invoke-CWAANativeRelaunch' {
+
+    It 'starts the 64-bit host with the arguments unchanged and returns its exit code' {
+        $result = InModuleScope 'ConnectWiseAutomateAgent' {
+            Mock Test-Path { return $true }
+            Mock Start-Process {
+                $fakeProcess = New-Object PSObject -Property @{ Handle = 1; ExitCode = 42 }
+                $fakeProcess | Add-Member -MemberType ScriptMethod -Name WaitForExit -Value { } -PassThru
+            }
+
+            Invoke-CWAANativeRelaunch -Arguments '-NoProfile -File "C:\Temp\Screen Connect\run.ps1" -Server a'
+
+            Should -Invoke Start-Process -Times 1 -Exactly -Scope It -ParameterFilter {
+                $FilePath -like '*\sysnative\windowspowershell\v1.0\powershell.exe' -and
+                "$ArgumentList" -eq '-NoProfile -File "C:\Temp\Screen Connect\run.ps1" -Server a' -and
+                $NoNewWindow -and
+                -not $Wait -and
+                $WorkingDirectory -eq [Environment]::CurrentDirectory
+            }
+        }
+        $result | Should -Be 42
+    }
+
+    It 'returns nothing and warns when the 64-bit host cannot be started' {
+        InModuleScope 'ConnectWiseAutomateAgent' {
+            Mock Test-Path { return $true }
+            Mock Start-Process { throw 'This program is blocked by group policy.' }
+
+            $result = Invoke-CWAANativeRelaunch -Arguments '-Command "Install-CWAA"' -WarningAction SilentlyContinue -WarningVariable testWarn
+
+            $result | Should -BeNullOrEmpty
+            "$testWarn" | Should -Match 'Unable to start the 64-bit PowerShell session.*blocked by group policy'
+        }
     }
 }

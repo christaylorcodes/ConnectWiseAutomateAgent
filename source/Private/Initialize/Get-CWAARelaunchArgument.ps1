@@ -8,10 +8,14 @@
         takes the process command line and returns everything after the executable, untouched,
         so that quoting survives.
 
+        Only the host's own switches are inspected, up to the first -Command, -File or
+        -EncodedCommand. Whatever follows is the caller's command text or script arguments
+        and is never interpreted.
+
         Nothing is returned when re-running would not reproduce the session:
-        - no arguments at all (an interactive console)
+        - no -Command, -File or -EncodedCommand (an interactive console, or a script fed in some other way)
         - -Command - or -File - (the script was piped to standard input and is already consumed)
-        - -NoExit (the session is meant to stay open for a person)
+        - -NoExit among the host switches (the session is meant to stay open for a person)
     .PARAMETER CommandLine
         The full process command line, as returned by [Environment]::CommandLine.
     .NOTES
@@ -32,10 +36,22 @@
     # Drop the executable: a quoted path, or everything up to the first space
     $relaunchArguments = ("$CommandLine" -replace '^\s*(?:"[^"]*"|\S+)\s*', '').Trim()
 
-    if (-not $relaunchArguments) { return }
-    # PowerShell accepts any unambiguous prefix of a parameter name: -c, -Command, -f, -File, -noe, -NoExit
-    if ($relaunchArguments -match '(?i)(?:^|\s)[-/](?:c|co|com|comm|comma|comman|command|f|fi|fil|file)\s+-\s*$') { return }
-    if ($relaunchArguments -match '(?i)(?:^|\s)[-/]noe(?:x|xi|xit)?(?:\s|$)') { return }
+    # Walk the host switches one token at a time until the one that introduces the command
+    $remainingText = $relaunchArguments
+    while ($remainingText -match '^\s*("[^"]*"|\S+)(.*)$') {
+        $token = $Matches[1]
+        $remainingText = $Matches[2]
+        if ($token -notmatch '^[-/]([a-z]+):?$') { continue }
+        $switchName = $Matches[1].ToLower()
 
-    return $relaunchArguments
+        # PowerShell accepts any unambiguous prefix of a switch name (-c, -f, -e and -ec are fixed short forms)
+        if ($switchName.Length -ge 3 -and 'noexit'.StartsWith($switchName)) { return }
+        $introducesCommand = 'command'.StartsWith($switchName) -or 'file'.StartsWith($switchName) -or
+            $switchName -eq 'ec' -or 'encodedcommand'.StartsWith($switchName)
+        if ($introducesCommand) {
+            $commandText = $remainingText.Trim()
+            if (-not $commandText -or $commandText -eq '-') { return }
+            return $relaunchArguments
+        }
+    }
 }
