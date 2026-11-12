@@ -14,7 +14,7 @@ Install-CWAA -Server 'automate.example.com' -InstallerToken 'MyToken' -LocationI
 
 ### Does the module work on Windows Server Core?
 
-Yes. PowerShell 3.0+ is available on all Server Core editions. The module has no GUI dependencies.
+Yes, with one exception. The module has no GUI dependencies, except when it has to unpack the installer ZIP on a machine with neither PowerShell 5.0 nor .NET 4.5: there it uses the Windows shell, which Server Core does not have. In practice that means an InstallerToken install against a current Automate server on Server 2008 R2 Core as shipped needs .NET 4.5 or Windows Management Framework 5.1 installed first.
 
 ### How do I deploy agents via GPO?
 

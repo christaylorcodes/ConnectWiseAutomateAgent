@@ -101,19 +101,27 @@ BeforeDiscovery {
                     $commandName = "$($node.GetCommandName())"
                     if ($newerCommands -contains $commandName) { $runtimeFindings += "line ${line}: $commandName" }
                     if ($commandName -match '^(Where-Object|ForEach-Object|where|foreach|\?|%)$' -and $node.CommandElements.Count -gt 1) {
-                        $firstArgument = $node.CommandElements[1]
-                        $isScriptBlockForm = $firstArgument -is [System.Management.Automation.Language.ScriptBlockExpressionAst] -or
-                            $firstArgument -is [System.Management.Automation.Language.CommandParameterAst] -or
-                            $firstArgument -is [System.Management.Automation.Language.VariableExpressionAst]
-                        if (-not $isScriptBlockForm) { $runtimeFindings += "line ${line}: $commandName without a script block" }
+                        # PowerShell 2.0 only has the script block form. A lone variable is let through because
+                        # it can hold a script block; -Property, -MemberName or a bare property name cannot.
+                        $arguments = @($node.CommandElements | Select-Object -Skip 1)
+                        $hasScriptBlock = [bool]($arguments | Where-Object { $_ -is [System.Management.Automation.Language.ScriptBlockExpressionAst] })
+                        $isLoneVariable = $arguments.Count -eq 1 -and $arguments[0] -is [System.Management.Automation.Language.VariableExpressionAst]
+                        if (-not $hasScriptBlock -and -not $isLoneVariable) { $runtimeFindings += "line ${line}: $commandName without a script block" }
                     }
-                    foreach ($element in $node.CommandElements) {
+                    for ($elementIndex = 0; $elementIndex -lt $node.CommandElements.Count; $elementIndex++) {
+                        $element = $node.CommandElements[$elementIndex]
                         if ($element -isnot [System.Management.Automation.Language.CommandParameterAst]) { continue }
+                        # -ErrorAction Ignore, in any spelling: abbreviated name, -EA, or -ErrorAction:Ignore
+                        $parameterName = $element.ParameterName.ToLower()
+                        if ($parameterName -eq 'ea' -or ($parameterName.Length -ge 6 -and 'erroraction'.StartsWith($parameterName))) {
+                            $valueNode = $element.Argument
+                            if (-not $valueNode -and $elementIndex + 1 -lt $node.CommandElements.Count) { $valueNode = $node.CommandElements[$elementIndex + 1] }
+                            if ("$($valueNode.Extent.Text)".Trim("'", '"') -eq 'Ignore') { $runtimeFindings += "line ${line}: -ErrorAction Ignore (use SilentlyContinue)" }
+                        }
                         if ($newerParameters.ContainsKey($commandName) -and $newerParameters[$commandName] -contains $element.ParameterName) {
                             $runtimeFindings += "line ${line}: $commandName -$($element.ParameterName)"
                         }
                     }
-                    if ($node.Extent.Text -match '(?i)-(ErrorAction|EA)\s+Ignore\b') { $runtimeFindings += "line ${line}: -ErrorAction Ignore (use SilentlyContinue)" }
                 }
             }
         }

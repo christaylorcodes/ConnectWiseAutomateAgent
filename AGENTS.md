@@ -147,10 +147,12 @@ The managed tier is the list in `$managedTier` at the top of `Tests/ConnectWiseA
 
 Rules:
 
+- **PowerShell 2.0 is reached through direct download mode only.** The module manifest declares `PowerShellVersion = '3.0'` and uses `RootModule`, which PowerShell 2.0 does not understand, so `Import-Module` needs 3.0 or later. On a stock Windows 7 / Server 2008 R2 machine the built `.psm1` is downloaded and run as text.
 - **Every shipped file must parse on PowerShell 2.0**, whatever its tier. Direct download mode loads the whole module text at once, so one piece of newer syntax anywhere stops the install. That rules out `-in` / `-notin` (use `-contains`), `[Parameter(Mandatory)]` without `= $True`, and redirecting streams other than output and error.
 - **Deployment tier code must also run on PowerShell 2.0 / .NET 3.5.** Common traps:
   - `[PSCustomObject]@{}` quietly returns a hashtable. Use `New-Object PSObject -Property @{}`.
   - No `Expand-Archive`, `Get-CimInstance`, `Invoke-WebRequest`, `Invoke-RestMethod`, `ConvertTo-Json` or `ConvertFrom-Json`. Use the private helpers (`Expand-CWAAZipFile`), `System.Net.WebClient` and `System.Net.WebRequest`.
+  - .NET 3.5 types expose less: a hash or crypto object has `.Clear()` but no public `.Dispose()`, and an enum value with no name (TLS 1.2 is 3072) needs `[Enum]::ToObject()`.
   - No `$PSScriptRoot`, `::new()`, `.Where()` / `.ForEach()`, `Where-Object Name -eq x` without a script block, or `-ErrorAction Ignore`.
   - `foreach` over `$null` runs once, and `$list.Name` does not read a property from every item. Guard the loop and use `ForEach-Object`.
   - .NET 4 members such as `[string]::IsNullOrWhiteSpace` and `[Environment]::Is64BitOperatingSystem` do not exist.

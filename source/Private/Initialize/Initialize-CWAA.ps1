@@ -23,7 +23,8 @@
     $sha256 = [System.Security.Cryptography.SHA256]::Create()
     $hashBytes = $sha256.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($InputString))
     $hashHex = -join ($hashBytes | ForEach-Object { $_.ToString('x2') })
-    $sha256.Dispose()
+    # Clear, not Dispose: on .NET 3.5 (PowerShell 2.0) Dispose is not a public method of a hash algorithm
+    $sha256.Clear()
     return "[SHA256:$($hashHex.Substring(0, 8))]"
 }
 
