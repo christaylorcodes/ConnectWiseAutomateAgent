@@ -69,8 +69,15 @@
             Try {
                 # Copy each top-level item individually, excluding the Backup directory
                 # itself to prevent recursive copy loop (Backup is inside the agent path)
-                Get-ChildItem $agentPath -Exclude 'Backup' | Copy-Item -Destination $BackupPath -Recurse -Force
-                $filesBackedUp = $True
+                # A locked or unreadable file is a non-terminating error, so collect those as well
+                $copyErrors = @()
+                Get-ChildItem $agentPath -Exclude 'Backup' -ErrorVariable +copyErrors | Copy-Item -Destination $BackupPath -Recurse -Force -ErrorVariable +copyErrors
+                if ($copyErrors) {
+                    Write-CWAAEventLog -EventId 3012 -EntryType Error -Message "Agent backup incomplete (file copy). $(@($copyErrors).Count) item(s) could not be copied. First error: $($copyErrors[0])"
+                }
+                else {
+                    $filesBackedUp = $True
+                }
             }
             Catch {
                 Write-Error "There was a problem backing up the LTSvc folder. $_"
@@ -81,9 +88,11 @@
         if ($PSCmdlet.ShouldProcess($Keys, 'Export and backup registry keys')) {
             Try {
                 Write-Debug 'Exporting registry data'
+                $registryCommandsSucceeded = $True
                 $Null = & "$env:windir\system32\reg.exe" export "$Keys" "$RegPath" /y 2>''
                 if ($LASTEXITCODE -ne 0) {
                     Write-Warning "reg.exe export returned exit code $LASTEXITCODE. Registry backup may be incomplete."
+                    $registryCommandsSucceeded = $False
                 }
 
                 Write-Debug 'Loading and modifying registry key name'
@@ -97,8 +106,9 @@
                 $Null = & "$env:windir\system32\reg.exe" import "$RegPath" 2>''
                 if ($LASTEXITCODE -ne 0) {
                     Write-Warning "reg.exe import returned exit code $LASTEXITCODE. Registry backup restoration may have failed."
+                    $registryCommandsSucceeded = $False
                 }
-                $registryBackedUp = $True
+                $registryBackedUp = $registryCommandsSucceeded
             }
             Catch {
                 Write-Error "There was a problem backing up the LTSvc registry keys. $_"

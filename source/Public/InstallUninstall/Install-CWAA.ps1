@@ -328,10 +328,8 @@
                         # Set-CWAAProxy takes the password as a SecureString; the module holds it as plain text
                         $proxyParameters = @{ ProxyServerURL = $Script:LTProxy.ProxyServerURL }
                         if ($Script:LTProxy.ProxyUsername -and $Script:LTProxy.ProxyPassword) {
-                            $secureProxyPassword = New-Object System.Security.SecureString
-                            foreach ($passwordCharacter in "$($Script:LTProxy.ProxyPassword)".ToCharArray()) { $secureProxyPassword.AppendChar($passwordCharacter) }
                             $proxyParameters.ProxyUsername = $Script:LTProxy.ProxyUsername
-                            $proxyParameters.ProxyPassword = $secureProxyPassword
+                            $proxyParameters.ProxyPassword = ConvertTo-SecureString "$($Script:LTProxy.ProxyPassword)" -AsPlainText -Force
                         }
                         Set-CWAAProxy @proxyParameters -Confirm:$False -WhatIf:$False
                     }

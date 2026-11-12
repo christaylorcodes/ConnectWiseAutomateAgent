@@ -221,6 +221,7 @@ Describe 'Update-CWAA' {
 
                 $null = Update-CWAA -Confirm:$false -WarningAction SilentlyContinue -WarningVariable testWarn
                 "$testWarn" | Should -Match 'below the minimum for agent updates'
+                "$testWarn" | Should -Not -Match 'No valid server was detected'
                 Should -Invoke Test-CWAAUrlAvailable -Times 0 -Scope It
             }
         }
@@ -358,6 +359,35 @@ Describe 'Repair-CWAA' {
                 Should -Invoke Stop-Process -Times 1 -Exactly -Scope It -ParameterFilter { $Id -eq 111111 }
                 Should -Invoke Stop-Process -Times 1 -Exactly -Scope It -ParameterFilter { $Id -eq 222222 }
                 Should -Invoke Stop-Process -Times 2 -Exactly -Scope It
+            }
+        }
+
+        It 'never terminates the processes that launched it' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                # This process was started by 555555, which was started by 666666; both carry the command text.
+                Mock Get-CimInstance {
+                    [PSCustomObject]@{ Name = 'pwsh.exe'; ProcessId = $PID; ParentProcessId = 555555; CommandLine = 'pwsh.exe -Command Repair-CWAA' }
+                    [PSCustomObject]@{ Name = 'powershell.exe'; ProcessId = 555555; ParentProcessId = 666666; CommandLine = 'powershell.exe -Command "pwsh -Command Repair-CWAA"' }
+                    [PSCustomObject]@{ Name = 'pwsh.exe'; ProcessId = 666666; ParentProcessId = 4; CommandLine = 'pwsh.exe -File Wrapper.ps1 Repair-LTService' }
+                    [PSCustomObject]@{ Name = 'powershell.exe'; ProcessId = 777777; ParentProcessId = 4; CommandLine = 'powershell.exe -Command Repair-CWAA' }
+                }
+                Mock Confirm-CWAADependencyService {}
+                Mock Stop-Process {}
+                Mock Get-Service { [PSCustomObject]@{ Name = 'LTService'; Status = 'Running' } }
+                Mock Get-CWAAInfo {
+                    [PSCustomObject]@{
+                        Server                = @('automate.example.com')
+                        LastSuccessStatus     = (Get-Date).AddMinutes(-5).ToString()
+                        HeartbeatLastSent     = (Get-Date).AddMinutes(-5).ToString()
+                        HeartbeatLastReceived = (Get-Date).AddMinutes(-5).ToString()
+                    }
+                }
+                Mock Write-CWAAEventLog {}
+
+                $null = Repair-CWAA -InstallerToken 'abc123' -Confirm:$false
+
+                Should -Invoke Stop-Process -Times 1 -Exactly -Scope It -ParameterFilter { $Id -eq 777777 }
+                Should -Invoke Stop-Process -Times 1 -Exactly -Scope It
             }
         }
     }
@@ -1302,6 +1332,65 @@ Describe 'Set-CWAAProxy' {
                 }
             }
         }
+
+        It 'splits a DOMAIN\user name into domain and user for the proxy credential' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock Initialize-CWAANetworking {}
+                Mock Get-CWAASettings { return $null }
+                Mock Get-Service { return $null }
+
+                Set-CWAAProxy -ProxyServerURL 'http://proxy.example.com:8080' -ProxyUsername 'CORP\svcproxy' -ProxyPassword (ConvertTo-SecureString 'Dom!Pass3' -AsPlainText -Force) -Confirm:$false
+
+                $Script:LTProxy.ProxyUsername | Should -Be 'CORP\svcproxy'
+                $Script:LTWebProxy.Credentials.Domain | Should -Be 'CORP'
+                $Script:LTWebProxy.Credentials.UserName | Should -Be 'svcproxy'
+            }
+        }
+
+        It 'fails and leaves the proxy unchanged when encoded credentials cannot be decoded' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock Initialize-CWAANetworking {}
+                Mock Get-CWAASettings { return $null }
+                Mock Get-Service { return $null }
+                Mock ConvertFrom-CWAASecurity { return $null }
+                Mock Write-CWAAEventLog {}
+                $notDecodable = ConvertTo-SecureString 'bm90LWVuY29kZWQ=' -AsPlainText -Force
+
+                { Set-CWAAProxy -ProxyServerURL 'http://proxy.example.com:8080' -EncodedProxyUsername 'bm90LWVuY29kZWQ=' -EncodedProxyPassword $notDecodable -Confirm:$false } |
+                    Should -Throw '*could not be decoded*'
+
+                $Script:LTProxy.Enabled | Should -BeFalse
+                $Script:LTProxy.ProxyServerURL | Should -Be ''
+                Should -Invoke Write-CWAAEventLog -Times 1 -Exactly -Scope It -ParameterFilter { $EventId -eq 3022 }
+            }
+        }
+    }
+
+    Context 'when -DetectProxy falls back to the WinHTTP proxy' {
+        It 'reads the proxy from netsh output written as <Format>' -ForEach @(
+            @{ Format = 'one proxy for all protocols'; NetshLine = '    Proxy Server(s) :  proxy.corp.example:8080'; Expected = 'proxy.corp.example:8080' }
+            @{ Format = 'per-protocol entries'; NetshLine = '    Proxy Server(s) :  http=proxy.corp.example:8080;https=secure.corp.example:8443'; Expected = 'proxy.corp.example:8080' }
+            @{ Format = 'an https entry only'; NetshLine = '    Proxy Server(s) :  https=secure.corp.example:8443'; Expected = 'secure.corp.example:8443' }
+        ) {
+            $systemProxyUri = [System.Net.WebRequest]::GetSystemWebProxy().GetProxy([uri]'http://automate.example.com')
+            if ($systemProxyUri -and $systemProxyUri.Authority -ne 'automate.example.com') {
+                Set-ItResult -Skipped -Because 'this machine routes automate.example.com through a system proxy'
+                return
+            }
+            InModuleScope 'ConnectWiseAutomateAgent' -Parameters @{ NetshLine = $NetshLine; Expected = $Expected } {
+                param($NetshLine, $Expected)
+                Mock Initialize-CWAANetworking {}
+                Mock Get-CWAASettings { [PSCustomObject]@{ ServerAddress = 'automate.example.com' } }
+                Mock Get-Service { return $null }
+                $script:netshProxyLine = $NetshLine
+                Mock netsh { 'Current WinHTTP proxy settings:', '', $script:netshProxyLine, '    Bypass List     :  (none)' }
+
+                Set-CWAAProxy -DetectProxy -Confirm:$false
+
+                $Script:LTProxy.Enabled | Should -BeTrue
+                $Script:LTProxy.ProxyServerURL | Should -Be $Expected
+            }
+        }
     }
 
     Context 'when -DetectProxy finds no proxy' {
@@ -1418,7 +1507,9 @@ Describe 'New-CWAABackup' {
             }
         }
 
-        It 'reports success and logs event 3010 when both halves of the backup ran' {
+        # reg.exe is called by full path and cannot be mocked. Against the TestDrive: path used here
+        # it always exits non-zero, which is exactly the "registry export failed" case.
+        It 'does not report success when reg.exe fails' {
             InModuleScope 'ConnectWiseAutomateAgent' {
                 Mock Get-CWAAInfo { [PSCustomObject]@{ BasePath = 'TestDrive:\LTSVC' } }
                 Mock Test-Path { return $true }
@@ -1429,10 +1520,31 @@ Describe 'New-CWAABackup' {
                 Mock Out-File {}
                 Mock Write-CWAAEventLog {}
 
+                $result = New-CWAABackup -Confirm:$false -ErrorAction SilentlyContinue -WarningAction SilentlyContinue -WarningVariable testWarn
+
+                "$testWarn" | Should -Match 'reg\.exe export returned exit code'
+                "$result" | Should -Not -Match 'backup has been created'
+                Should -Invoke Write-CWAAEventLog -Times 0 -Scope It -ParameterFilter { $EventId -eq 3010 }
+            }
+        }
+
+        It 'does not report success when some files could not be copied' {
+            InModuleScope 'ConnectWiseAutomateAgent' {
+                Mock Get-CWAAInfo { [PSCustomObject]@{ BasePath = 'TestDrive:\LTSVC' } }
+                Mock Test-Path { return $true }
+                Mock New-Item {}
+                Mock Get-ChildItem { [PSCustomObject]@{ FullName = 'TestDrive:\LTSVC\LTSvc.exe' } }
+                # A locked file is a non-terminating error, as the real Copy-Item reports it
+                Mock Copy-Item { Write-Error 'The process cannot access the file because it is being used by another process.' }
+                Mock Get-Content { @('[HKEY_LOCAL_MACHINE\SOFTWARE\LabTech]', '"Key"="Value"') }
+                Mock Out-File {}
+                Mock Write-CWAAEventLog {}
+
                 $result = New-CWAABackup -Confirm:$false -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
 
-                "$result" | Should -Match 'backup has been created'
-                Should -Invoke Write-CWAAEventLog -Times 1 -Exactly -Scope It -ParameterFilter { $EventId -eq 3010 }
+                "$result" | Should -Not -Match 'backup has been created'
+                Should -Invoke Write-CWAAEventLog -Times 1 -Exactly -Scope It -ParameterFilter { $EventId -eq 3012 -and $Message -match 'could not be copied' }
+                Should -Invoke Write-CWAAEventLog -Times 0 -Scope It -ParameterFilter { $EventId -eq 3010 }
             }
         }
 

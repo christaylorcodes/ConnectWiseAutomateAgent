@@ -94,6 +94,7 @@
         else {
             Write-Warning "Server $GoodServer reports version $serverVersion, which is below the minimum for agent updates ($($Script:CWAAVersionUpdateMinimum)). Use -Version to request a specific update."
             $GoodServer = $null
+            $updateUnavailableReported = $True
             return
         }
 
@@ -157,7 +158,8 @@
             }
             # No target version means no -Version was given and no usable server supplied one
             if (-not $Version) {
-                Write-Warning "No valid server was detected."
+                # Process already explained the too-old-server case
+                if (-not $updateUnavailableReported) { Write-Warning "No valid server was detected." }
                 Return
             }
             if ([System.Version]$detectedVersion -ge [System.Version]$Version) {

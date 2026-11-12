@@ -161,7 +161,19 @@
                     }
                     if (-not ($Script:LTProxy.Enabled)) {
                         # Nothing found per server: fall back to the machine-wide WinHTTP proxy
-                        $Script:LTProxy.ProxyServerURL = netsh winhttp show proxy | Select-String -Pattern '(?i)(?<=Proxyserver.*http\=)([^;\r\n]*)' -EA 0 | ForEach-Object { $_.matches } | Select-Object -Expand value
+                        # netsh prints "Proxy Server(s) :  host:port" or "Proxy Server(s) :  http=host:port;https=host:port"
+                        $Script:LTProxy.ProxyServerURL = ''
+                        $winHttpProxyLine = netsh winhttp show proxy | Select-String -Pattern '(?i)Proxy Server\(s\)\s*:\s*(\S+)' -EA 0 | Select-Object -First 1
+                        if ($winHttpProxyLine) {
+                            $winHttpProxyEntries = @($winHttpProxyLine.Matches[0].Groups[1].Value -split ';' | Where-Object { $_ })
+                            # Prefer the http entry, then one that applies to every protocol, then https
+                            $winHttpProxyEntry = @(
+                                $winHttpProxyEntries | Where-Object { $_ -match '^http=' }
+                                $winHttpProxyEntries | Where-Object { $_ -notmatch '=' }
+                                $winHttpProxyEntries | Where-Object { $_ -match '^https=' }
+                            ) | Select-Object -First 1
+                            $Script:LTProxy.ProxyServerURL = "$winHttpProxyEntry" -replace '^[a-z]+=', ''
+                        }
                         if (($Null -eq $Script:LTProxy.ProxyServerURL) -or ($Script:LTProxy.ProxyServerURL -eq '')) {
                             $Script:LTProxy.ProxyServerURL = ''
                             $Script:LTProxy.Enabled = $False
@@ -178,27 +190,37 @@
             }
             Elseif (($ProxyServerURL)) {
                 if ( $PSCmdlet.ShouldProcess('LTProxy', 'Set') ) {
-                    $Script:LTWebProxy = New-Object System.Net.WebProxy($ProxyServerURL, $true);
-                    $Script:LTProxy.Enabled = $True
-                    $Script:LTProxy.ProxyServerURL = $ProxyServerURL
-                    Write-Verbose "Setting Proxy URL to: $($ProxyServerURL)"
+                    # Resolve the credentials before touching module state, so a failed decode changes nothing.
                     # The parameter check above guarantees at most one credential pair (plain or encoded) is present.
                     # Passwords arrive as SecureString. The module keeps the plain value in $Script:LTProxy
                     # because the agent registry stores it re-encrypted with the agent key.
-                    $proxyCredentialSupplied = $False
+                    $resolvedProxyUsername = $Null
+                    $resolvedProxyPassword = $Null
                     if ($ProxyUsername -and $ProxyPassword) {
-                        $Script:LTProxy.ProxyUsername = $ProxyUsername
-                        $Script:LTProxy.ProxyPassword = (New-Object System.Management.Automation.PSCredential ('unused', $ProxyPassword)).GetNetworkCredential().Password
-                        $proxyCredentialSupplied = $True
+                        $resolvedProxyUsername = $ProxyUsername
+                        $resolvedProxyPassword = (New-Object System.Management.Automation.PSCredential ('unused', $ProxyPassword)).GetNetworkCredential().Password
                     }
                     elseif ($EncodedProxyUsername -and $EncodedProxyPassword) {
                         $encodedProxyPasswordText = (New-Object System.Management.Automation.PSCredential ('unused', $EncodedProxyPassword)).GetNetworkCredential().Password
-                        $Script:LTProxy.ProxyUsername = $(ConvertFrom-CWAASecurity -InputString "$($EncodedProxyUsername)" -Key ("$($Script:LTServiceKeys.PasswordString)", ''))
-                        $Script:LTProxy.ProxyPassword = $(ConvertFrom-CWAASecurity -InputString $encodedProxyPasswordText -Key ("$($Script:LTServiceKeys.PasswordString)", ''))
-                        $proxyCredentialSupplied = $True
+                        $agentKeys = ("$($Script:LTServiceKeys.PasswordString)", '')
+                        $resolvedProxyUsername = ConvertFrom-CWAASecurity -InputString "$($EncodedProxyUsername)" -Key $agentKeys
+                        $resolvedProxyPassword = ConvertFrom-CWAASecurity -InputString $encodedProxyPasswordText -Key $agentKeys
+                        if (-not $resolvedProxyUsername -or $Null -eq $resolvedProxyPassword) {
+                            Throw 'The encoded proxy username or password could not be decoded with the agent password.'
+                        }
                     }
-                    if ($proxyCredentialSupplied) {
-                        $Script:LTWebProxy.Credentials = New-Object System.Net.NetworkCredential ("$($Script:LTProxy.ProxyUsername)", "$($Script:LTProxy.ProxyPassword)")
+
+                    $Script:LTWebProxy = New-Object System.Net.WebProxy($ProxyServerURL, $true)
+                    $Script:LTProxy.Enabled = $True
+                    $Script:LTProxy.ProxyServerURL = $ProxyServerURL
+                    Write-Verbose "Setting Proxy URL to: $($ProxyServerURL)"
+                    if ($resolvedProxyUsername) {
+                        $Script:LTProxy.ProxyUsername = $resolvedProxyUsername
+                        $Script:LTProxy.ProxyPassword = "$resolvedProxyPassword"
+                        # Assigned as a PSCredential so a DOMAIN\user name is split into domain and user
+                        $secureProxyPassword = New-Object System.Security.SecureString
+                        if ($resolvedProxyPassword) { $secureProxyPassword = ConvertTo-SecureString "$resolvedProxyPassword" -AsPlainText -Force }
+                        $Script:LTWebProxy.Credentials = New-Object System.Management.Automation.PSCredential ($resolvedProxyUsername, $secureProxyPassword)
                     }
                     $Script:LTServiceNetWebClient.Proxy = $Script:LTWebProxy
                 }

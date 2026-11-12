@@ -87,10 +87,22 @@
         # Uses CIM for reliable command-line matching (Get-Process cannot filter by arguments)
         if ($PSCmdlet.ShouldProcess('Duplicate Repair-CWAA processes', 'Terminate')) {
             Try {
-                Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+                $allProcesses = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)
+
+                # Never terminate this process or the chain that launched it: a wrapper's
+                # command line carries the same Repair-CWAA text as the process it started.
+                $protectedProcessIds = @($PID)
+                $ancestorProcessId = $PID
+                while ($True) {
+                    $ancestorProcessId = ($allProcesses | Where-Object { $_.ProcessId -eq $ancestorProcessId } | Select-Object -First 1).ParentProcessId
+                    if (-not $ancestorProcessId -or $protectedProcessIds -contains $ancestorProcessId) { break }
+                    $protectedProcessIds += $ancestorProcessId
+                }
+
+                $allProcesses | Where-Object {
                     $_.Name -match '^(powershell|pwsh)\.exe$' -and
                     $_.CommandLine -match 'Repair-(CWAA|LTService)' -and
-                    $_.ProcessId -ne $PID
+                    $protectedProcessIds -notcontains $_.ProcessId
                 } | ForEach-Object {
                     Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
                 }
@@ -314,7 +326,14 @@
                 else {
                     # Restart was attempted but agent hasn't recovered yet. Not yet at reinstall threshold.
                     $actionTaken = 'Restart'
-                    $resultMessage = "Services restarted. Agent has not recovered yet but is within reinstall threshold ($([Math]::Abs($HoursReinstall)) hours)."
+                    if ($lastContact -ge $restartThreshold) {
+                        # Only the heartbeat is stale. Reinstall is decided on the check-in alone, so say so and stop here.
+                        $resultMessage = "Services restarted. Agent has not recovered yet: the last check-in is current but the heartbeat is still stale (last sent: $lastHeartbeat)."
+                        Write-CWAAEventLog -EventId 4001 -EntryType Warning -Message $resultMessage
+                    }
+                    else {
+                        $resultMessage = "Services restarted. Agent has not recovered yet but is within reinstall threshold ($([Math]::Abs($HoursReinstall)) hours)."
+                    }
                     Write-Verbose $resultMessage
                 }
             }

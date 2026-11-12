@@ -63,7 +63,7 @@
             $encodedString = [System.Convert]::ToBase64String($cryptoTransform.TransformFinalBlock($inputBytes, 0, ($inputBytes.Length)))
         }
         catch {
-            Write-Debug "Failed to Encode string: '$($InputString)'. $_"
+            Write-Debug "Failed to Encode string: $(Get-CWAARedactedValue "$InputString"). $_"
         }
         Finally {
             if ($cryptoTransform) { try { $cryptoTransform.Dispose() } catch { $cryptoTransform.Clear() } }
