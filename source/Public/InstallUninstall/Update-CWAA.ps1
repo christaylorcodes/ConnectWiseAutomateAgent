@@ -108,7 +108,7 @@ function Update-CWAA {
         if ($ShowProgress) { Write-Progress -Id $progressId -Activity $progressActivity -Status 'Cleaning previous update files' -PercentComplete 28 }
         Remove-CWAAFolderRecursive -Path $updaterPath
 
-        # Any failure below clears $GoodServer so End reports "No valid server was detected."
+        # Any failure below clears $GoodServer, which End treats as "no valid server".
         Try {
             if (-not (Test-Path -PathType Container -Path $updaterPath)) {
                 New-Item $updaterPath -type directory -ErrorAction SilentlyContinue | Out-Null

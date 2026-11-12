@@ -49,18 +49,21 @@ function Start-CWAA {
                     $processes += ($line -split ' {4,}')[-1]
                 }
                 $processes = $processes | Where-Object { $_ -gt 0 -and $_ -match '^\d+$' } | Sort-Object | Get-Unique
-                Foreach ($processId in $processes) {
-                    Write-Output "Process ID:$processId is using port $Port. Killing process."
-                    Try { Stop-Process -Id $processId -Force -Verbose -EA Stop }
-                    Catch {
-                        Write-Warning "There was an issue killing process: $processId"
-                        Write-Warning "This generally means that a 'protected application' is using this port."
-                        # TrayPort wraps within the 42000-42009 range. If a protected process holds
-                        # the current port, increment and wrap back to 42000 after 42009.
-                        $newPort = [int]$Port + 1
-                        if ($newPort -gt $Script:CWAATrayPortMax) { $newPort = $Script:CWAATrayPortMin }
-                        Write-Warning "Setting tray port to $newPort."
-                        New-ItemProperty -Path $Script:CWAARegistryRoot -Name TrayPort -PropertyType String -Value $newPort -Force -WhatIf:$False -Confirm:$False | Out-Null
+                # Guard kept on purpose: PowerShell 2.0 runs foreach once over $null
+                if ($processes) {
+                    Foreach ($processId in $processes) {
+                        Write-Output "Process ID:$processId is using port $Port. Killing process."
+                        Try { Stop-Process -Id $processId -Force -Verbose -EA Stop }
+                        Catch {
+                            Write-Warning "There was an issue killing process: $processId"
+                            Write-Warning "This generally means that a 'protected application' is using this port."
+                            # TrayPort wraps within the 42000-42009 range. If a protected process holds
+                            # the current port, increment and wrap back to 42000 after 42009.
+                            $newPort = [int]$Port + 1
+                            if ($newPort -gt $Script:CWAATrayPortMax) { $newPort = $Script:CWAATrayPortMin }
+                            Write-Warning "Setting tray port to $newPort."
+                            New-ItemProperty -Path $Script:CWAARegistryRoot -Name TrayPort -PropertyType String -Value $newPort -Force -WhatIf:$False -Confirm:$False | Out-Null
+                        }
                     }
                 }
             }
