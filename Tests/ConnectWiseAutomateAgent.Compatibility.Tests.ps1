@@ -63,8 +63,16 @@ BeforeDiscovery {
         'Add-Content'   = @('NoNewline')
     }
 
-    $script:CompatibilityCases = foreach ($sourceFile in Get-ChildItem -Path $sourceRoot -Recurse -File -Include *.ps1, *.psm1) {
-        $relativePath = $sourceFile.FullName.Substring($sourceRoot.Length + 1) -replace '\\', '/'
+    # Example scripts are what gets pasted into a deployment tool, so they are held to the same rules.
+    # The ScriptHelper examples are for Automate scripts on a managed machine and declare #requires 5.
+    $examplesRoot = Join-Path (Split-Path -Path $PSScriptRoot -Parent) 'Examples'
+    $managedExamples = @('Examples/HealthCheck-Monitoring.ps1', 'Examples/Troubleshooting-QuickDiagnostic.ps1')
+    $filesToCheck = @(Get-ChildItem -Path $sourceRoot -Recurse -File -Include *.ps1, *.psm1) +
+        @(Get-ChildItem -Path $examplesRoot -File -Filter *.ps1 | Where-Object { $_.Name -notlike 'ScriptHelper-*' })
+
+    $script:CompatibilityCases = foreach ($sourceFile in $filesToCheck) {
+        $relativePath = if ($sourceFile.FullName.StartsWith($examplesRoot)) { "Examples/$($sourceFile.Name)" }
+        else { $sourceFile.FullName.Substring($sourceRoot.Length + 1) -replace '\\', '/' }
         if ($notShipped -contains $relativePath) { continue }
 
         $parseFindings = @()
@@ -126,7 +134,7 @@ BeforeDiscovery {
             }
         }
 
-        $isManaged = [bool]($managedTier | Where-Object { $relativePath -like $_ })
+        $isManaged = [bool]($managedTier + $managedExamples | Where-Object { $relativePath -like $_ })
         @{
             File            = $relativePath
             Deployment      = -not $isManaged
@@ -184,5 +192,23 @@ Describe 'PowerShell file encoding' {
             if (-not $hasBom -and [Array]::FindIndex($bytes, [Predicate[byte]] { param($b) $b -gt 127 }) -ge 0) { $relativePath }
         }
         ($missing -join ', ') | Should -BeNullOrEmpty
+    }
+
+    # The single-file module on each GitHub release has no byte order mark, and the documented fallback
+    # loads it with WebClient.DownloadString, which Windows PowerShell then decodes as ANSI. A UTF-8 em
+    # dash arrives as three characters, the last of which PowerShell treats as a double quote: harmless
+    # in a comment, a parse error inside a string. Keeping the source ASCII removes the trap.
+    It 'module source and example scripts are ASCII only' {
+        $repositoryRoot = Split-Path -Path $PSScriptRoot -Parent
+        $files = @(Get-ChildItem -Path (Join-Path $repositoryRoot 'source') -Recurse -File -Include *.ps1, *.psm1) +
+            @(Get-ChildItem -Path (Join-Path $repositoryRoot 'Examples') -File -Filter *.ps1)
+        $nonAscii = foreach ($file in $files) {
+            $lineNumber = 0
+            foreach ($line in [System.IO.File]::ReadAllLines($file.FullName)) {
+                $lineNumber++
+                if ($line -match '[^\x00-\x7F]') { "$($file.Name):$lineNumber" }
+            }
+        }
+        ($nonAscii -join ', ') | Should -BeNullOrEmpty
     }
 }

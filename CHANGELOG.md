@@ -39,6 +39,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The example deployment scripts could not run on PowerShell 2.0: the module bootstrap used `*>$null` (a parse error there) and a TLS 1.2 line that does nothing on .NET 3.5, and the GPO example used `Get-CimInstance`. The README now gives a direct download form that works on Windows 7 / Server 2008 R2.
+- Module source is now ASCII only. The single-file module has no byte order mark, so Windows PowerShell decoded its em dashes as characters that include a double quote when it was loaded by direct download. They were all in comments, so nothing broke, but one inside a string would have stopped the module loading.
 - `Install-CWAA` could not install on PowerShell versions before 5.0 when using an InstallerToken against a current Automate server, because it unpacked the installer with `Expand-Archive`. It now falls back to .NET 4.5's ZIP support, then to the Windows shell's. It also used the `-in` operator, which stopped the whole module from loading on PowerShell 2.0.
 - On PowerShell 2.0, server resolution and the module's proxy and key state used `[PSCustomObject]`, which returns a hashtable there. They are now created with `New-Object PSObject`.
 - TLS 1.2 is now also requested on .NET 3.5 (PowerShell 2.0 on Windows 7 / Server 2008 R2), where it works once the TLS 1.2 update for .NET 3.5.1 is installed.
