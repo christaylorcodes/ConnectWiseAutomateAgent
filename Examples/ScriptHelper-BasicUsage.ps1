@@ -18,7 +18,7 @@ Import-Module ConnectWiseAutomateAgent
 # --- Example 1: Simple script with manual output object ----------------------
 #
 # Create an output object, do your work, set the result, and call ToString().
-# This is the most flexible approach — you control every step.
+# This is the most flexible approach -- you control every step.
 
 $output = New-CWAAScriptOutput
 $output.Result = 'Agent is healthy'

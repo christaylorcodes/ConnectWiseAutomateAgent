@@ -202,7 +202,7 @@
                     throw "schtasks returned exit code $LASTEXITCODE. Output: $schtasksOutput"
                 }
 
-                # Verify the task actually persists after creation — a task can be reported as created
+                # Verify the task actually persists after creation -- a task can be reported as created
                 # successfully by schtasks and then be removed immediately afterward (e.g. by AV/policy).
                 # Uses schtasks (not Get-ScheduledTask/ScheduledTasks module) to match this function's
                 # PowerShell 3.0 compatibility target and the existence check above.

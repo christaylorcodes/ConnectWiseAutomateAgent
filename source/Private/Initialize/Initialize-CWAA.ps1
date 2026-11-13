@@ -80,11 +80,11 @@ function Initialize-CWAA {
     $Script:CWAAInstallerTempPath     = "${env:windir}\Temp\LabTech"
     $Script:CWAAServiceNames          = @('LTService', 'LTSvcMon')
     # Server URL validation regex breakdown:
-    #   ^(https?://)?                              — optional http:// or https:// scheme
-    #   (([12]?[0-9]{1,2}\.){3}[12]?[0-9]{1,2}   — IPv4 address (0.0.0.0 - 299.299.299.299)
-    #   |                                          — OR
-    #   [a-z0-9][a-z0-9_-]*(\.[a-z0-9][a-z0-9_-]*)*)  — hostname with optional subdomains
-    #   $                                          — end of string, no trailing path/query
+    #   ^(https?://)?                              -- optional http:// or https:// scheme
+    #   (([12]?[0-9]{1,2}\.){3}[12]?[0-9]{1,2}   -- IPv4 address (0.0.0.0 - 299.299.299.299)
+    #   |                                          -- OR
+    #   [a-z0-9][a-z0-9_-]*(\.[a-z0-9][a-z0-9_-]*)*)  -- hostname with optional subdomains
+    #   $                                          -- end of string, no trailing path/query
     $Script:CWAAServerValidationRegex = '^(https?://)?(([12]?[0-9]{1,2}\.){3}[12]?[0-9]{1,2}|[a-z0-9][a-z0-9_-]*(\.[a-z0-9][a-z0-9_-]*)*)$'
 
     # Registry paths for Add/Remove Programs operations (shared by Hide, Show, Rename functions)
@@ -116,33 +116,33 @@ function Initialize-CWAA {
     $Script:CWAAEventLogSource = 'ConnectWiseAutomateAgent'
     $Script:CWAAEventLogName   = 'Application'
 
-    # Timeout and retry configuration — used by Wait-CWAACondition and Install-CWAA callers.
+    # Timeout and retry configuration -- used by Wait-CWAACondition and Install-CWAA callers.
     # Centralized here so they are tunable and self-documenting in one place.
     $Script:CWAAInstallMaxAttempts       = 3
     $Script:CWAAInstallRetryDelaySeconds = 30
-    $Script:CWAAServiceStartTimeoutSec   = 120   # 2 minutes — proxy startup wait
-    $Script:CWAARegistrationTimeoutSec   = 900   # 15 minutes — agent registration wait
+    $Script:CWAAServiceStartTimeoutSec   = 120   # 2 minutes -- proxy startup wait
+    $Script:CWAARegistrationTimeoutSec   = 900   # 15 minutes -- agent registration wait
     $Script:CWAATrayPortMin              = 42000
     $Script:CWAATrayPortMax              = 42009
     $Script:CWAATrayPortDefault          = 42000
     $Script:CWAAUninstallWaitSeconds     = 10
-    $Script:CWAAServiceWaitTimeoutSec    = 60    # 1 minute — Start/Stop/Restart/Reset service waits
+    $Script:CWAAServiceWaitTimeoutSec    = 60    # 1 minute -- Start/Stop/Restart/Reset service waits
     $Script:CWAARedoSettleDelaySeconds   = 20    # Redo-CWAA settling delay between uninstall and reinstall
 
-    # Server version thresholds — document breaking changes in the server's deployment API.
+    # Server version thresholds -- document breaking changes in the server's deployment API.
     # Each threshold gates a different URL construction or installer format in Install-CWAA.
     $Script:CWAAVersionZipInstaller     = '240.331'  # InstallerToken deployments return ZIP (MSI+MST)
     $Script:CWAAVersionAnonymousChange  = '110.374'  # Anonymous MSI download URL changed (LT11 Patch 13)
     $Script:CWAAVersionVulnerabilityFix = '200.197'  # CVE fix: unauthenticated Deployment.aspx access
     $Script:CWAAVersionUpdateMinimum    = '105.001'  # Minimum version with update support
 
-    # Agent process names — for forceful termination in Stop-CWAA after service stop timeout.
+    # Agent process names -- for forceful termination in Stop-CWAA after service stop timeout.
     $Script:CWAAAgentProcessNames = @('LTTray', 'LTSVC', 'LTSvcMon')
 
-    # All service names including LabVNC — for full service cleanup in Uninstall-CWAA.
+    # All service names including LabVNC -- for full service cleanup in Uninstall-CWAA.
     $Script:CWAAAllServiceNames = @('LTService', 'LTSvcMon', 'LabVNC')
 
-    # OS services the agent depends on — ensured Automatic + Running before install/repair/start
+    # OS services the agent depends on -- ensured Automatic + Running before install/repair/start
     # via Confirm-CWAADependencyService. The agent relies on WMI (winmgmt) for inventory,
     # scripting, and check-in; a disabled winmgmt breaks the agent (and this module's own
     # Get-CimInstance calls). Kept as a list so additional dependencies are trivial to add.

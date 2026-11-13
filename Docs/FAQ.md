@@ -36,6 +36,8 @@ Invoke-RestMethod 'https://github.com/christaylorcodes/ConnectWiseAutomateAgent/
 Install-CWAA -Server 'automate.example.com' -InstallerToken 'MyToken' -LocationID 1
 ```
 
+On Windows 7 / Server 2008 R2 as shipped (PowerShell 2.0) there is no `Invoke-RestMethod` and TLS 1.2 is off by default, so use the form in [Direct Download Usage](../README.md#direct-download-usage) instead. It also covers machines that cannot reach GitHub.
+
 ### What PowerShell versions are supported?
 
 | Version | Support Level |
