@@ -11,7 +11,7 @@
     Module:         ConnectWiseAutomateAgent
 
 .PARAMETER Service
-    Example parameter — the name of a Windows service to check.
+    Example parameter -- the name of a Windows service to check.
 
 .NOTES
     Version:        1.0

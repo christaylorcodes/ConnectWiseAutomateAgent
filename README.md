@@ -105,6 +105,15 @@ For environments without PowerShell Gallery access, the compiled `.psm1` module 
 Invoke-RestMethod 'https://github.com/christaylorcodes/ConnectWiseAutomateAgent/releases/download/v2.2.0/ConnectWiseAutomateAgent.psm1' | Invoke-Expression
 ```
 
+**Windows 7 / Server 2008 R2 as shipped (PowerShell 2.0)** has no `Invoke-RestMethod` and does not use TLS 1.2 by default. Use this form, which works on every version:
+
+```powershell
+[Net.ServicePointManager]::SecurityProtocol = [Enum]::ToObject([Net.SecurityProtocolType], 3072)   # TLS 1.2
+(New-Object Net.WebClient).DownloadString('https://github.com/christaylorcodes/ConnectWiseAutomateAgent/releases/download/v2.2.0/ConnectWiseAutomateAgent.psm1') | Invoke-Expression
+```
+
+If the first line fails, the machine is missing the TLS 1.2 update for .NET 3.5.1 and cannot download from GitHub at all. Download the `.psm1` elsewhere, put it somewhere the machine can reach (a file share, or your Automate server), and load it with `Invoke-Expression ([IO.File]::ReadAllText('\\server\share\ConnectWiseAutomateAgent.psm1'))`.
+
 > **Tip:** Browse all versions on the [Releases](https://github.com/christaylorcodes/ConnectWiseAutomateAgent/releases) page. Replace `v2.2.0` with your desired version tag.
 >
 > **Note:** This downloads and executes code at runtime. Use `Install-Module` when the Gallery is available. Version-locked URLs are strongly preferred for production because they are immutable after release.

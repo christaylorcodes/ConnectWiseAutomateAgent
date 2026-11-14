@@ -192,7 +192,7 @@
             if ($PSCmdlet.ShouldProcess("$uninstaller", 'DownloadFile')) {
                 Write-Debug "Downloading Agent_Uninstall.exe from $uninstaller"
                 $Script:LTServiceNetWebClient.DownloadFile($uninstaller, $uninstallExePath)
-                # Uninstall EXE is smaller than MSI — use 80 KB threshold
+                # Uninstall EXE is smaller than MSI -- use 80 KB threshold
                 if (-not (Test-CWAADownloadIntegrity -FilePath $uninstallExePath -FileName 'Agent_Uninstall.exe' -MinimumSizeKB 80)) {
                     return
                 }

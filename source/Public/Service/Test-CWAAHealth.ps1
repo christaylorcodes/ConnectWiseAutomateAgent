@@ -60,7 +60,7 @@
     }
 
     Process {
-        # Defaults — populated progressively as checks succeed
+        # Defaults -- populated progressively as checks succeed
         $agentInstalled = $False
         $servicesRunning = $False
         $lastContact = $Null

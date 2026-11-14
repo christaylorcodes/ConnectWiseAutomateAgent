@@ -22,21 +22,22 @@
 # ==============================================================================
 
 $Module = 'ConnectWiseAutomateAgent'
-$ModuleVersion = '2.2.0'  # Pin to a tested version — update after validating new releases
+$ModuleVersion = '2.2.0'  # Pin to a tested version -- update after validating new releases
 
-[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+# TLS 1.2 by number: .NET 3.5 (PowerShell 2.0 on Windows 7 / Server 2008 R2) has no Tls12 name
+try { [Net.ServicePointManager]::SecurityProtocol = [Enum]::ToObject([Net.SecurityProtocolType], ([int][Net.ServicePointManager]::SecurityProtocol -bor 3072)) } catch { Write-Warning "TLS 1.2 is not available: $_" }
 try {
     $installed = Get-Module $Module -ListAvailable |
         Where-Object { $_.Version -eq $ModuleVersion }
     if (-not $installed) {
         Install-Module $Module -RequiredVersion $ModuleVersion -Force -Scope AllUsers
     }
-    Import-Module $Module -RequiredVersion $ModuleVersion *>$null
+    Import-Module $Module -RequiredVersion $ModuleVersion -WarningAction SilentlyContinue | Out-Null
 }
 catch {
     # WARNING: Invoke-Expression executes downloaded code. See security note above.
     # This fallback is ONLY for systems where the PowerShell Gallery is unavailable.
-    # The URL is pinned to a specific release tag — it will not change after publication.
+    # The URL is pinned to a specific release tag -- it will not change after publication.
     $URI = "https://github.com/christaylorcodes/ConnectWiseAutomateAgent/releases/download/v$ModuleVersion/ConnectWiseAutomateAgent.psm1"
     (New-Object Net.WebClient).DownloadString($URI) | Invoke-Expression
 }

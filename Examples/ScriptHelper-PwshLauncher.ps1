@@ -4,9 +4,9 @@
 # Demonstrates using Invoke-CWAAPwsh to run PowerShell 7 code from Automate.
 #
 # ConnectWise Automate natively launches scripts under PowerShell 5.1
-# (Windows PowerShell). When your script needs PowerShell 7 features —
+# (Windows PowerShell). When your script needs PowerShell 7 features --
 # parallel ForEach-Object, ternary operators, null-coalescing, improved
-# JSON handling, cross-platform cmdlets — use Invoke-CWAAPwsh to bridge
+# JSON handling, cross-platform cmdlets -- use Invoke-CWAAPwsh to bridge
 # from the PS5 session into pwsh.exe.
 #
 # Prerequisites:
@@ -72,7 +72,7 @@ Invoke-CWAAPwsh -ScriptBlock {
 # This is the typical pattern for an Automate-deployed script that needs PS7.
 # The outer script runs under PS5 (launched by Automate) and delegates the
 # real work to PS7. Invoke-CWAAPwsh handles pwsh detection and returns
-# Status=Error if PowerShell 7 is not installed — no manual pre-check needed.
+# Status=Error if PowerShell 7 is not installed -- no manual pre-check needed.
 
 Invoke-CWAAPwsh -ScriptBlock {
     $data = @{
